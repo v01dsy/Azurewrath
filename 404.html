@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loading...</title>
+</head>
+<body>
+    <script>
+        // Get the requested path
+        const path = window.location.pathname;
+        
+        // Map friendly URLs to actual files
+        // Examples: /azurewrath/search -> /nav/search.html
+        const routes = {
+            '/azurewrath/': '/azurewrath.html',
+            '/azurewrath': '/azurewrath.html',
+            '/': '/azurewrath.html',
+        };
+        
+        // Extract page name from path
+        // e.g., /azurewrath/search -> search
+        let targetFile = null;
+        const match = path.match(/\/azurewrath\/([a-z0-9_-]+)\/?$/i);
+        
+        if (match) {
+            // User requested /azurewrath/<page>
+            const page = match[1];
+            targetFile = `/nav/${page}.html`;
+        } else if (routes[path]) {
+            // Check direct routes
+            targetFile = routes[path];
+        } else {
+            // Default to home
+            targetFile = '/azurewrath.html';
+        }
+        
+        // Redirect to the target file
+        console.log(`Redirecting ${path} -> ${targetFile}`);
+        window.location.replace(targetFile);
+    </script>
+    <noscript>
+        <meta http-equiv="refresh" content="0; url=/azurewrath.html">
+    </noscript>
+    <p>Redirecting...</p>
+</body>
+</html>

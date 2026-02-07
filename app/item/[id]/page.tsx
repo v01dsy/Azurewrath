@@ -85,8 +85,11 @@ export default function ItemPage({ params }: { params: { id: string } }) {
             <XAxis dataKey="date" stroke="#9CA3AF" />
             <YAxis stroke="#9CA3AF" />
             <Tooltip 
-              background={{ fill: '#1F2937' }}
-              contentStyle={{ border: '1px solid #4B5563', borderRadius: '8px' }}
+              contentStyle={{ 
+                background: '#1F2937',
+                border: '1px solid #4B5563', 
+                borderRadius: '8px' 
+              }}
             />
             <Legend />
             <Line type="monotone" dataKey="price" stroke="#0066ff" dot={false} />

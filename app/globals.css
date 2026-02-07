@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Root color variables */
+:root {
+  --blue: #0066ff;
+  --purple: #8b5cf6;
+  --magenta: #ec4899;
+  --pink: #f472b6;
+  --grey-darker: #2d2d2d;
+  --grey-dark: #3a3a3a;
+  --grey-mid: #5a5a5a;
+  --grey-light: #9ca3af;
+  --grey-lighter: #d1d5db;
+  --black: #0a0a0a;
+  --white: #e0e0e0;
+  
+  --gradient-primary: linear-gradient(135deg, var(--blue), var(--purple), var(--magenta));
+  --gradient-button: linear-gradient(90deg, var(--blue), var(--purple));
+  --gradient-hover: linear-gradient(90deg, var(--purple), var(--magenta));
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: var(--black);
+  color: var(--white);
+}
+
+/* Navbar styling */
+.navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 70px;
+  background: linear-gradient(135deg, rgba(0, 102, 255, 0.1), rgba(139, 92, 246, 0.1), rgba(236, 72, 153, 0.1));
+  backdrop-filter: blur(10px);
+  border-bottom: 2px solid transparent;
+  border-image: var(--gradient-primary) 0 0 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 21%;
+  z-index: 1000;
+}
+
+.navbar a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-decoration: none;
+  transition: transform 0.2s;
+}
+
+.navbar a:hover {
+  transform: translateY(-2px);
+}
+
+.navbar img {
+  height: 50px;
+  width: auto;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.navbar a:has(p) img {
+  height: 40px;
+}
+
+.navbar p {
+  margin: 0;
+  color: var(--white);
+  font-weight: bold;
+  font-size: 0.7em;
+  line-height: 1;
+  text-shadow: 0 0 8px rgba(139, 92, 246, 0.6);
+}
+
+/* Text utilities */
+.text-white { color: var(--white); }
+.text-blue { color: var(--blue); }
+.text-purple { color: var(--purple); }
+.text-magenta { color: var(--magenta); }
+
+/* Glow effects */
+.glow-blue { text-shadow: 0 0 15px var(--blue), 0 0 30px var(--blue); }
+.glow-purple { text-shadow: 0 0 15px var(--purple), 0 0 30px var(--purple); }
+.glow-magenta { text-shadow: 0 0 15px var(--magenta), 0 0 30px var(--magenta); }
+
+/* Table enhancements */
+.table-row-hover {
+  transition: background 0.2s;
+  cursor: pointer;
+}
+
+.table-row-hover:hover {
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.price-up {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.price-down {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.price-stable {
+  color: #d1d5db;
+  font-weight: 600;
+}

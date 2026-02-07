@@ -1,0 +1,15 @@
+.next/
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
+__pycache__/
+*.pyc
+.env.local
+.env
+.venv/
+venv/
+env/
+worker/__pycache__/
+prisma/*.db

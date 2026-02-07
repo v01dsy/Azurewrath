@@ -1,0 +1,90 @@
+// This is your Prisma schema file.
+// Learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Item {
+  id                String            @id @default(cuid())
+  assetId           String            @unique
+  name              String
+  imageUrl          String?
+  description       String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  priceHistory      PriceHistory[]
+  marketTrends      MarketTrends?
+  manualValue       ManualValue?
+  
+  @@index([assetId])
+}
+
+model PriceHistory {
+  id                String            @id @default(cuid())
+  itemId            String
+  item              Item              @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  
+  price             Float
+  rap               Float?            // Recent Average Price
+  lowestResale      Float?            // Lowest Resale Price
+  salesVolume       Int?              // Daily sales volume
+  
+  timestamp         DateTime          @default(now())
+  
+  @@index([itemId, timestamp])
+  @@index([timestamp])
+}
+
+model MarketTrends {
+  id                String            @id @default(cuid())
+  itemId            String            @unique
+  item              Item              @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  
+  // Calculated metrics (updated on each ingest)
+  avgPrice7d        Float?            // 7-day average price
+  avgPrice30d       Float?            // 30-day average price
+  priceChange7d     Float?            // % change in 7 days
+  priceChange30d    Float?            // % change in 30 days
+  
+  trend             String            @default("stable") // increasing, decreasing, stable
+  demandRating      String            @default("moderate") // low, moderate, high
+  rarity            String            @default("common") // common, rare, very_rare
+  
+  lastUpdated       DateTime          @default(now()) @updatedAt
+  
+  @@index([trend])
+  @@index([demandRating])
+}
+
+model ManualValue {
+  id                String            @id @default(cuid())
+  itemId            String            @unique
+  item              Item              @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  
+  overrideValue     Float
+  reason            String?           // Why this override exists
+  
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  
+  @@index([itemId])
+}
+
+model IngestLog {
+  id                String            @id @default(cuid())
+  itemsProcessed    Int
+  itemsUpdated      Int
+  status            String            // success, partial, failed
+  errorMessage      String?
+  
+  createdAt         DateTime          @default(now())
+  
+  @@index([createdAt])
+}

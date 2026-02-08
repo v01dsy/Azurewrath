@@ -22,7 +22,7 @@ export default function RootLayout({
             <img src="/Images/search.png" alt="Search" draggable="false" />
             <p>Search</p>
           </a>
-          <a href="/dashboard">
+          <a href="/deals">
             <img src="/Images/deals.png" alt="Deals" draggable="false" />
             <p>Deals</p>
           </a>

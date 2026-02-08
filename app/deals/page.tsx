@@ -62,31 +62,34 @@ export default function Deals() {
     <div className="container mx-auto px-2 py-8">
       <h1 className="text-3xl font-bold mb-6">Deals</h1>
       <div className="mx-auto max-w-6xl px-2">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {deals.map(item => (
             <Link href={`/items/${item.assetId}`} key={item.id}>
               <div
-                className="rounded-lg p-3 flex flex-col items-center hover:scale-105 transition cursor-pointer border-2"
+                className="rounded-lg p-4 flex flex-col hover:scale-105 transition cursor-pointer border-2"
                 style={{
                   background: getColor(item.percent) + '33', // 20% opacity
                   color: '#fff',
-                  minHeight: 140,
-                  maxWidth: 220,
+                  minHeight: 120,
+                  maxWidth: 320,
                   borderColor: getBorderColor(item.percent),
                   boxShadow: '0 2px 8px 0 rgba(0,0,0,0.10)',
-                  aspectRatio: '5/3',
                 }}
               >
-                <img
-                  src={item.imageUrl || `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=150&height=150&format=png`}
-                  alt={item.name}
-                  className="w-16 h-16 object-contain mb-1"
-                  style={{ background: 'transparent', boxShadow: 'none', border: 'none' }}
-                />
-                <h2 className="text-base font-bold mb-1 text-center w-full truncate" title={item.name} style={{color:'#fff',textShadow:'0 1px 4px #000', fontWeight:600, letterSpacing:'0.01em'}}>{item.name}</h2>
-                <div className="text-xl font-bold mb-1">Deal {item.percent}%</div>
-                <div className="text-base text-white/90">Price: {item.bestPrice.toLocaleString()}</div>
-                <div className="text-base text-white/90">RAP: {item.rap.toLocaleString()}</div>
+                <h2 className="text-base font-bold mb-2 text-center w-full truncate" title={item.name} style={{color:'#fff',textShadow:'0 1px 4px #000', fontWeight:600, letterSpacing:'0.01em'}}>{item.name}</h2>
+                <div className="flex flex-row items-center w-full gap-3">
+                  <img
+                    src={item.imageUrl || `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=180&height=180&format=png`}
+                    alt={item.name}
+                    className="w-20 h-20 object-contain flex-shrink-0"
+                    style={{ background: 'transparent', boxShadow: 'none', border: 'none' }}
+                  />
+                  <div className="flex flex-col justify-center flex-1">
+                    <div className="text-xl font-bold mb-1">Deal {item.percent}%</div>
+                    <div className="text-base text-white/90">Price: {item.bestPrice.toLocaleString()}</div>
+                    <div className="text-base text-white/90">RAP: {item.rap.toLocaleString()}</div>
+                  </div>
+                </div>
               </div>
             </Link>
           ))}

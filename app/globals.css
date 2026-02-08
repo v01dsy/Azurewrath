@@ -29,8 +29,20 @@
 
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: var(--black);
+  background: 
+    linear-gradient(to bottom, 
+      rgba(10, 10, 10, 0) 0%, 
+      rgba(10, 10, 10, 0.3) 40%,
+      rgba(10, 10, 10, 0.8) 70%,
+      rgba(10, 10, 10, 1) 100%
+    ),
+    url('/Images/azurewrath-bg.png');
+  background-attachment: fixed;
+  background-size: cover;
+  background-position: center top;
+  background-repeat: no-repeat;
   color: var(--white);
+  min-height: 100vh;
 }
 
 /* Navbar styling */

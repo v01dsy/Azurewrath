@@ -50,16 +50,25 @@ export default function Deals() {
   if (loading) return <div className="p-8 text-center">Loading deals...</div>;
 
   return (
-    <div className="container mx-auto px-4 py-12">
-      <h1 className="text-4xl font-bold mb-8">Deals</h1>
-      <div className="grid md:grid-cols-3 gap-6">
+    <div className="container mx-auto px-2 py-8">
+      <h1 className="text-3xl font-bold mb-6">Deals</h1>
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
         {deals.map(item => (
           <Link href={`/items/${item.assetId}`} key={item.id}>
-            <div className="bg-slate-800/70 border border-slate-700 rounded-lg p-6 flex flex-col items-center hover:scale-105 transition" style={{ borderColor: getColor(item.percent) }}>
-              <img src={item.imageUrl || `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=420&height=420&format=png`} alt={item.name} className="w-24 h-24 object-cover rounded mb-4" />
-              <h2 className="text-xl font-semibold mb-2 text-center">{item.name}</h2>
-              <div className="text-lg mb-1">{item.percent}% off</div>
-              <div className="text-slate-400 text-sm">RAP: {item.rap} | Best: {item.bestPrice}</div>
+            <div
+              className="rounded-md p-2 flex flex-col items-center shadow hover:scale-105 transition cursor-pointer border-2 border-transparent"
+              style={{ background: getColor(item.percent), color: '#fff', minHeight: 140 }}
+            >
+              <img
+                src={item.imageUrl || `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=150&height=150&format=png`}
+                alt={item.name}
+                className="w-12 h-12 object-cover rounded mb-2 border border-white/20"
+                style={{ background: '#222' }}
+              />
+              <h2 className="text-xs font-semibold mb-1 text-center w-full truncate" title={item.name}>{item.name}</h2>
+              <div className="text-base font-bold mb-0.5">{item.percent}%</div>
+              <div className="text-[10px] text-white/80">RAP: {item.rap}</div>
+              <div className="text-[10px] text-white/80">Best: {item.bestPrice}</div>
             </div>
           </Link>
         ))}

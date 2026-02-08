@@ -25,7 +25,7 @@ interface DealItem {
     timestamp: string;
   }>;
 }
-
+// ffff
 export default function Deals() {
   const [items, setItems] = useState<DealItem[]>([]);
   const [loading, setLoading] = useState(true);

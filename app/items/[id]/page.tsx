@@ -204,7 +204,7 @@ export default function ItemPage() {
           {/* Action Buttons */}
           <div className="flex gap-4">
             <button
-              onClick={() => router.push(`/items/${item.id}/sales`)}
+              onClick={() => router.push(`/items/${item.assetId}/sales`)}
               className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition"
             >
               View Sales History 📊

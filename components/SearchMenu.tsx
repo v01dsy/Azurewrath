@@ -94,7 +94,7 @@ export default function SearchMenu() {
   };
 
   const handleSelectResult = (item: SearchResult) => {
-    router.push(`/items/${item.id}`);
+    router.push(`/items/${item.assetId}`);
     setQuery('');
     setIsOpen(false);
   };

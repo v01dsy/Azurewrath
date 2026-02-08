@@ -68,7 +68,7 @@ export default function Deals() {
               <div
                 className="rounded-lg p-4 flex flex-col hover:scale-105 transition cursor-pointer border-2"
                 style={{
-                  background: getColor(item.percent) + '33', // 20% opacity
+                  background: getColor(item.percent) + '55', // 20% opacity
                   color: '#fff',
                   minHeight: 120,
                   maxWidth: 320,
@@ -76,18 +76,29 @@ export default function Deals() {
                   boxShadow: '0 2px 8px 0 rgba(0,0,0,0.10)',
                 }}
               >
-                <h2 className="text-base font-bold mb-2 text-center w-full truncate" title={item.name} style={{color:'#fff',textShadow:'0 1px 4px #000', fontWeight:600, letterSpacing:'0.01em'}}>{item.name}</h2>
-                <div className="flex flex-row items-center w-full gap-3">
+                <div className="flex flex-row items-start w-full gap-3">
                   <img
-                    src={item.imageUrl || `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=180&height=180&format=png`}
+                    src={item.imageUrl || `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=220&height=220&format=png`}
                     alt={item.name}
-                    className="w-20 h-20 object-contain flex-shrink-0"
+                    className="w-24 h-24 object-contain flex-shrink-0 mt-1"
                     style={{ background: 'transparent', boxShadow: 'none', border: 'none' }}
                   />
-                  <div className="flex flex-col justify-center flex-1">
-                    <div className="text-xl font-bold mb-1">Deal {item.percent}%</div>
-                    <div className="text-base text-white/90">Price: {item.bestPrice.toLocaleString()}</div>
-                    <div className="text-base text-white/90">RAP: {item.rap.toLocaleString()}</div>
+                  <div className="flex flex-col justify-between flex-1 h-full">
+                    <h2 className="text-base font-bold mb-2 text-left truncate" title={item.name} style={{color:'#fff',textShadow:'0 1px 4px #000', fontWeight:600, letterSpacing:'0.01em'}}>{item.name}</h2>
+                    <div className="flex flex-col gap-1 mt-2">
+                      <div className="flex flex-row justify-between w-full">
+                        <span className="font-bold">Price</span>
+                        <span className="text-white/90">{item.bestPrice.toLocaleString()}</span>
+                      </div>
+                      <div className="flex flex-row justify-between w-full">
+                        <span className="font-bold">Deal</span>
+                        <span className="text-white/90">{item.percent}%</span>
+                      </div>
+                      <div className="flex flex-row justify-between w-full">
+                        <span className="font-bold">RAP</span>
+                        <span className="text-white/90">{item.rap.toLocaleString()}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

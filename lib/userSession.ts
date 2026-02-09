@@ -1,5 +1,5 @@
 // Simple user session util using localStorage (client-side only)
-export function setUserSession(user) {
+export function setUserSession(user: unknown) {
   if (typeof window !== 'undefined') {
     localStorage.setItem('robloxUser', JSON.stringify(user));
   }

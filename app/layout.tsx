@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import ProfileDropdown from '../components/ProfileDropdown';
 
 export const metadata: Metadata = {
   title: 'Azurewrath | Roblox Limited Trading',
@@ -13,12 +14,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <link rel="icon" type="image/png" href="/Images/icon.png" />
+      </head>
       <body className="bg-[#0a0a0a] text-[#e0e0e0]">
         <nav className="navbar">
           <a href="/">
             <img src="/Images/azurewrath-logo2.png" alt="Logo" draggable="false" />
           </a>
-          <a href="/dashboard">
+          <a href="/search">
             <img src="/Images/search.png" alt="Search" draggable="false" />
             <p>Search</p>
           </a>
@@ -26,10 +30,7 @@ export default function RootLayout({
             <img src="/Images/deals.png" alt="Deals" draggable="false" />
             <p>Deals</p>
           </a>
-          <a href="/profile">
-            <img src="/Images/profile.png" alt="Profile" draggable="false" />
-            <p>Profile</p>
-          </a>
+          <ProfileDropdown />
         </nav>
         <main className="pt-20">
           {children}

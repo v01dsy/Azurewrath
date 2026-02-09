@@ -1,3 +1,37 @@
+/**
+ * Fetch Roblox user info by userId
+ */
+export async function fetchRobloxUserInfo(userId: string) {
+  try {
+    const res = await axios.get(`https://users.roblox.com/v1/users/${userId}`);
+    return res.data;
+  } catch (error) {
+    console.error(`Failed to fetch Roblox user info for userId ${userId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Fetch Roblox userId from username by scraping the profile page
+ */
+export async function fetchRobloxUserIdByUsername(username: string): Promise<string | null> {
+  try {
+    const res = await axios.get(
+      `https://www.roblox.com/users/profile?username=${encodeURIComponent(username)}`,
+    );
+    const html = res.data as string;
+    // Look for /users/{userId}/profile in the HTML
+    const match = html.match(/\/users\/(\d+)\/profile/);
+    if (match && match[1]) {
+      return match[1];
+    }
+    return null;
+  } catch (error) {
+    console.error(`Failed to fetch userId for username ${username}:`, error);
+    return null;
+  }
+}
+
 import axios from 'axios';
 
 const ROBLOX_API_BASE = 'https://catalog.roblox.com/v1';
@@ -17,7 +51,7 @@ export async function fetchRobloxItemData(assetId: string): Promise<RobloxItemDa
   try {
     // Fetch catalog details
     const catalogRes = await axios.get(
-      `${ROBLOX_API_BASE}/catalog/items/${assetId}/details`
+      `${ROBLOX_API_BASE}/catalog/items/${assetId}/details`,
     );
 
     const catalogData = catalogRes.data;
@@ -26,7 +60,7 @@ export async function fetchRobloxItemData(assetId: string): Promise<RobloxItemDa
     let imageUrl = '';
     try {
       const thumbRes = await axios.get(
-        `${ROBLOX_THUMBS}?assetIds=${assetId}&size=150x150&format=Png&isCircular=false`
+        `${ROBLOX_THUMBS}?assetIds=${assetId}&size=150x150&format=Png&isCircular=false`,
       );
       if (thumbRes.data.data && thumbRes.data.data.length > 0) {
         imageUrl = thumbRes.data.data[0].imageUrl;
@@ -55,7 +89,7 @@ export async function fetchPriceData(assetId: string) {
     // Try to fetch from various Roblox price tracking APIs
     const response = await axios.get(
       `https://api.rolimons.com/itemapi/itemdetails?assetids=${assetId}`,
-      { timeout: 5000 }
+      { timeout: 5000 },
     );
 
     if (response.data && response.data.data && response.data.data[assetId]) {

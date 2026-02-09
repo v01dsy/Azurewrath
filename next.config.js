@@ -6,6 +6,16 @@ const nextConfig = {
       bodySizeLimit: '10mb',
     },
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'www.roblox.com',
+        port: '',
+        pathname: '/headshot-thumbnail/image/**',
+      },
+    ],
+  },
 };
 
 export default nextConfig;

@@ -105,3 +105,14 @@ model Sale {
   @@index([itemId, saleDate])
   @@index([saleDate])
 }
+
+model User {
+  id                String   @id @default(cuid())
+  robloxUserId      String   @unique
+  username          String
+  displayName       String?
+  avatarUrl         String?
+  description       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}

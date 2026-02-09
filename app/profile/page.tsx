@@ -316,24 +316,45 @@ function RobloxAuthSection() {
     setChecking(true);
     setStatus(null);
     try {
-      // Fetch Roblox profile
-      const res = await fetch(`https://users.roblox.com/v1/users/search?keyword=${username}`);
-      const data = await res.json();
-      const userId = data.data?.[0]?.id;
-      if (!userId) {
-        setStatus("User not found.");
+      // Use proxy API route to search for user
+      const res = await fetch(`/api/roblox/search-user?username=${encodeURIComponent(username)}`);
+      if (!res.ok) {
+        setStatus("Roblox search API error: " + res.status);
         setChecking(false);
         return;
       }
-      const profileRes = await fetch(`https://users.roblox.com/v1/users/${userId}`);
+      const data = await res.json();
+      if (!data.data || !Array.isArray(data.data) || !data.data[0]) {
+        setStatus("User not found or Roblox API changed.");
+        setChecking(false);
+        return;
+      }
+      const userId = data.data[0].id;
+      if (!userId) {
+        setStatus("User ID not found.");
+        setChecking(false);
+        return;
+      }
+      // Use proxy API route to fetch user profile
+      const profileRes = await fetch(`/api/roblox/user-profile?userId=${encodeURIComponent(userId)}`);
+      if (!profileRes.ok) {
+        setStatus("Roblox profile API error: " + profileRes.status);
+        setChecking(false);
+        return;
+      }
       const profileData = await profileRes.json();
-      if (profileData.description?.includes(code)) {
+      if (typeof profileData.description !== "string") {
+        setStatus("Could not read bio. Roblox API may have changed.");
+        setChecking(false);
+        return;
+      }
+      if (profileData.description.includes(code)) {
         setStatus("Authentication successful!");
       } else {
         setStatus("Bio does not contain the code. Please update your Roblox bio and try again.");
       }
     } catch (err) {
-      setStatus("Error checking Roblox bio.");
+      setStatus("Network or unexpected error: " + (err instanceof Error ? err.message : String(err)));
     }
     setChecking(false);
   };

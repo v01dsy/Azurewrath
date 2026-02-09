@@ -2,7 +2,7 @@
 
 import SearchMenu from '@/components/SearchMenu';
 
-export default function DashboardPage() {
+export default function DashboardPage() {   
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">
       <h1 className="text-4xl font-bold glow-purple">Dashboard</h1>

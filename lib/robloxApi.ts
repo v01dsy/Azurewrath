@@ -1,3 +1,72 @@
+import axios from 'axios';
+
+/**
+ * Fetches the Roblox user's headshot thumbnail URL using the recommended API.
+ */
+export async function fetchRobloxHeadshotUrl(userId: string, size: string = '150x150'): Promise<string | null> {
+  try {
+    const url = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=${size}&format=Png`;
+    const response = await axios.get(url);
+    const data = response.data;
+    
+    console.log('Headshot API response:', JSON.stringify(data, null, 2));
+    
+    if (data && data.data && data.data.length > 0 && data.data[0].imageUrl) {
+      console.log('Returning imageUrl:', data.data[0].imageUrl);
+      return data.data[0].imageUrl;
+    }
+    console.log('No imageUrl found in response');
+    return null;
+  } catch (error) {
+    console.error(`Failed to fetch Roblox headshot for userId ${userId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Fetches the full inventory for a Roblox user by userId, scanning all relevant asset types.
+ */
+export async function scanFullInventory(userId: string) {
+  const assetTypes = [
+    8,  // Hat
+    41, // Hair Accessory
+    42, // Face Accessory
+    43, // Neck Accessory
+    44, // Shoulder Accessory
+    45, // Front Accessory
+    46, // Back Accessory
+    47, // Waist Accessory
+    2,  // T-Shirt
+    11, // Shirt
+    12, // Pants
+    64, // Layered Clothing
+  ];
+
+  const fullInventory: any[] = [];
+
+  for (const assetType of assetTypes) {
+    let cursor: string | null = null;
+    try {
+      do {
+        const url: string = cursor
+          ? `https://inventory.roblox.com/v2/users/${userId}/inventory/${assetType}?sortOrder=Asc&limit=100&cursor=${cursor}`
+          : `https://inventory.roblox.com/v2/users/${userId}/inventory/${assetType}?sortOrder=Asc&limit=100`;
+
+        const response = await axios.get(url);
+        const data = response.data;
+        if (data && Array.isArray(data.data)) {
+          fullInventory.push(...data.data);
+        }
+        cursor = data.nextPageCursor || null;
+      } while (cursor);
+    } catch (error) {
+      console.warn(`Failed to fetch inventory for assetType ${assetType} and userId ${userId}:`, error);
+    }
+  }
+
+  return fullInventory;
+}
+
 /**
  * Fetch Roblox user info by userId
  */
@@ -20,7 +89,6 @@ export async function fetchRobloxUserIdByUsername(username: string): Promise<str
       `https://www.roblox.com/users/profile?username=${encodeURIComponent(username)}`,
     );
     const html = res.data as string;
-    // Look for /users/{userId}/profile in the HTML
     const match = html.match(/\/users\/(\d+)\/profile/);
     if (match && match[1]) {
       return match[1];
@@ -31,8 +99,6 @@ export async function fetchRobloxUserIdByUsername(username: string): Promise<str
     return null;
   }
 }
-
-import axios from 'axios';
 
 const ROBLOX_API_BASE = 'https://catalog.roblox.com/v1';
 const ROBLOX_THUMBS = 'https://thumbnails.roblox.com/v1/assets';
@@ -49,14 +115,12 @@ export interface RobloxItemData {
  */
 export async function fetchRobloxItemData(assetId: string): Promise<RobloxItemData | null> {
   try {
-    // Fetch catalog details
     const catalogRes = await axios.get(
       `${ROBLOX_API_BASE}/catalog/items/${assetId}/details`,
     );
 
     const catalogData = catalogRes.data;
 
-    // Fetch thumbnail
     let imageUrl = '';
     try {
       const thumbRes = await axios.get(
@@ -86,7 +150,6 @@ export async function fetchRobloxItemData(assetId: string): Promise<RobloxItemDa
  */
 export async function fetchPriceData(assetId: string) {
   try {
-    // Try to fetch from various Roblox price tracking APIs
     const response = await axios.get(
       `https://api.rolimons.com/itemapi/itemdetails?assetids=${assetId}`,
       { timeout: 5000 },

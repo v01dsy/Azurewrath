@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+import prisma from '../../../../lib/prisma';
+import { fetchRobloxUserInfo, fetchRobloxHeadshotUrl } from '../../../../lib/robloxApi';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
   let { robloxUserId, username, displayName, avatarUrl, description } = body;
-  // Ensure robloxUserId is a string
-  robloxUserId = robloxUserId.toString();
+  robloxUserId = robloxUserId?.toString();
+  // If only robloxUserId is provided, fetch Roblox info and headshot
+  if (robloxUserId && (!username || !avatarUrl)) {
+    const robloxInfo = await fetchRobloxUserInfo(robloxUserId);
+    if (!robloxInfo) {
+      return NextResponse.json({ error: 'Roblox user not found' }, { status: 404 });
+    }
+    username = robloxInfo.name;
+    displayName = robloxInfo.displayName;
+    description = robloxInfo.description;
+    avatarUrl = await fetchRobloxHeadshotUrl(robloxUserId);
+  }
   if (!robloxUserId || !username) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }

@@ -14,6 +14,12 @@ const nextConfig = {
         port: '',
         pathname: '/headshot-thumbnail/image/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'tr.rbxcdn.com',
+        port: '',
+        pathname: '/**',
+      },
     ],
   },
 };

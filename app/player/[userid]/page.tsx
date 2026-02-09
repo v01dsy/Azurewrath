@@ -1,13 +1,8 @@
 import { PrismaClient } from '@prisma/client';
 import Image from 'next/image';
-import axios from 'axios';
+import { fetchRobloxUserInfo, fetchRobloxHeadshotUrl } from '@/lib/robloxApi';
 
 const prisma = new PrismaClient();
-
-async function fetchRobloxUserInfo(userId: string) {
-  const res = await axios.get(`https://users.roblox.com/v1/users/${userId}`);
-  return res.data;
-}
 
 export default async function PlayerPage({ params }: { params: Promise<{ userid: string }> }) {
   // Await params first
@@ -25,12 +20,14 @@ export default async function PlayerPage({ params }: { params: Promise<{ userid:
   if (!user && userid) {
     try {
       const robloxInfo = await fetchRobloxUserInfo(userid);
+      const avatarUrl = await fetchRobloxHeadshotUrl(robloxInfo.id.toString());
+      
       user = await prisma.user.create({
         data: {
           robloxUserId: robloxInfo.id.toString(),
           username: robloxInfo.name,
           displayName: robloxInfo.displayName,
-          avatarUrl: `https://www.roblox.com/headshot-thumbnail/image?userId=${robloxInfo.id}&width=150&height=150&format=png`,
+          avatarUrl: avatarUrl || '',
           description: robloxInfo.description,
         },
       });

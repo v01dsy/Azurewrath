@@ -3,8 +3,29 @@ import { fetchRobloxUserInfo, fetchRobloxHeadshotUrl, scanFullInventory } from '
 import { saveInventorySnapshot } from '@/lib/inventoryTracker';
 import ClientInventoryGrid from '@/app/player/[userid]/ClientInventoryGrid';
 import InventoryGraph from '@/app/player/[userid]/InventoryGraph';
+import { Metadata } from 'next';
 
 const prisma = new PrismaClient();
+
+// Generate metadata for the page
+export async function generateMetadata({ params }: { params: Promise<{ userid: string }> }): Promise<Metadata> {
+  const { userid } = await params;
+  
+  let user = null;
+  if (userid) {
+    user = await prisma.user.findUnique({ where: { robloxUserId: userid } });
+    if (!user) {
+      user = await prisma.user.findUnique({ where: { id: userid } });
+    }
+  }
+  
+  const username = user?.username || 'User';
+  
+  return {
+    title: `${username} | Roblox Inventory`,
+    description: `View ${username}'s Roblox inventory, RAP, and collectibles history.`,
+  };
+}
 
 // Helper function for "time ago"
 function timeAgo(date: Date): string {
@@ -83,73 +104,104 @@ export default async function PlayerPage({ params }: { params: Promise<{ userid:
     where: { userId: user.id },
     orderBy: { createdAt: 'desc' },
     include: {
-      items: true
+      items: {
+        include: {
+          item: {
+            include: {
+              priceHistory: {
+                orderBy: { timestamp: 'desc' },
+                take: 1
+              }
+            }
+          }
+        }
+      }
     }
   });
 
-  // Fetch inventory from Roblox
-  const inventory = await scanFullInventory(user.robloxUserId);
-  
-  if (inventory.length === 0) {
-    return (
-      <div className="min-h-screen bg-slate-900 p-4">
-        <div className="max-w-6xl mx-auto">
-          <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8 text-center">
-            <p className="text-white text-xl mb-2">Unable to load inventory</p>
-            <p className="text-slate-400">Roblox API timed out. Please try again in a moment.</p>
+  // Check if we need to scan based on snapshot age
+  let inventory = [];
+  let needsNewSnapshot = false;
+
+  if (latestSnapshot) {
+    // Check if snapshot is less than 24 hours old
+    const hoursSinceSnapshot = (Date.now() - new Date(latestSnapshot.createdAt).getTime()) / (1000 * 60 * 60);
+    
+    console.log(`Hours since last snapshot: ${hoursSinceSnapshot.toFixed(2)}`);
+    
+    if (hoursSinceSnapshot < 24) {
+      // Snapshot is recent, use it
+      console.log('Using recent snapshot (less than 24h old)');
+      needsNewSnapshot = false;
+      inventory = latestSnapshot.items.map(item => ({
+        assetId: item.assetId,
+        userAssetId: item.userAssetId,
+        name: item.item?.name || 'Unknown',
+        recentAveragePrice: item.item?.priceHistory?.[0]?.rap || 0
+      }));
+    } else {
+      // Snapshot is old, rescan
+      console.log('Snapshot is old (24+ hours), rescanning...');
+      const fullInventory = await scanFullInventory(user.robloxUserId);
+      
+      if (fullInventory.length === 0) {
+        return (
+          <div className="min-h-screen bg-slate-900 p-4">
+            <div className="max-w-6xl mx-auto">
+              <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8 text-center">
+                <p className="text-white text-xl mb-2">Unable to load inventory</p>
+                <p className="text-slate-400">Roblox API timed out. Please try again in a moment.</p>
+              </div>
+            </div>
+          </div>
+        );
+      }
+      
+      // Get UAIDs from current scan and old snapshot
+      const currentUAIDs = new Set(fullInventory.map((item: any) => item.userAssetId.toString()));
+      const oldUAIDs = new Set(latestSnapshot.items.map(item => item.userAssetId));
+      
+      // Check if inventory changed
+      const uaidsMatch = currentUAIDs.size === oldUAIDs.size && 
+                         [...currentUAIDs].every(uaid => oldUAIDs.has(uaid));
+      
+      if (uaidsMatch) {
+        // Inventory hasn't changed
+        console.log('Inventory unchanged');
+        inventory = fullInventory;
+        needsNewSnapshot = true;
+      } else {
+        // Inventory changed
+        console.log('Inventory changed');
+        inventory = fullInventory;
+        needsNewSnapshot = true;
+      }
+    }
+  } else {
+    // No snapshot exists, need to scan
+    console.log('No previous snapshot, scanning...');
+    inventory = await scanFullInventory(user.robloxUserId);
+    
+    if (inventory.length === 0) {
+      return (
+        <div className="min-h-screen bg-slate-900 p-4">
+          <div className="max-w-6xl mx-auto">
+            <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8 text-center">
+              <p className="text-white text-xl mb-2">Unable to load inventory</p>
+              <p className="text-slate-400">Roblox API timed out. Please try again in a moment.</p>
+            </div>
           </div>
         </div>
-      </div>
-    );
-  }
-  
-  // Check if inventory has changed by comparing UAIDs
-let needsNewSnapshot = true;
-
-if (latestSnapshot && latestSnapshot.items) {
-  // Get UAIDs from both
-  const currentUAIDs = new Set(inventory.map((item: any) => item.userAssetId.toString()));
-  const snapshotUAIDs = new Set((latestSnapshot.items as any[]).map(item => item.userAssetId));
-  
-  console.log('Current inventory:', currentUAIDs.size);
-  console.log('Last snapshot:', snapshotUAIDs.size);
-  
-  // Check if UAIDs are identical
-  const uaidsMatch = currentUAIDs.size === snapshotUAIDs.size && 
-                     [...currentUAIDs].every(uaid => snapshotUAIDs.has(uaid));
-  
-  // Check if the latest snapshot is from today
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const snapshotDate = new Date(latestSnapshot.createdAt);
-  snapshotDate.setHours(0, 0, 0, 0);
-  const isFromToday = snapshotDate.getTime() === today.getTime();
-  
-  if (uaidsMatch) {
-    // Inventory hasn't changed, don't create new snapshot
-    console.log('Inventory unchanged, skipping snapshot');
-    needsNewSnapshot = false;
-  } else if (isFromToday) {
-    // Inventory changed and snapshot is from today - delete old one
-    console.log('Inventory changed, updating today\'s snapshot');
-    await prisma.inventorySnapshot.delete({
-      where: { id: latestSnapshot.id }
-    });
-    needsNewSnapshot = true;
-  } else {
-    // Inventory changed and snapshot is from previous day - create new
-    console.log('Inventory changed, creating new snapshot');
+      );
+    }
     needsNewSnapshot = true;
   }
-} else {
-  // No previous snapshot, create one
-  needsNewSnapshot = true;
-}
 
-// Only save new snapshot if inventory has changed
-if (needsNewSnapshot) {
-  await saveInventorySnapshot(user.id, user.robloxUserId);
-}
+  // Only save new snapshot if needed
+  if (needsNewSnapshot) {
+    await saveInventorySnapshot(user.id, user.robloxUserId);
+    console.log('Created new snapshot');
+  }
 
   // Fetch historical snapshots for graph
   const snapshots = await prisma.inventorySnapshot.findMany({
@@ -189,7 +241,7 @@ if (needsNewSnapshot) {
     };
   });
   
-  // Get unique assetIds from FULL inventory (not just new items)
+  // Get unique assetIds from inventory
   const assetIds = [...new Set(inventory.map((item: any) => item.assetId.toString()))];
   
   // Fetch item data from database
@@ -212,7 +264,7 @@ if (needsNewSnapshot) {
   // Create a map for quick lookup
   const itemMap = new Map(dbItems.map(item => [item.assetId, item]));
   
-  // Group items by assetId and count, enriching with database data (use FULL inventory)
+  // Group items by assetId and count, enriching with database data
   const itemCounts = inventory.reduce((acc: any, item: any) => {
     const id = item.assetId.toString();
     if (!acc[id]) {

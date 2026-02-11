@@ -7,10 +7,34 @@ export async function saveInventorySnapshot(userId: string, robloxUserId: string
   // Fetch current inventory from Roblox
   const inventory = await scanFullInventory(robloxUserId);
   
-  // Deduplicate by userAssetId (in case API returns duplicates)
-  const uniqueItems = Array.from(
-    new Map(inventory.map(item => [item.userAssetId, item])).values()
-  );
+  console.log(`📦 Fetched ${inventory.length} total items from Roblox`);
+  
+  // Get unique assetIds
+  const uniqueAssetIds = [...new Set(inventory.map((item: any) => item.assetId.toString()))];
+  
+  console.log(`🔍 Found ${uniqueAssetIds.length} unique asset types`);
+  
+  // Find which items don't exist in database yet
+  const existingItems = await prisma.item.findMany({
+    where: { assetId: { in: uniqueAssetIds } },
+    select: { assetId: true }
+  });
+  
+  const existingAssetIds = new Set(existingItems.map(i => i.assetId));
+  const missingAssetIds = uniqueAssetIds.filter(id => !existingAssetIds.has(id));
+  
+  // Create missing items as placeholders
+  if (missingAssetIds.length > 0) {
+    console.log(`➕ Creating ${missingAssetIds.length} missing items in database...`);
+    await prisma.item.createMany({
+      data: missingAssetIds.map(assetId => ({
+        assetId,
+        name: `Unknown Item ${assetId}`,
+      })),
+      skipDuplicates: true,
+    });
+    console.log(`✅ Created placeholder items`);
+  }
   
   // Check if there's a snapshot from today
   const today = new Date();
@@ -28,6 +52,7 @@ export async function saveInventorySnapshot(userId: string, robloxUserId: string
   
   // If snapshot exists from today, delete it (we'll replace it)
   if (todaySnapshot) {
+    console.log(`🗑️ Deleting existing snapshot from today...`);
     await prisma.inventorySnapshot.delete({
       where: { id: todaySnapshot.id }
     });
@@ -54,18 +79,18 @@ export async function saveInventorySnapshot(userId: string, robloxUserId: string
   }
   
   // Create snapshot with preserved scannedAt times for existing items
+  console.log(`💾 Creating snapshot with ${inventory.length} items...`);
   const snapshot = await prisma.inventorySnapshot.create({
     data: {
       userId,
       items: {
-        create: uniqueItems.map((item: any) => {
+        create: inventory.map((item: any) => {
           const userAssetId = item.userAssetId.toString();
           const existingScannedAt = previousScannedTimes.get(userAssetId);
           
           return {
             assetId: item.assetId.toString(),
             userAssetId: userAssetId,
-            // If item existed before, use old scannedAt, otherwise use now
             scannedAt: existingScannedAt || new Date()
           };
         }),
@@ -76,6 +101,7 @@ export async function saveInventorySnapshot(userId: string, robloxUserId: string
     },
   });
   
+  console.log(`✅ Snapshot created with ID: ${snapshot.id}`);
   return snapshot;
 }
 
@@ -122,15 +148,15 @@ export async function compareSnapshots(oldSnapshotId: string, newSnapshotId: str
   
   if (!oldSnapshot || !newSnapshot) return null;
   
-const oldItems = oldSnapshot.items.reduce((map, i) => {
-  map.set(i.assetId, (map.get(i.assetId) || 0) + 1);
-  return map;
-}, new Map<string, number>());
+  const oldItems = oldSnapshot.items.reduce((map, i) => {
+    map.set(i.assetId, (map.get(i.assetId) || 0) + 1);
+    return map;
+  }, new Map<string, number>());
 
-const newItems = newSnapshot.items.reduce((map, i) => {
-  map.set(i.assetId, (map.get(i.assetId) || 0) + 1);
-  return map;
-}, new Map<string, number>());
+  const newItems = newSnapshot.items.reduce((map, i) => {
+    map.set(i.assetId, (map.get(i.assetId) || 0) + 1);
+    return map;
+  }, new Map<string, number>());
   
   const added: string[] = [];
   const removed: string[] = [];

@@ -58,6 +58,12 @@ export default function ItemPage() {
     }
   }, [itemId]);
 
+  useEffect(() => {
+  if (item?.name) {
+    document.title = `${item.name} | Limited Item - Azurewrath`;
+  }
+}, [item]);
+
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-12 text-center">

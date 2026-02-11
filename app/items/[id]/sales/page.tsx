@@ -30,6 +30,15 @@ export default function SalesHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+
+  useEffect(() => {
+    if (item?.name) {
+    document.title = `${item.name} | Limited Sales - Azurewrath`;
+    }
+  }, [item]);
+
+
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -58,6 +67,7 @@ export default function SalesHistoryPage() {
     }
   }, [itemId]);
 
+  
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-12 text-center">

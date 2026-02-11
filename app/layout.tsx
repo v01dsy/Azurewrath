@@ -3,7 +3,10 @@ import './globals.css';
 import ProfileDropdown from '../components/ProfileDropdown';
 
 export const metadata: Metadata = {
-  title: 'Azurewrath | Roblox Limited Trading',
+  title: {
+    template: '%s - Azurewrath',
+    default: 'Azurewrath | Roblox Limited Trading',
+  },
   description: 'Real-time price tracking for Roblox Limited items',
 };
 

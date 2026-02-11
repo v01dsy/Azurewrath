@@ -40,6 +40,10 @@ export default function Deals() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    document.title = "Deals | Azurewrath";
+  }, []);
+
+  useEffect(() => {
     axios.get("/api/items/search", { params: { q: "" } })
       .then(res => setItems(res.data))
       .finally(() => setLoading(false));

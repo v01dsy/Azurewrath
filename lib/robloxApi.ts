@@ -1,3 +1,30 @@
+import prisma from "./prisma";
+/**
+ * Fetch the last owner of a UAID (user asset instance ID) from the database.
+ * Returns the username of the last owner, or null if not found.
+ */
+export async function getLastOwnerByUAID(userAssetId: string): Promise<string | null> {
+  // Query Roblox API for the current owner of the user asset ID
+  try {
+    const response = await axios.get(
+      `https://inventory.roblox.com/v1/assets/${userAssetId}/owners?limit=1&sortOrder=Desc`
+    );
+    const data = response.data;
+    if (data && data.data && data.data.length > 0) {
+      // The API returns an array of owners, the first is the current owner
+      const owner = data.data[0];
+      // owner.user is an object with username and userId
+      if (owner && owner.user && owner.user.username) {
+        return owner.user.username;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error(`Failed to fetch current owner for userAssetId ${userAssetId}:`, error);
+    return null;
+  }
+}
+
 import axios from 'axios';
 
 /**
@@ -23,40 +50,68 @@ export async function fetchRobloxHeadshotUrl(userId: string, size: string = '150
   }
 }
 
-/**
- * Fetches the full inventory for a Roblox user by userId, scanning all relevant asset types.
- */
-export async function scanFullInventory(userId: string) {
+export async function scanFullInventory(userId: string, maxRetries = 3) {
   const fullInventory: any[] = [];
   let cursor: string | null = null;
+  let pageCount = 0;
 
-  try {
-    do {
-      const url: string = cursor
-        ? `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Asc&limit=100&cursor=${cursor}`
-        : `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Asc&limit=100`;
+  do {
+    const url: string = cursor
+      ? `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Asc&limit=100&cursor=${cursor}`
+      : `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Asc&limit=100`;
 
-      const response = await axios.get(url, {
-        timeout: 15000, // 15 second timeout
-      });
-      const data = response.data;
-      
-      if (data && Array.isArray(data.data)) {
-        fullInventory.push(...data.data);
+    console.log(`📄 Fetching page ${++pageCount}, current total: ${fullInventory.length}`);
+
+    // Retry logic for THIS specific page only
+    let response;
+    let success = false;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        response = await axios.get(url, { timeout: 30000 });
+        success = true;
+        break; // Success, exit retry loop
+      } catch (err: any) {
+        if (err.response?.status === 429) {
+          if (attempt < maxRetries) {
+            const waitMs = 5000 * Math.pow(2, attempt - 1); // 5s, 10s, 20s
+            console.warn(`Rate limited (429). Waiting ${waitMs}ms before retry ${attempt}/${maxRetries}...`);
+            await new Promise(resolve => setTimeout(resolve, waitMs));
+            continue; // Try again
+          } else {
+            // All retries exhausted for this page
+            console.error(`❌ Attempt ${attempt} failed for userId ${userId}:`, err);
+            console.warn(`⚠️ All retries exhausted. Returning ${fullInventory.length} items collected so far.`);
+            return fullInventory;
+          }
+        } else {
+          // Non-429 error, fail immediately
+          console.error(`❌ Error fetching page ${pageCount}:`, err);
+          throw err;
+        }
       }
-      
-      cursor = data.nextPageCursor || null;
-      
-      // Add delay to avoid rate limiting
-      if (cursor) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-    } while (cursor);
-  } catch (error) {
-    console.warn(`Failed to fetch collectibles for userId ${userId}:`, error);
-    // Return what we have so far instead of crashing
-  }
+    }
 
+    if (!success || !response) {
+      console.warn(`⚠️ Failed to fetch page ${pageCount}. Returning ${fullInventory.length} items.`);
+      return fullInventory;
+    }
+
+    const data = response.data;
+    if (data && Array.isArray(data.data)) {
+      fullInventory.push(...data.data);
+      console.log(`✅ Page ${pageCount} added ${data.data.length} items. Total now: ${fullInventory.length}`);
+    }
+
+    cursor = data.nextPageCursor || null;
+    console.log(`🔗 Next cursor: ${cursor ? 'exists' : 'null (done)'}`);
+
+    if (cursor) {
+      await new Promise(resolve => setTimeout(resolve, 2000)); // 2s delay between pages
+    }
+  } while (cursor);
+
+  console.log(`✅ Successfully fetched ${fullInventory.length} total items in ${pageCount} pages`);
   return fullInventory;
 }
 

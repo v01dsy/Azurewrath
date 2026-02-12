@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 import './globals.css';
 import ProfileDropdown from '../components/ProfileDropdown';
+import QueryProvider from './QueryProvider.tsx';
 
 export const metadata: Metadata = {
   title: {
@@ -41,23 +42,25 @@ export default function RootLayout({
           `}
         </Script>
         
-        <nav className="navbar" aria-label="Main navigation">
-          <a href="/">
-            <img src="/Images/azurewrath-logo2.png" alt="Azurewrath logo" draggable="false" />
-          </a>
-          <a href="/search">
-            <img src="/Images/search.png" alt="Search icon" draggable="false" />
-            <p>Search</p>
-          </a>
-          <a href="/deals">
-            <img src="/Images/deals.png" alt="Deals icon" draggable="false" />
-            <p>Deals</p>
-          </a>
-          <ProfileDropdown />
-        </nav>
-        <main className="pt-20">
-          {children}
-        </main>
+        <QueryProvider>
+          <nav className="navbar" aria-label="Main navigation">
+            <a href="/">
+              <img src="/Images/azurewrath-logo2.png" alt="Azurewrath logo" draggable="false" />
+            </a>
+            <a href="/search">
+              <img src="/Images/search.png" alt="Search icon" draggable="false" />
+              <p>Search</p>
+            </a>
+            <a href="/deals">
+              <img src="/Images/deals.png" alt="Deals icon" draggable="false" />
+              <p>Deals</p>
+            </a>
+            <ProfileDropdown />
+          </nav>
+          <main className="pt-20">
+            {children}
+          </main>
+        </QueryProvider>
       </body>
     </html>
   );

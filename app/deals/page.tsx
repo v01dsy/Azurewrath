@@ -27,38 +27,23 @@ interface DealItem {
   assetId: string;
   name: string;
   imageUrl?: string;
-  priceHistory: Array<{
-    price: number;
-    rap?: number;
-    lowestResale?: number;
-    timestamp: string;
-  }>;
+  percent: number;
+  rap: number;
+  bestPrice: number;
 }
 
 export default function Deals() {
-  const [items, setItems] = useState<DealItem[]>([]);
+  const [deals, setDeals] = useState<DealItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     document.title = "Deals | Azurewrath";
-  }, []);
-
-  useEffect(() => {
-    axios.get("/api/items/search", { params: { q: "" } })
-      .then(res => setItems(res.data))
+    
+    // Fetch from the new deals endpoint
+    axios.get("/api/deals")
+      .then(res => setDeals(res.data))
       .finally(() => setLoading(false));
   }, []);
-
-  const deals = items
-    .map(item => {
-      const latest = item.priceHistory[0];
-      const rap = latest?.rap ?? 0;
-      const bestPrice = latest?.lowestResale ?? latest?.price ?? 0;
-      const percent = rap && bestPrice ? Math.round(((rap - bestPrice) / rap) * 100) : 0;
-      return { ...item, percent, rap, bestPrice };
-    })
-    .filter(item => item.percent > 0)
-    .sort((a, b) => b.percent - a.percent);
 
   if (loading) return <div className="p-8 text-center">Loading deals...</div>;
 
@@ -68,7 +53,7 @@ export default function Deals() {
       <div className="mx-auto max-w-6xl px-2">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {deals.map(item => (
-            <Link href={`/item/${item.assetId}`} key={item.id}>
+            <Link href={`/items/${item.assetId}`} key={item.id}>
               <div
                 className="rounded-lg p-4 flex flex-col hover:scale-105 transition cursor-pointer border-2"
                 style={{

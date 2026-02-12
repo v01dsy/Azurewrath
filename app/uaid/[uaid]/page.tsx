@@ -64,6 +64,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
   const currentOwnerUserId = current?.snapshot?.user?.robloxUserId || null;
   const itemData = mostRecentItem.item;
   const latestPrice = itemData?.priceHistory?.[0];
+  const serialNumber = (current as any)?.serialNumber;
 
   // Fetch current owner's avatar
   let currentOwnerAvatar = null;
@@ -91,7 +92,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
 
   return (
     <div className="min-h-screen bg-slate-900 p-4">
-      <div className="max-w-6xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-6">
         {/* Header Card - Item Info */}
         <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
           <div className="flex items-start gap-6">
@@ -113,67 +114,72 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
             </div>
 
             {/* Item Details */}
-            <div className="flex-1">
-              <h1 className="text-3xl font-bold text-white mb-2">
-                {itemData?.name || 'Unknown Item'}
-              </h1>
-              <div className="flex items-center gap-3 mb-4">
-                <span className="text-slate-400 text-sm uppercase tracking-wider font-semibold">UAID</span>
-                <div className="font-mono text-purple-300 text-sm bg-slate-700/50 px-3 py-1.5 rounded-lg border border-purple-500/20">
-                  {uaid}
+            <div className="flex-1 flex justify-between items-start">
+              <div>
+                <h1 className="text-2xl font-bold text-white mb-12">
+                  {itemData?.name || 'Unknown Item'}
+                </h1>
+                <div className="flex items-center gap-3">
+                  <span className="text-slate-400 text-l uppercase tracking-wider font-semibold">UAID</span>
+                  <div className="font-mono text-purple-300 text-m bg-slate-700/50 px-3 py-1.5 rounded-lg border border-purple-500/20">
+                    {uaid}
+                  </div>
                 </div>
               </div>
               
-              {/* Item Stats */}
-              <div className="grid grid-cols-3 gap-4 mt-4">
+            {/* Item Stats - 2x2 GRID TO THE RIGHT */}
+              <div className="grid grid-cols-2 px-4 gap-x-36 py-2 gap-y-12">
                 <div>
-                  <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">Asset ID</div>
-                  <div className="font-mono text-white font-semibold">{current?.assetId || 'N/A'}</div>
+                  <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">ASSET ID</div>
+                  <div className="font-mono text-white text-xl font-semibold">{current?.assetId || 'N/A'}</div>
                 </div>
-                {latestPrice?.rap && (
-                  <div>
-                    <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">RAP</div>
-                    <div className="text-green-400 font-semibold">{latestPrice.rap.toLocaleString()} R$</div>
+                <div>
+                  <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">SERIAL</div>
+                  <div className={`font-semibold ${serialNumber ? 'text-orange-400 text-xl' : 'text-slate-500'}`}>
+                    {serialNumber ? `#${serialNumber.toLocaleString()}` : 'N/A'}
                   </div>
-                )}
-                {latestPrice?.price && (
-                  <div>
-                    <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">Value</div>
-                    <div className="text-blue-400 font-semibold">{latestPrice.price.toLocaleString()} R$</div>
-                  </div>
-                )}
+                </div>
+                <div>
+                  <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">RAP</div>
+                  <div className="text-green-400 text-xl font-semibold">{latestPrice?.rap?.toLocaleString() || 'N/A'} R$</div>
+                </div>
+                <div>
+                  <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">BEST PRICE</div>
+                  <div className="text-blue-400 text-xl font-semibold">{latestPrice?.price?.toLocaleString() || 'N/A'} R$</div>
+                </div>
               </div>
-
-              {itemData?.description && (
-                <div className="mt-4">
-                  <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">Description</div>
-                  <p className="text-slate-300 text-sm">{itemData.description}</p>
-                </div>
-              )}
             </div>
           </div>
         </div>
 
         {/* Current Owner Card */}
-        <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8">
-          <div className="flex items-center justify-between">
+        <div className="bg-slate-800 rounded-2xl border border-purple-500/20 px-6 py-6">
+          <div className="flex items-top justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-3">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <div className="w-2 h-3 bg-green-400 rounded-full animate-pulse"></div>
                 <h2 className="text-sm uppercase tracking-wider text-slate-400 font-bold">Current Owner</h2>
               </div>
               {currentOwner ? (
-                <div className="text-4xl font-bold text-white">
-                  {currentOwner}
-                </div>
+                <>
+                  <div className="text-4xl font-bold text-white mb-4">
+                    {currentOwner}
+                  </div>
+                  <div className="inline-block bg-slate-700/30 px-4 py-2 rounded-lg">
+                    <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">DAYS OWNED</div>
+                    <div className="text-white text-lg font-semibold">
+                      {Math.floor((new Date().getTime() - new Date(current.scannedAt).getTime()) / (1000 * 60 * 60 * 24))}
+                    </div>
+                  </div>
+                </>
               ) : (
                 <span className="text-xl text-red-400 font-semibold">No owner found</span>
               )}
             </div>
             {currentOwnerAvatar && (
-              <div className="w-48 h-48 bg-slate-700/50 rounded-lg overflow-hidden flex items-center justify-center">
+              <div className="w-40 h-40 bg-slate-700/50 rounded-lg overflow-hidden flex items-center justify-center">
                 <img 
-                  src={currentOwnerAvatar} 
+                  src={currentOwnerAvatar}
                   alt={`${currentOwner}'s avatar`}
                   className="w-full h-full object-cover"
                 />
@@ -201,9 +207,6 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                   <tr className="border-b border-slate-700">
                     <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">
                       Owner
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">
-                      Asset ID
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">
                       Scanned At
@@ -239,11 +242,6 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                               {item.snapshot?.user?.username || "Unknown"}
                             </span>
                           </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="font-mono text-slate-300 bg-slate-700/50 px-2 py-1 rounded text-sm">
-                            {item.assetId}
-                          </span>
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-slate-400 text-sm">

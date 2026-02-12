@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
-import { fetchRobloxItemData, fetchPriceData } from './lib/robloxApi';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js';  // Note: relative path, not @/lib/prisma
+import { fetchRobloxItemData, fetchPriceData } from '../lib/robloxApi.js';
 
 /**
  * Update item data from Roblox API

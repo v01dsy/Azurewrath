@@ -138,9 +138,11 @@ model InventoryItem {
   assetId     String
   item        Item?             @relation(fields: [assetId], references: [assetId])
   userAssetId String
+  serialNumber Int?              // Serial number for Limited U items (null for regular limiteds/collectibles)
   scannedAt   DateTime          @default(now())  // ADD THIS LINE
   
   @@index([snapshotId])
   @@index([assetId])
   @@index([userAssetId])
+  @@index([serialNumber])        // Added index for faster queries
 }

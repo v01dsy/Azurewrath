@@ -4,10 +4,13 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 
+type SearchMode = 'limited' | 'player';
+
 interface SearchResult {
   id: string;
   assetId: string;
   name: string;
+  displayName?: string;
   imageUrl?: string;
   priceHistory?: Array<{
     price: number;
@@ -16,7 +19,11 @@ interface SearchResult {
   }>;
 }
 
-export default function SearchMenu() {
+interface SearchMenuProps {
+  mode: SearchMode;
+}
+
+export default function SearchMenu({ mode }: SearchMenuProps) {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -32,7 +39,12 @@ export default function SearchMenu() {
       if (query.trim().length > 0) {
         setIsLoading(true);
         try {
-          const response = await axios.get('/api/items/search', {
+          // Call different endpoints based on mode
+          const endpoint = mode === 'player' 
+            ? '/api/players/search' 
+            : '/api/items/search';
+          
+          const response = await axios.get(endpoint, {
             params: { q: query },
           });
           setResults(response.data);
@@ -49,7 +61,7 @@ export default function SearchMenu() {
     }, 300);
 
     return () => clearTimeout(debounceTimer);
-  }, [query]);
+  }, [query, mode]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -94,13 +106,26 @@ export default function SearchMenu() {
   };
 
   const handleSelectResult = (item: SearchResult) => {
-    router.push(`/items/${item.assetId}`);
+    if (mode === 'player') {
+      router.push(`/player/${item.assetId}`); // Route to player profile
+    } else {
+      router.push(`/items/${item.assetId}`); // Route to item page
+    }
     setQuery('');
     setIsOpen(false);
   };
 
-  const currentPrice = results[0]?.priceHistory?.[0]?.lowestResale
-    ?? results[0]?.priceHistory?.[0]?.price;
+  const placeholderText = mode === 'limited' 
+    ? "Search limited items..."
+    : "Search players...";
+
+  const noResultsText = mode === 'limited'
+    ? `No items found matching "${query}"`
+    : `No players found matching "${query}"`;
+
+  const noResultsSubtext = mode === 'limited'
+    ? "Try searching with the item name or asset ID"
+    : "Try searching with the player's username";
 
   return (
     <div ref={searchRef} className="relative w-full max-w-2xl mx-auto">
@@ -115,7 +140,7 @@ export default function SearchMenu() {
           }}
           onFocus={() => query && setIsOpen(true)}
           onKeyDown={handleKeyDown}
-          placeholder="Search for Roblox Limited items... (e.g., 'Valkyrie', 'Domino')"
+          placeholder={placeholderText}
           className="w-full px-4 py-3 bg-slate-800 border border-neon-blue/30 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-neon-blue focus:ring-1 focus:ring-neon-blue/50 transition"
         />
         
@@ -152,18 +177,35 @@ export default function SearchMenu() {
                       <h3 className="font-semibold text-white truncate">
                         {item.name}
                       </h3>
-                      <p className="text-xs text-slate-400">
-                        Asset ID: {item.assetId}
-                      </p>
-                      {item.priceHistory?.[0] && (
-                        <p className="text-sm text-neon-blue mt-1">
-                          Price: {(item.priceHistory[0].lowestResale ?? item.priceHistory[0].price).toLocaleString()} Robux
-                          {item.priceHistory[0].rap && (
-                            <span className="text-slate-400 ml-2">
-                              (RAP: {item.priceHistory[0].rap.toLocaleString()})
-                            </span>
+                      {mode === 'player' ? (
+                        // Player display
+                        <>
+                          {item.displayName && (
+                            <p className="text-xs text-slate-400">
+                              Display Name: {item.displayName}
+                            </p>
                           )}
-                        </p>
+                          <p className="text-xs text-slate-400">
+                            User ID: {item.assetId}
+                          </p>
+                        </>
+                      ) : (
+                        // Item display
+                        <>
+                          <p className="text-xs text-slate-400">
+                            Asset ID: {item.assetId}
+                          </p>
+                          {item.priceHistory?.[0] && (
+                            <p className="text-sm text-neon-blue mt-1">
+                              Price: {(item.priceHistory[0].lowestResale ?? item.priceHistory[0].price).toLocaleString()} Robux
+                              {item.priceHistory[0].rap && (
+                                <span className="text-slate-400 ml-2">
+                                  (RAP: {item.priceHistory[0].rap.toLocaleString()})
+                                </span>
+                              )}
+                            </p>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -172,8 +214,8 @@ export default function SearchMenu() {
             </ul>
           ) : (
             <div className="px-4 py-8 text-center text-slate-400">
-              <p>No items found matching "{query}"</p>
-              <p className="text-xs mt-2">Try searching with the item name or asset ID</p>
+              <p>{noResultsText}</p>
+              <p className="text-xs mt-2">{noResultsSubtext}</p>
             </div>
           )}
         </div>

@@ -6,10 +6,8 @@ from dotenv import load_dotenv
 import logging
 import psycopg2
 from psycopg2 import pool
-from datetime import datetime, timezone
+from datetime import datetime
 import traceback
-import re
-
 
 load_dotenv()
 
@@ -21,12 +19,12 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 DATABASE_URL = os.getenv('DATABASE_URL')
-WORKER_INTERVAL = int(os.getenv('WORKER_INTERVAL_SECONDS', 120))
+WORKER_INTERVAL = int(os.getenv('WORKER_INTERVAL_SECONDS', 300))  # 5 minutes between full cycles
+REQUEST_DELAY = 2  # 2 seconds between each Roblox API call (conservative rate limiting)
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     'Accept': 'application/json',
-    'Content-Type': 'application/json',
 }
 
 # Connection pool
@@ -64,134 +62,119 @@ def return_db_connection(conn):
     except Exception as e:
         logger.error(f"❌ Failed to return connection to pool: {e}")
 
-def fetch_rolimons_data():
-    """Fetch all item data from Rolimons deals page (includes best price)"""
+def fetch_roblox_resale_data(asset_id):
+    """
+    Fetch resale data from Roblox API for a single asset
+    Returns: {rap: int, price: int, sales: int} or None if failed
+    """
     try:
-        logger.info("📡 Fetching item data from Rolimons deals page...")
-        response = requests.get(
-            'https://www.rolimons.com/deals',
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'},
-            timeout=30
-        )
-        
-        logger.info(f"Response status code: {response.status_code}")
+        url = f"https://economy.roblox.com/v1/assets/{asset_id}/resale-data"
+        response = requests.get(url, headers=HEADERS, timeout=10)
         
         if response.status_code == 200:
-            html = response.text
-            logger.debug(f"Received HTML response ({len(html)} characters)")
-            
-            # Extract the item_details variable
-            pattern = r'var item_details = ({.+?});'
-            match = re.search(pattern, html, re.DOTALL)
-            
-            if match:
-                item_details_str = match.group(1)
-                logger.debug(f"Found item_details JSON ({len(item_details_str)} characters)")
-                
-                items_data = json.loads(item_details_str)
-                logger.info(f"✅ Successfully parsed {len(items_data)} items from Rolimons")
-                
-                # Debug: Show first item
-                if items_data:
-                    first_key = list(items_data.keys())[0]
-                    logger.debug(f"Sample item {first_key}: {items_data[first_key]}")
-                
-                return items_data
-            else:
-                logger.error("❌ Could not find item_details variable in page source")
-                logger.debug(f"First 1000 chars of HTML: {html[:1000]}")
-                return {}
+            data = response.json()
+            # Example response: {"assetStock": 0, "sales": 123, "numberRemaining": 0, 
+            #                    "recentAveragePrice": 5000, "originalPrice": null, "priceDataPoints": [...]}
+            return {
+                'rap': data.get('recentAveragePrice'),
+                'sales': data.get('sales'),
+                'original_price': data.get('originalPrice')
+            }
+        elif response.status_code == 429:
+            logger.warning(f"⚠️ Rate limited on asset {asset_id} - waiting 10 seconds...")
+            time.sleep(10)
+            return None
         else:
-            logger.error(f"❌ Rolimons page returned status {response.status_code}")
-            return {}
+            logger.debug(f"Asset {asset_id} returned status {response.status_code}")
+            return None
             
     except requests.exceptions.Timeout:
-        logger.error("❌ Request to Rolimons timed out after 30 seconds")
-        return {}
-    except requests.exceptions.RequestException as e:
-        logger.error(f"❌ Request error: {e}")
-        return {}
-    except json.JSONDecodeError as e:
-        logger.error(f"❌ Failed to parse JSON: {e}")
-        return {}
+        logger.warning(f"⚠️ Timeout fetching asset {asset_id}")
+        return None
     except Exception as e:
-        logger.error(f"❌ Unexpected error fetching from Rolimons: {e}")
-        logger.error(traceback.format_exc())
-        return {}
+        logger.error(f"❌ Error fetching asset {asset_id}: {e}")
+        return None
 
-def process_items_data(items_from_db, rolimons_data, previous_raps):
-    """Process all fetched data and prepare for database insertion"""
-    results = []
-    items_processed = 0
-    items_skipped_no_data = 0
-    items_skipped_no_rap = 0
-    items_with_price = 0
+def fetch_roblox_resellers(asset_id, limit=10):
+    """
+    Fetch current resellers (listings) for an asset
+    Returns: list of {price: int, seller: dict} or None
+    """
+    try:
+        url = f"https://economy.roblox.com/v1/assets/{asset_id}/resellers"
+        params = {'limit': limit}
+        response = requests.get(url, headers=HEADERS, params=params, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            # Example: {"data": [{"userAssetId": 123, "seller": {...}, "price": 1000, "serialNumber": 1}, ...]}
+            listings = data.get('data', [])
+            if listings:
+                # Get the lowest price from current listings
+                lowest = min(listings, key=lambda x: x.get('price', float('inf')))
+                return {
+                    'lowest_price': lowest.get('price'),
+                    'total_listings': len(listings)
+                }
+            return None
+        elif response.status_code == 429:
+            logger.warning(f"⚠️ Rate limited on resellers for {asset_id}")
+            time.sleep(10)
+            return None
+        else:
+            return None
+            
+    except Exception as e:
+        logger.debug(f"Error fetching resellers for {asset_id}: {e}")
+        return None
+
+def process_single_item(item_id, asset_id, name, previous_rap):
+    """
+    Fetch and process data for a single item from Roblox
+    Returns: dict with item data or None
+    """
+    logger.debug(f"Processing {name} (asset_id: {asset_id})")
     
-    logger.info(f"Processing {len(items_from_db)} items from database...")
+    # Fetch resale data (RAP, sales volume)
+    resale_data = fetch_roblox_resale_data(asset_id)
     
-    for item_id, asset_id, name in items_from_db:
-        items_processed += 1
-        
-        # Get data from Rolimons (key is asset_id as string)
-        item_data = rolimons_data.get(str(asset_id))
-        
-        if not item_data or not isinstance(item_data, list):
-            items_skipped_no_data += 1
-            logger.debug(f"No Rolimons data for {name} (asset_id: {asset_id})")
-            continue
-        
-        # Rolimons deals page data structure:
-        # [0] = name, [1] = best price, [2] = RAP, [3-8] = other data, [9] = thumbnail
-        
-        best_price = item_data[1] if len(item_data) > 1 and item_data[1] else None
-        rap = item_data[2] if len(item_data) > 2 and item_data[2] else None
-        
-        # Skip if no RAP data
-        if rap is None:
-            items_skipped_no_rap += 1
-            logger.debug(f"No RAP for {name}")
-            continue
-        
-        if best_price:
-            items_with_price += 1
-        
-        # Use best_price as the price field
-        price = best_price
-        lowest_resale = None
-        
-        # Check if RAP changed
-        previous_rap = previous_raps.get(item_id)
-        rap_changed = False
-        
-        if previous_rap is not None:
-            rap_changed = rap != previous_rap
-            if rap_changed:
-                logger.info(f"📈 RAP Change: {name} - {previous_rap} → {rap}")
-        
-        # Log good deals (best price < RAP)
-        if best_price and rap and best_price < rap:
-            discount = ((rap - best_price) / rap) * 100
-            if discount > 5:  # Only log deals > 5% off
-                logger.info(f"💰 Deal Found: {name} - {best_price} Robux (RAP: {rap}) - {discount:.1f}% off")
-        
-        results.append({
-            'item_id': item_id,
-            'name': name,
-            'price': price,
-            'rap': rap,
-            'lowest_resale': lowest_resale,
-            'rap_changed': rap_changed
-        })
+    if not resale_data or resale_data['rap'] is None:
+        logger.debug(f"No RAP data for {name}")
+        return None
     
-    logger.info(f"✅ Processing complete:")
-    logger.info(f"   - Items in DB: {len(items_from_db)}")
-    logger.info(f"   - Items processed: {items_processed}")
-    logger.info(f"   - Items with valid data: {len(results)}")
-    logger.info(f"   - Items with price: {items_with_price}")
-    logger.info(f"   - Items skipped (no Rolimons data): {items_skipped_no_data}")
-    logger.info(f"   - Items skipped (no RAP): {items_skipped_no_rap}")
+    # Small delay to avoid rate limits
+    time.sleep(REQUEST_DELAY)
     
-    return results
+    # Fetch current resellers (lowest price)
+    reseller_data = fetch_roblox_resellers(asset_id)
+    
+    rap = resale_data['rap']
+    lowest_resale = reseller_data['lowest_price'] if reseller_data else None
+    
+    # Use lowest resale as price if available, otherwise use RAP
+    price = lowest_resale if lowest_resale else rap
+    
+    # Check if RAP changed
+    rap_changed = False
+    if previous_rap is not None and rap != previous_rap:
+        rap_changed = True
+        logger.info(f"📈 RAP Change: {name} - {previous_rap} → {rap}")
+    
+    # Log good deals
+    if lowest_resale and rap and lowest_resale < rap:
+        discount = ((rap - lowest_resale) / rap) * 100
+        if discount > 5:
+            logger.info(f"💰 Deal Found: {name} - {lowest_resale} Robux (RAP: {rap}) - {discount:.1f}% off")
+    
+    return {
+        'item_id': item_id,
+        'name': name,
+        'price': price,
+        'rap': rap,
+        'lowest_resale': lowest_resale,
+        'sales_volume': resale_data.get('sales'),
+        'rap_changed': rap_changed
+    }
 
 def save_results_to_db(results):
     """Batch save all results to database"""
@@ -212,26 +195,25 @@ def save_results_to_db(results):
         logger.info(f"Preparing database updates for {len(results)} items...")
         
         for result in results:
-            # PriceHistory insert - ONLY if we have a valid price
-            if result['price'] is not None:
-                price_history_data.append((
-                    result['item_id'],
-                    result['price'],
-                    result['rap'],
-                    result['lowest_resale'],
-                    None,  # salesVolume
-                    datetime.now(timezone.utc)
-                ))
+            # PriceHistory insert
+            price_history_data.append((
+                result['item_id'],
+                result['price'],
+                result['rap'],
+                result['lowest_resale'],
+                result['sales_volume'],
+                datetime.now()
+            ))
             
-            # Sale insert only if RAP changed AND rap is valid
-            if result['rap_changed'] and result['rap'] is not None:
+            # Sale insert only if RAP changed
+            if result['rap_changed']:
                 sale_data.append((
                     result['item_id'],
                     result['rap'],
                     None,  # sellerUsername
                     None,  # buyerUsername
                     None,  # serialNumber
-                    datetime.now(timezone.utc)
+                    datetime.now()
                 ))
         
         logger.info(f"Database operations planned:")
@@ -263,7 +245,6 @@ def save_results_to_db(results):
         
     except psycopg2.Error as e:
         logger.error(f"❌ PostgreSQL error: {e}")
-        logger.error(f"Error code: {e.pgcode}")
         if conn:
             conn.rollback()
     except Exception as e:
@@ -278,13 +259,13 @@ def save_results_to_db(results):
             return_db_connection(conn)
 
 def update_item_prices():
-    """Main update logic using Rolimons deals page scraping"""
+    """Main update logic using Roblox APIs directly"""
     conn = None
     cursor = None
     
     try:
         logger.info("=" * 80)
-        logger.info("Starting price update cycle")
+        logger.info("Starting price update cycle (Roblox API)")
         logger.info("=" * 80)
         
         conn = get_db_connection()
@@ -311,21 +292,32 @@ def update_item_prices():
         previous_raps = {row[0]: row[1] for row in cursor.fetchall()}
         logger.info(f"Loaded {len(previous_raps)} previous RAP values")
         
-        # Close this connection before long HTTP request
+        # Close connection before processing
         cursor.close()
         return_db_connection(conn)
         conn = None
         cursor = None
         
-        # Fetch all data from Rolimons deals page (single HTTP call!)
-        rolimons_data = fetch_rolimons_data()
+        # Process each item one by one
+        results = []
+        total_items = len(items)
         
-        if not rolimons_data:
-            logger.error("❌ Failed to fetch data from Rolimons - skipping this cycle")
-            return
+        logger.info(f"Processing items with {REQUEST_DELAY}s delay between requests...")
         
-        # Process all data
-        results = process_items_data(items, rolimons_data, previous_raps)
+        for idx, (item_id, asset_id, name) in enumerate(items, 1):
+            logger.info(f"[{idx}/{total_items}] Processing: {name}")
+            
+            previous_rap = previous_raps.get(item_id)
+            result = process_single_item(item_id, asset_id, name, previous_rap)
+            
+            if result:
+                results.append(result)
+            
+            # Progress update every 10 items
+            if idx % 10 == 0:
+                logger.info(f"Progress: {idx}/{total_items} items processed ({len(results)} with data)")
+        
+        logger.info(f"✅ Processing complete: {len(results)} items with valid data")
         
         # Save to database
         save_results_to_db(results)
@@ -346,10 +338,10 @@ def update_item_prices():
 def main():
     """Main worker loop"""
     logger.info("=" * 80)
-    logger.info("🚀 Azurewrath Worker Starting")
+    logger.info("🚀 Azurewrath Worker Starting (Roblox API Mode)")
     logger.info("=" * 80)
-    logger.info(f"Mode: Rolimons Deals Page Scraping")
     logger.info(f"Update interval: {WORKER_INTERVAL} seconds")
+    logger.info(f"Request delay: {REQUEST_DELAY} seconds")
     logger.info(f"Database: {DATABASE_URL[:30]}..." if DATABASE_URL else "No database URL!")
     logger.info("=" * 80)
     
@@ -358,7 +350,6 @@ def main():
         init_connection_pool()
     except Exception as e:
         logger.error(f"❌ Failed to initialize - exiting")
-        input("Press Enter to exit...")
         return
     
     cycle_count = 0
@@ -372,7 +363,7 @@ def main():
             update_item_prices()
             elapsed = time.time() - start_time
             
-            logger.info(f"⏱️  Cycle #{cycle_count} took {elapsed:.2f} seconds")
+            logger.info(f"⏱️  Cycle #{cycle_count} took {elapsed:.2f} seconds ({elapsed/60:.2f} minutes)")
             logger.info(f"😴 Sleeping for {WORKER_INTERVAL} seconds...")
             logger.info("")
             

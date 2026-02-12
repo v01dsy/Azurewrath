@@ -1,11 +1,29 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '@/lib/prisma';
 import { fetchRobloxUserInfo, fetchRobloxHeadshotUrl, scanFullInventory } from '@/lib/robloxApi';
 import { saveInventorySnapshot } from '@/lib/inventoryTracker';
 import ClientInventoryGrid from '@/app/player/[userid]/ClientInventoryGrid';
 import InventoryGraph from '@/app/player/[userid]/InventoryGraph';
 import { Metadata } from 'next';
 
-const prisma = new PrismaClient();
+// Define the inventory item type
+interface InventoryItem {
+  assetId: string;
+  userAssetId: string;
+  serialNumber?: number | null;
+  name?: string;
+  recentAveragePrice?: number;
+}
+
+// Define the display item type for the grid
+interface DisplayItem {
+  assetId: string;
+  name: string;
+  imageUrl: string;
+  rap: number;
+  count: number;
+  userAssetIds: string[];
+  serialNumbers: (number | null)[];
+}
 
 // Generate metadata for the page
 export async function generateMetadata({ params }: { params: Promise<{ userid: string }> }): Promise<Metadata> {
@@ -119,64 +137,53 @@ export default async function PlayerPage({ params }: { params: Promise<{ userid:
     }
   });
 
-  // Check if we need to scan based on snapshot age
-  let inventory = [];
+  // Check if we need to scan based on snapshot age and inventory changes
+  let inventory: InventoryItem[] = [];
   let needsNewSnapshot = false;
 
   if (latestSnapshot) {
-    // Check if snapshot is less than 24 hours old
     const hoursSinceSnapshot = (Date.now() - new Date(latestSnapshot.createdAt).getTime()) / (1000 * 60 * 60);
-    
     console.log(`Hours since last snapshot: ${hoursSinceSnapshot.toFixed(2)}`);
     
-    if (hoursSinceSnapshot < 24) {
-      // Snapshot is recent, use it
-      console.log('Using recent snapshot (less than 24h old)');
-      needsNewSnapshot = false;
-      inventory = latestSnapshot.items.map(item => ({
-        assetId: item.assetId,
-        userAssetId: item.userAssetId,
-        name: item.item?.name || 'Unknown',
-        recentAveragePrice: item.item?.priceHistory?.[0]?.rap || 0
-      }));
-    } else {
-      // Snapshot is old, rescan
-      console.log('Snapshot is old (24+ hours), rescanning...');
-      const fullInventory = await scanFullInventory(user.robloxUserId);
-      
-      if (fullInventory.length === 0) {
-        return (
-          <div className="min-h-screen bg-slate-900 p-4">
-            <div className="max-w-6xl mx-auto">
-              <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8 text-center">
-                <p className="text-white text-xl mb-2">Unable to load inventory</p>
-                <p className="text-slate-400">Roblox API timed out. Please try again in a moment.</p>
-              </div>
+    // ALWAYS fetch current inventory to check for new/removed items
+    console.log('Fetching current inventory to check for changes...');
+    const currentInventory = await scanFullInventory(user.robloxUserId);
+    
+    if (currentInventory.length === 0) {
+      return (
+        <div className="min-h-screen bg-slate-900 p-4">
+          <div className="max-w-6xl mx-auto">
+            <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8 text-center">
+              <p className="text-white text-xl mb-2">Unable to load inventory</p>
+              <p className="text-slate-400">Roblox API timed out. Please try again in a moment.</p>
             </div>
           </div>
-        );
-      }
-      
-      // Get UAIDs from current scan and old snapshot
-      const currentUAIDs = new Set(fullInventory.map((item: any) => item.userAssetId.toString()));
-      const oldUAIDs = new Set(latestSnapshot.items.map(item => item.userAssetId));
-      
-      // Check if inventory changed
-      const uaidsMatch = currentUAIDs.size === oldUAIDs.size && 
-                         [...currentUAIDs].every(uaid => oldUAIDs.has(uaid));
-      
-      if (uaidsMatch) {
-        // Inventory hasn't changed
-        console.log('Inventory unchanged');
-        inventory = fullInventory;
-        needsNewSnapshot = true;
-      } else {
-        // Inventory changed
-        console.log('Inventory changed');
-        inventory = fullInventory;
-        needsNewSnapshot = true;
-      }
+        </div>
+      );
     }
+    
+    // Compare UAIDs to detect changes
+    const currentUAIDs = new Set(currentInventory.map((item: any) => item.userAssetId.toString()));
+    const oldUAIDs = new Set(latestSnapshot.items.map(item => item.userAssetId));
+    
+    // Find new and removed items
+    const newUAIDs = [...currentUAIDs].filter(uaid => !oldUAIDs.has(uaid));
+    const removedUAIDs = [...oldUAIDs].filter(uaid => !currentUAIDs.has(uaid));
+    
+    if (newUAIDs.length > 0 || removedUAIDs.length > 0) {
+      console.log(`📊 Inventory changes detected:`);
+      console.log(`  ➕ New items: ${newUAIDs.length}`);
+      console.log(`  ➖ Removed items: ${removedUAIDs.length}`);
+      needsNewSnapshot = true;
+    } else if (hoursSinceSnapshot >= 24) {
+      console.log('No changes detected, but snapshot is 24+ hours old. Creating new snapshot.');
+      needsNewSnapshot = true;
+    } else {
+      console.log('No changes detected, using existing snapshot.');
+      needsNewSnapshot = false;
+    }
+    
+    inventory = currentInventory;
   } else {
     // No snapshot exists, need to scan
     console.log('No previous snapshot, scanning...');
@@ -197,10 +204,10 @@ export default async function PlayerPage({ params }: { params: Promise<{ userid:
     needsNewSnapshot = true;
   }
 
-  // Only save new snapshot if needed
+  // Save new snapshot if changes detected or no snapshot exists
   if (needsNewSnapshot) {
     await saveInventorySnapshot(user.id, user.robloxUserId);
-    console.log('Created new snapshot');
+    console.log('✅ Created new snapshot');
   }
 
   // Fetch historical snapshots for graph
@@ -242,7 +249,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ userid:
   });
   
   // Get unique assetIds from inventory
-  const assetIds = [...new Set(inventory.map((item: any) => item.assetId.toString()))];
+  const assetIds = [...new Set(inventory.map((item: InventoryItem) => item.assetId.toString()))];
   
   // Fetch item data from database
   const dbItems = await prisma.item.findMany({
@@ -265,7 +272,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ userid:
   const itemMap = new Map(dbItems.map(item => [item.assetId, item]));
   
   // Group items by assetId and count, enriching with database data
-  const itemCounts = inventory.reduce((acc: any, item: any) => {
+  const itemCounts: Record<string, DisplayItem> = inventory.reduce((acc: Record<string, DisplayItem>, item: InventoryItem) => {
     const id = item.assetId.toString();
     if (!acc[id]) {
       const dbItem = itemMap.get(id);
@@ -276,18 +283,20 @@ export default async function PlayerPage({ params }: { params: Promise<{ userid:
         imageUrl: dbItem?.imageUrl || `https://www.roblox.com/asset-thumbnail/image?assetId=${id}&width=150&height=150&format=png`,
         rap: latestPrice?.rap || item.recentAveragePrice || 0,
         count: 0,
-        userAssetIds: []
+        userAssetIds: [],
+        serialNumbers: []
       };
     }
     acc[id].count++;
     acc[id].userAssetIds.push(item.userAssetId);
+    acc[id].serialNumbers.push(item.serialNumber ?? null);
     return acc;
   }, {});
 
-  const uniqueItems = Object.values(itemCounts);
+  const uniqueItems: DisplayItem[] = Object.values(itemCounts);
   
   // Calculate total RAP
-  const totalRAP = uniqueItems.reduce((sum: number, item: any) => {
+  const totalRAP = uniqueItems.reduce((sum: number, item: DisplayItem) => {
     return sum + (item.rap * item.count);
   }, 0);
 
@@ -354,7 +363,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ userid:
 
         {/* Inventory Grid - Full Width Below */}
         <div>
-          <ClientInventoryGrid items={uniqueItems} scannedTime={scannedTime} />
+          <ClientInventoryGrid items={uniqueItems as any} scannedTime={scannedTime} />
         </div>
       </div>
     </div>

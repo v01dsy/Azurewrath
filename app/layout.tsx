@@ -9,6 +9,9 @@ export const metadata: Metadata = {
     default: 'Azurewrath | Roblox Limited Trading',
   },
   description: 'Real-time price tracking for Roblox Limited items',
+  verification: {
+    google: 'DDifGHbDO6rPl9_duVTbkQsg3AEQdbf_r6-NVg2jRMs',
+  },
 };
 
 export default function RootLayout({

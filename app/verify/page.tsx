@@ -2,6 +2,7 @@
 import { useState, useEffect, Suspense } from "react";
 import RobloxAuthSection from "../../components/RobloxAuthSection";
 import { useSearchParams } from "next/navigation";
+import { setUserSession } from "../../lib/userSession";
 
 // PKCE helper functions
 function base64URLEncode(arrayBuffer: ArrayBuffer) {
@@ -63,65 +64,68 @@ function VerifyContent() {
     }
   }, [searchParams]);
 
- const handleOAuthCallback = async (code: string, state: string) => {
-  setOauthStatus('loading');
-  
-  const storedState = sessionStorage.getItem('oauth_state');
-  const codeVerifier = sessionStorage.getItem('code_verifier');
+  const handleOAuthCallback = async (code: string, state: string) => {
+    setOauthStatus('loading');
+    
+    const storedState = sessionStorage.getItem('oauth_state');
+    const codeVerifier = sessionStorage.getItem('code_verifier');
 
-  if (state !== storedState) {
-    setOauthStatus('error');
-    setOauthError('Invalid state parameter - security check failed');
-    alert('Security verification failed. Please try again.');
-    return;
-  }
-
-  if (!codeVerifier) {
-    setOauthStatus('error');
-    setOauthError('Missing code verifier');
-    alert('Verification data missing. Please try again.');
-    return;
-  }
-
-  try {
-    const response = await fetch('/api/auth/roblox/callback', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        code,
-        code_verifier: codeVerifier,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Token exchange failed');
+    if (state !== storedState) {
+      setOauthStatus('error');
+      setOauthError('Invalid state parameter - security check failed');
+      alert('Security verification failed. Please try again.');
+      return;
     }
 
-    const data = await response.json();
-    
-    // Clear the stored values
-    sessionStorage.removeItem('oauth_state');
-    sessionStorage.removeItem('code_verifier');
-    
-    setOauthStatus('success');
-    console.log('User info:', data.userInfo);
-    
-    // Redirect to their profile after 1.5 seconds
-    setTimeout(() => {
-      window.location.href = `/player/${data.userInfo.sub}`;
-    }, 1500);
-    
-  } catch (error) {
-    setOauthStatus('error');
-    const errorMsg = error instanceof Error ? error.message : 'OAuth verification failed';
-    setOauthError(errorMsg);
-    alert(`Verification failed: ${errorMsg}`);
-    console.error(error);
-  }
-};
+    if (!codeVerifier) {
+      setOauthStatus('error');
+      setOauthError('Missing code verifier');
+      alert('Verification data missing. Please try again.');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/auth/roblox/callback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code,
+          code_verifier: codeVerifier,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Token exchange failed');
+      }
+
+      const data = await response.json();
+      
+      // Clear the stored values
+      sessionStorage.removeItem('oauth_state');
+      sessionStorage.removeItem('code_verifier');
+      
+      // Store user in localStorage using your existing system
+      setUserSession(data.user);
+      
+      setOauthStatus('success');
+      console.log('User logged in:', data.user);
+      
+      // Redirect to home page after 1.5 seconds
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 1500);
+      
+    } catch (error) {
+      setOauthStatus('error');
+      const errorMsg = error instanceof Error ? error.message : 'OAuth verification failed';
+      setOauthError(errorMsg);
+      alert(`Verification failed: ${errorMsg}`);
+      console.error(error);
+    }
+  };
 
   const handleRobloxLogin = async () => {
     try {
@@ -135,7 +139,7 @@ function VerifyContent() {
       // Build authorization URL
       const authUrl = new URL('https://apis.roblox.com/oauth/v1/authorize');
       authUrl.searchParams.append('client_id', process.env.NEXT_PUBLIC_ROBLOX_CLIENT_ID!);
-      authUrl.searchParams.append('redirect_uri', process.env.NEXT_PUBLIC_APP_URL + '/verify'); // Using env variable
+      authUrl.searchParams.append('redirect_uri', process.env.NEXT_PUBLIC_APP_URL + '/verify');
       authUrl.searchParams.append('scope', 'openid profile');
       authUrl.searchParams.append('response_type', 'code');
       authUrl.searchParams.append('state', state);
@@ -163,6 +167,7 @@ function VerifyContent() {
         <div className="text-center py-8">
           <div className="text-green-500 text-5xl mb-4">✓</div>
           <p className="text-green-200 text-xl font-semibold">Successfully verified!</p>
+          <p className="text-slate-400 text-sm mt-2">Redirecting to home page...</p>
         </div>
       ) : (
         <>

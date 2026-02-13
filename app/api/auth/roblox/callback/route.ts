@@ -1,6 +1,5 @@
 // app/api/auth/roblox/callback/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 
 export async function POST(request: NextRequest) {
   try {
@@ -59,42 +58,14 @@ export async function POST(request: NextRequest) {
     
     console.log('Roblox User Info:', userInfo);
     
-    // TODO: Save user to database here
-    // Example with Prisma:
-    // await prisma.user.upsert({
-    //   where: { robloxId: userInfo.sub },
-    //   update: { 
-    //     username: userInfo.preferred_username,
-    //     avatar: userInfo.picture,
-    //     lastLogin: new Date()
-    //   },
-    //   create: {
-    //     robloxId: userInfo.sub,
-    //     username: userInfo.preferred_username,
-    //     avatar: userInfo.picture,
-    //   }
-    // });
-    
-    // Create a session cookie
-    const cookieStore = await cookies();
-    cookieStore.set('session', JSON.stringify({
-      userId: userInfo.sub,
-      username: userInfo.preferred_username,
-      avatar: userInfo.picture,
-    }), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-      path: '/',
-    });
-    
+    // Return user info so the client can store it in localStorage
     return NextResponse.json({ 
       success: true,
-      userInfo: {
-        sub: userInfo.sub,
-        preferred_username: userInfo.preferred_username,
-        picture: userInfo.picture,
+      user: {
+        robloxUserId: userInfo.sub,
+        username: userInfo.preferred_username,
+        displayName: userInfo.preferred_username, // Roblox doesn't give display name in OAuth, so we use username
+        avatarUrl: userInfo.picture,
       }
     });
     

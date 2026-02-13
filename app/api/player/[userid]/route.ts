@@ -4,6 +4,9 @@ import { saveInventorySnapshot } from '@/lib/inventoryTracker';
 
 export const revalidate = 300; // Cache for 5 minutes
 
+// ✅ Track ongoing scans to prevent duplicates
+const ongoingScans = new Set<string>();
+
 // ✅ Helper function to check if inventory is viewable
 async function canViewInventory(robloxUserId: string): Promise<boolean> {
   try {
@@ -58,64 +61,93 @@ export async function GET(
       console.warn('Failed to fetch avatar:', error);
     }
 
-    // Check if snapshot exists
-    const latestSnapshotCheck = await prisma.inventorySnapshot.findFirst({
-      where: { userId: user.id },
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true }
-    });
-
-    if (!latestSnapshotCheck) {
-      // ✅ CHECK if inventory is private BEFORE trying to create snapshot
-      const canView = await canViewInventory(user.robloxUserId);
-      
-      if (!canView) {
-        return NextResponse.json({
-          user: {
-            id: user.id,
-            robloxUserId: user.robloxUserId,
-            username: user.username,
-            displayName: user.displayName,
-            avatarUrl: avatarUrl || user.avatarUrl,
-            description: user.description
-          },
-          inventory: [],
-          stats: {
-            totalRAP: 0,
-            totalItems: 0,
-            uniqueItems: 0,
-            lastScanned: null
-          },
-          graphData: [],
-          isPrivate: true
-        });
-      }
-
-      // NO SNAPSHOT - Must scan NOW and WAIT for it (blocking)
-      console.log(`📸 No snapshot exists for user ${user.username} - creating initial scan (BLOCKING)`);
-      try {
-        await saveInventorySnapshot(user.id, user.robloxUserId);
-        console.log(`✅ Initial snapshot created successfully`);
-      } catch (err) {
-        console.error('❌ Initial scan failed:', err);
-        return NextResponse.json({ 
-          error: 'Failed to create initial inventory snapshot',
-          details: String(err)
-        }, { status: 500 });
-      }
+    // ✅ CHECK IF SCAN IS ALREADY RUNNING
+    if (ongoingScans.has(user.id)) {
+      console.log(`⏳ Scan already in progress for ${user.username}, skipping...`);
     } else {
-      // SNAPSHOT EXISTS - Scan in background (non-blocking)
-      console.log(`🔄 Triggering background rescan for ${user.username}...`);
-      saveInventorySnapshot(user.id, user.robloxUserId)
-        .then(snapshot => {
-          console.log(`✅ Background scan completed - Snapshot ID: ${snapshot.id}`);
-        })
-        .catch(err => {
-          console.error('❌ Background scan failed:', err);
-        });
+      // Check if snapshot exists
+      const latestSnapshotCheck = await prisma.inventorySnapshot.findFirst({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true }
+      });
+
+      if (!latestSnapshotCheck) {
+        // ✅ CHECK if inventory is private BEFORE trying to create snapshot
+        const canView = await canViewInventory(user.robloxUserId);
+        
+        if (!canView) {
+          return NextResponse.json({
+            user: {
+              id: user.id,
+              robloxUserId: user.robloxUserId,
+              username: user.username,
+              displayName: user.displayName,
+              avatarUrl: avatarUrl || user.avatarUrl,
+              description: user.description
+            },
+            inventory: [],
+            stats: {
+              totalRAP: 0,
+              totalItems: 0,
+              uniqueItems: 0,
+              lastScanned: null
+            },
+            graphData: [],
+            isPrivate: true
+          });
+        }
+
+        // NO SNAPSHOT - Must scan NOW and WAIT for it (blocking)
+        console.log(`📸 No snapshot exists for user ${user.username} - creating initial scan (BLOCKING)`);
+        
+        // ✅ MARK AS RUNNING
+        ongoingScans.add(user.id);
+        
+        try {
+          await saveInventorySnapshot(user.id, user.robloxUserId);
+          console.log(`✅ Initial snapshot created successfully`);
+        } catch (err) {
+          console.error('❌ Initial scan failed:', err);
+          return NextResponse.json({ 
+            error: 'Failed to create initial inventory snapshot',
+            details: String(err)
+          }, { status: 500 });
+        } finally {
+          // ✅ REMOVE LOCK
+          ongoingScans.delete(user.id);
+        }
+      } else {
+        // SNAPSHOT EXISTS - Check if it needs updating
+        const now = new Date();
+        const snapshotAge = now.getTime() - latestSnapshotCheck.createdAt.getTime();
+        const fiveMinutes = 5 * 60 * 1000;
+        
+        // ✅ Only scan if last scan was more than 5 minutes ago
+        if (snapshotAge > fiveMinutes) {
+          console.log(`🔄 Triggering background rescan for ${user.username}...`);
+          
+          // ✅ MARK AS RUNNING
+          ongoingScans.add(user.id);
+          
+          saveInventorySnapshot(user.id, user.robloxUserId)
+            .then(snapshot => {
+              console.log(`✅ Background scan completed - Snapshot ID: ${snapshot.id}`);
+            })
+            .catch(err => {
+              console.error('❌ Background scan failed:', err);
+            })
+            .finally(() => {
+              // ✅ REMOVE LOCK
+              ongoingScans.delete(user.id);
+            });
+        } else {
+          console.log(`⏭️ Skipping scan for ${user.username} (last scan was ${Math.round(snapshotAge / 1000)}s ago)`);
+        }
+      }
     }
 
-    // Get latest snapshot with OPTIMIZED RAW SQL
+    // Get latest snapshot with OPTIMIZED RAW SQL - INCLUDING scannedAt
     const inventoryData = await prisma.$queryRaw<Array<{
       assetId: string;
       userAssetId: string;
@@ -125,6 +157,7 @@ export async function GET(
       itemCount: number;
       serialNumbers: (number | null)[];
       userAssetIds: string[];
+      scannedAt: Date;
     }>>`
       WITH LatestSnapshot AS (
         SELECT id, "createdAt"
@@ -138,11 +171,13 @@ export async function GET(
           ii."assetId",
           ii."userAssetId",
           ii."serialNumber",
+          ii."scannedAt",
           i.name,
           i."imageUrl",
           ph.rap,
           ARRAY_AGG(ii."userAssetId") OVER (PARTITION BY ii."assetId") as user_asset_ids,
           ARRAY_AGG(ii."serialNumber") OVER (PARTITION BY ii."assetId") as serial_numbers,
+          ARRAY_AGG(ii."scannedAt") OVER (PARTITION BY ii."assetId") as scanned_at_array,
           COUNT(*) OVER (PARTITION BY ii."assetId") as item_count
         FROM "InventoryItem" ii
         INNER JOIN LatestSnapshot ls ON ii."snapshotId" = ls.id
@@ -163,7 +198,8 @@ export async function GET(
         COALESCE(rap, 0) as rap,
         item_count::int as "itemCount",
         serial_numbers as "serialNumbers",
-        user_asset_ids as "userAssetIds"
+        user_asset_ids as "userAssetIds",
+        (scanned_at_array[1]) as "scannedAt"
       FROM InventoryWithPrices
       ORDER BY "assetId", rap DESC NULLS LAST
     `;
@@ -227,7 +263,8 @@ export async function GET(
         rap: item.rap || 0,
         count: item.itemCount,
         userAssetIds: item.userAssetIds,
-        serialNumbers: item.serialNumbers
+        serialNumbers: item.serialNumbers,
+        scannedAt: item.scannedAt
       })),
       stats: {
         totalRAP,
@@ -242,7 +279,7 @@ export async function GET(
         itemCount: snap.itemCount,
         uniqueCount: snap.uniqueCount
       })),
-      isPrivate: false // ✅ Not private if we got here
+      isPrivate: false
     });
 
   } catch (error) {

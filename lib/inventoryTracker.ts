@@ -8,78 +8,86 @@ import prisma from './prisma';
  * 3. NEW DAY = CREATE new snapshot
  * 4. NEW items = Fresh scannedAt timestamp
  * 5. UNCHANGED items = PRESERVE original scannedAt timestamp
- * 6. REMOVED items = KEEP in snapshot with original scannedAt (for ownership history)
+ * 6. ONLY FETCH DETAILS FOR NEW ITEMS - reuse cached data for unchanged items
  */
+
+// Lightweight - just get UAIDs (fast!)
+async function scanInventoryUAIDs(robloxUserId: string): Promise<string[]> {
+  console.log('🔍 [DEBUG] Fetching UAID list from Roblox...');
+  const inventory = await scanFullInventory(robloxUserId);
+  const uaids = inventory.map((item: any) => item.userAssetId.toString());
+  console.log(`🔍 [DEBUG] Got ${uaids.length} UAIDs:`, uaids.slice(0, 5), '...');
+  return uaids;
+}
+
+// Heavy - fetch details only for specific UAIDs
+async function fetchItemDetailsByUAIDs(robloxUserId: string, uaids: string[]): Promise<any[]> {
+  console.log(`🔍 [DEBUG] Fetching full details for ${uaids.length} specific UAIDs:`, uaids);
+  const fullInventory = await scanFullInventory(robloxUserId);
+  const filtered = fullInventory.filter((item: any) => uaids.includes(item.userAssetId.toString()));
+  console.log(`🔍 [DEBUG] Filtered to ${filtered.length} items`);
+  return filtered;
+}
+
 export async function saveInventorySnapshot(userId: string, robloxUserId: string) {
   console.log('\n========== INVENTORY SCAN ==========');
   console.log(`userId: ${userId}`);
   console.log(`robloxUserId: ${robloxUserId}`);
 
-  // Fetch current inventory from Roblox
-  const currentInventory = await scanFullInventory(robloxUserId);
-  console.log(`📦 Fetched ${currentInventory.length} items from Roblox`);
-
-  if (!Array.isArray(currentInventory)) {
-    throw new Error('scanFullInventory did not return an array');
-  }
-
-  // Ensure asset IDs exist in database
-  const uniqueAssetIds = [...new Set(currentInventory.map((item: any) => item.assetId.toString()))];
-  const existingItems = await prisma.item.findMany({
-    where: { assetId: { in: uniqueAssetIds } },
-    select: { assetId: true }
-  });
-  
-  const existingAssetIds = new Set(existingItems.map(i => i.assetId));
-  const missingAssetIds = uniqueAssetIds.filter(id => !existingAssetIds.has(id));
-  
-  if (missingAssetIds.length > 0) {
-    await prisma.item.createMany({
-      data: missingAssetIds.map(assetId => ({
-        assetId,
-        name: `Unknown Item ${assetId}`,
-      })),
-      skipDuplicates: true,
-    });
-  }
-
-  // Check if today's snapshot exists
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
-
-  let todaysSnapshot = await prisma.inventorySnapshot.findFirst({
-    where: {
-      userId,
-      createdAt: {
-        gte: todayStart,
-        lte: todayEnd
-      }
-    },
-    include: { items: true }
-  });
-
-  // Get the most recent snapshot (for timestamp preservation)
+  // Get the most recent snapshot FIRST
+  console.log('🔍 [DEBUG] Looking for latest snapshot...');
   const latestSnapshot = await prisma.inventorySnapshot.findFirst({
     where: { userId },
     orderBy: { createdAt: 'desc' },
     include: { items: true }
   });
 
+  if (latestSnapshot) {
+    console.log(`🔍 [DEBUG] Found latest snapshot: ID=${latestSnapshot.id}, created=${latestSnapshot.createdAt}, items=${latestSnapshot.items.length}`);
+    console.log(`🔍 [DEBUG] Latest snapshot UAIDs:`, latestSnapshot.items.map(i => i.userAssetId).slice(0, 10), '...');
+  } else {
+    console.log('🔍 [DEBUG] No previous snapshot found');
+  }
+
+  // Fetch ONLY the lightweight UAID list from Roblox
+  console.log('🔍 [DEBUG] Calling scanInventoryUAIDs...');
+  const currentUAIDList = await scanInventoryUAIDs(robloxUserId);
+  console.log(`📦 Fetched ${currentUAIDList.length} UAIDs from Roblox`);
+
   if (!latestSnapshot) {
-    // VERY FIRST SNAPSHOT EVER - Create it
-    console.log('💾 Creating FIRST EVER snapshot...');
+    // FIRST SCAN EVER - need full details
+    console.log('💾 FIRST EVER scan - fetching full inventory...');
+    const fullInventory = await scanFullInventory(robloxUserId);
+    
+    // Ensure asset IDs exist in database
+    const uniqueAssetIds = [...new Set(fullInventory.map((item: any) => item.assetId.toString()))];
+    const existingItems = await prisma.item.findMany({
+      where: { assetId: { in: uniqueAssetIds } },
+      select: { assetId: true }
+    });
+    
+    const existingAssetIds = new Set(existingItems.map(i => i.assetId));
+    const missingAssetIds = uniqueAssetIds.filter(id => !existingAssetIds.has(id));
+    
+    if (missingAssetIds.length > 0) {
+      await prisma.item.createMany({
+        data: missingAssetIds.map(assetId => ({
+          assetId,
+          name: `Unknown Item ${assetId}`,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
     const snapshot = await prisma.inventorySnapshot.create({
       data: {
         userId,
         items: {
-          create: currentInventory.map((item: any) => ({
+          create: fullInventory.map((item: any) => ({
             assetId: item.assetId.toString(),
             userAssetId: item.userAssetId.toString(),
             serialNumber: item.serialNumber ?? null,
-            scannedAt: new Date() // All items are brand new
+            scannedAt: new Date()
           })),
         },
       },
@@ -91,67 +99,121 @@ export async function saveInventorySnapshot(userId: string, robloxUserId: string
     return snapshot;
   }
 
-  // Build timestamp map from LATEST snapshot (to preserve old scannedAt)
-  const previousTimestampMap = new Map(
-    latestSnapshot.items.map(item => [item.userAssetId, item.scannedAt])
-  );
-
-  // Compare current inventory with latest snapshot
-  const currentUAIDs = new Set(currentInventory.map((item: any) => item.userAssetId.toString()));
-  const latestUAIDs = new Set(latestSnapshot.items.map(item => item.userAssetId));
+  // Compare UAIDs to find what's NEW
+  console.log('🔍 [DEBUG] Comparing UAIDs...');
+  const previousUAIDSet = new Set(latestSnapshot.items.map(item => item.userAssetId));
+  const currentUAIDSet = new Set(currentUAIDList);
   
-  const newUAIDs = [...currentUAIDs].filter(uaid => !latestUAIDs.has(uaid));
-  const removedUAIDs = [...latestUAIDs].filter(uaid => !currentUAIDs.has(uaid));
+  console.log(`🔍 [DEBUG] Previous UAIDs count: ${previousUAIDSet.size}`);
+  console.log(`🔍 [DEBUG] Current UAIDs count: ${currentUAIDSet.size}`);
+  
+  const newUAIDs = [...currentUAIDSet].filter(uaid => !previousUAIDSet.has(uaid));
+  const removedUAIDs = [...previousUAIDSet].filter(uaid => !currentUAIDSet.has(uaid));
   
   console.log(`📊 Changes: ${newUAIDs.length} new, ${removedUAIDs.length} removed`);
+  console.log(`🔍 [DEBUG] New UAIDs:`, newUAIDs);
+  console.log(`🔍 [DEBUG] Removed UAIDs:`, removedUAIDs);
 
-  if (newUAIDs.length === 0 && removedUAIDs.length === 0) {
-    console.log(`✅ NO CHANGES - returning existing snapshot`);
-    console.log('====================================\n');
-    return latestSnapshot;
-  }
-
-  // Prepare ALL items (current + removed from latest)
-  const allItemsForSnapshot = [];
-  
-  // Add current items (new + unchanged)
-  for (const item of currentInventory) {
-    const userAssetId = item.userAssetId.toString();
-    const isNew = newUAIDs.includes(userAssetId);
-    const previousScannedAt = previousTimestampMap.get(userAssetId);
+  // Only fetch details for NEW items
+  let newItemsDetails = [];
+  if (newUAIDs.length > 0) {
+    console.log(`🔍 Fetching details for ${newUAIDs.length} NEW items only...`);
+    console.log(`🔍 [DEBUG] About to call fetchItemDetailsByUAIDs with:`, newUAIDs);
+    newItemsDetails = await fetchItemDetailsByUAIDs(robloxUserId, newUAIDs);
+    console.log(`🔍 [DEBUG] Got ${newItemsDetails.length} item details back`);
+    console.log(`🔍 [DEBUG] New items:`, newItemsDetails.map(i => ({ assetId: i.assetId, uaid: i.userAssetId })));
     
-    allItemsForSnapshot.push({
-      assetId: item.assetId.toString(),
-      userAssetId: userAssetId,
-      serialNumber: item.serialNumber ?? null,
-      // ✅ NEW items get current time, UNCHANGED keep original
-      scannedAt: isNew ? new Date() : (previousScannedAt || new Date())
+    // Ensure new assets exist in database
+    const newAssetIds = [...new Set(newItemsDetails.map(item => item.assetId.toString()))];
+    const existingItems = await prisma.item.findMany({
+      where: { assetId: { in: newAssetIds } },
+      select: { assetId: true }
     });
+    
+    const existingAssetIds = new Set(existingItems.map(i => i.assetId));
+    const missingAssetIds = newAssetIds.filter(id => !existingAssetIds.has(id));
+    
+    if (missingAssetIds.length > 0) {
+      console.log(`🔍 [DEBUG] Creating ${missingAssetIds.length} new Item records:`, missingAssetIds);
+      await prisma.item.createMany({
+        data: missingAssetIds.map(assetId => ({
+          assetId,
+          name: `Unknown Item ${assetId}`,
+        })),
+        skipDuplicates: true,
+      });
+    }
+  } else {
+    console.log(`✅ [DEBUG] No new items to fetch details for`);
   }
+
+  // Check if today's snapshot exists
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
   
-  // Add REMOVED items (for ownership history)
-  const removedItems = latestSnapshot.items.filter(item => 
-    removedUAIDs.includes(item.userAssetId)
-  );
-  
-  for (const item of removedItems) {
-    allItemsForSnapshot.push({
-      assetId: item.assetId,
-      userAssetId: item.userAssetId,
-      serialNumber: item.serialNumber,
-      scannedAt: item.scannedAt // ✅ PRESERVE original timestamp
-    });
-  }
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  console.log(`🔍 [DEBUG] Checking for today's snapshot (${todayStart} to ${todayEnd})...`);
+  let todaysSnapshot = await prisma.inventorySnapshot.findFirst({
+    where: {
+      userId,
+      createdAt: {
+        gte: todayStart,
+        lte: todayEnd
+      }
+    },
+    include: { items: true }
+  });
 
   if (todaysSnapshot) {
-    // TODAY'S SNAPSHOT EXISTS - UPDATE IT
+    console.log(`🔍 [DEBUG] Found today's snapshot: ID=${todaysSnapshot.id}, items=${todaysSnapshot.items.length}`);
+  } else {
+    console.log(`🔍 [DEBUG] No snapshot for today yet`);
+  }
+
+  // Build complete item list
+  console.log('🔍 [DEBUG] Building complete item list...');
+  const allItemsForSnapshot = [];
+  
+  // Add EXISTING items (unchanged) - reuse data from latestSnapshot
+  let unchangedCount = 0;
+  for (const item of latestSnapshot.items) {
+    if (currentUAIDSet.has(item.userAssetId)) {
+      // Item still in inventory, keep original data and timestamp
+      allItemsForSnapshot.push({
+        assetId: item.assetId,
+        userAssetId: item.userAssetId,
+        serialNumber: item.serialNumber,
+        scannedAt: item.scannedAt // ✅ PRESERVE original timestamp
+      });
+      unchangedCount++;
+    }
+  }
+  console.log(`🔍 [DEBUG] Added ${unchangedCount} unchanged items (reused from cache)`);
+  
+  // Add NEW items with fresh timestamp
+  for (const item of newItemsDetails) {
+    allItemsForSnapshot.push({
+      assetId: item.assetId.toString(),
+      userAssetId: item.userAssetId.toString(),
+      serialNumber: item.serialNumber ?? null,
+      scannedAt: new Date() // ✅ FRESH timestamp
+    });
+  }
+  console.log(`🔍 [DEBUG] Added ${newItemsDetails.length} new items with fresh scannedAt`);
+  console.log(`🔍 [DEBUG] Total items for snapshot: ${allItemsForSnapshot.length}`);
+
+  if (todaysSnapshot) {
+    // UPDATE today's snapshot
     console.log(`🔄 Updating TODAY'S snapshot (ID: ${todaysSnapshot.id})...`);
     
-    // Delete old items and replace with new set
+    console.log(`🔍 [DEBUG] Deleting old items from snapshot ${todaysSnapshot.id}...`);
     await prisma.inventoryItem.deleteMany({
       where: { snapshotId: todaysSnapshot.id }
     });
     
+    console.log(`🔍 [DEBUG] Creating ${allItemsForSnapshot.length} new inventory items...`);
     await prisma.inventoryItem.createMany({
       data: allItemsForSnapshot.map(item => ({
         ...item,
@@ -159,20 +221,19 @@ export async function saveInventorySnapshot(userId: string, robloxUserId: string
       }))
     });
     
-    // Fetch updated snapshot
     const updatedSnapshot = await prisma.inventorySnapshot.findUnique({
       where: { id: todaysSnapshot.id },
       include: { items: true }
     });
     
     console.log(`✅ UPDATED today's snapshot (${updatedSnapshot!.items.length} items total)`);
-    console.log(`   - ${newUAIDs.length} items got fresh scannedAt`);
-    console.log(`   - ${currentInventory.length - newUAIDs.length} items kept original scannedAt`);
-    console.log(`   - ${removedUAIDs.length} removed items tracked with original scannedAt`);
+    console.log(`   - ${newUAIDs.length} NEW items fetched and added`);
+    console.log(`   - ${unchangedCount} items reused from cache`);
+    console.log(`   - ${removedUAIDs.length} items were removed`);
     console.log('====================================\n');
     return updatedSnapshot!;
   } else {
-    // NEW DAY - CREATE NEW SNAPSHOT
+    // CREATE new snapshot for new day
     console.log(`📸 Creating NEW snapshot for new day...`);
     
     const newSnapshot = await prisma.inventorySnapshot.create({
@@ -186,9 +247,9 @@ export async function saveInventorySnapshot(userId: string, robloxUserId: string
     });
     
     console.log(`✅ NEW snapshot created (ID: ${newSnapshot.id}, ${newSnapshot.items.length} items)`);
-    console.log(`   - ${newUAIDs.length} items got fresh scannedAt`);
-    console.log(`   - ${currentInventory.length - newUAIDs.length} items kept original scannedAt`);
-    console.log(`   - ${removedUAIDs.length} removed items tracked with original scannedAt`);
+    console.log(`   - ${newUAIDs.length} NEW items fetched and added`);
+    console.log(`   - ${unchangedCount} items reused from cache`);
+    console.log(`   - ${removedUAIDs.length} items were removed`);
     console.log('====================================\n');
     return newSnapshot;
   }

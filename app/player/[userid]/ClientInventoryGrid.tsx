@@ -10,13 +10,30 @@ interface InventoryItemDisplay {
   count: number;
   serialNumbers?: (number | null)[]; // Array of serial numbers for each copy
   userAssetIds?: string[]; // Array of UAIDs
+  scannedAt: Date; // 👈 ONLY ADDED THIS LINE
 }
 
-export default function ClientInventoryGrid({ items, scannedTime }: { items: InventoryItemDisplay[], scannedTime: string | null }) {
+export default function ClientInventoryGrid({ items }: { items: InventoryItemDisplay[] }) { // 👈 REMOVED scannedTime prop
   const [sortBy, setSortBy] = useState('rap-high');
   const [showUAIDModal, setShowUAIDModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItemDisplay | null>(null);
   const [uaidSortBy, setUaidSortBy] = useState('uaid-low'); // New state for UAID sorting
+  
+  // 👇 ADDED THIS FUNCTION
+  const formatTimeSince = (date: Date | string) => {
+    const now = new Date();
+    const scannedDate = new Date(date);
+    const diffMs = now.getTime() - scannedDate.getTime();
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+    
+    if (diffMinutes < 1) return 'just now';
+    if (diffMinutes < 60) return `${diffMinutes} ${diffMinutes === 1 ? 'minute' : 'minutes'} ago`;
+    if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+    if (diffDays === 1) return 'yesterday';
+    return `${diffDays} days ago`;
+  };
   
   // Sort items
   const sortedItems = [...items].sort((a: any, b: any) => {
@@ -136,19 +153,21 @@ export default function ClientInventoryGrid({ items, scannedTime }: { items: Inv
                   
                   {/* Single UAID button */}
                   {showUAIDButton && uaid && (
-                    <a
-                      href={`/uaid/${uaid}`}
-                      className="block w-full bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3 py-1 rounded-lg text-center transition-colors"
-                      title="View UAID details"
-                    >
-                      Visit UAID Page
-                    </a>
+                    
+                      <a
+                        href={`/uaid/${uaid}`}
+                        className="block w-full bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-3 py-1 rounded-lg text-center transition-colors"
+                        title="View UAID details"
+                      >
+                        Visit UAID Page
+                      </a>
                   )}
                 </div>
                 
-                {scannedTime && (
+                {/* 👇 CHANGED THIS SECTION */}
+                {item.scannedAt && (
                   <p className="text-slate-500 text-xs mt-2">
-                    Scanned {scannedTime}
+                    Scanned {formatTimeSince(item.scannedAt)}
                   </p>
                 )}
               </div>
@@ -159,7 +178,7 @@ export default function ClientInventoryGrid({ items, scannedTime }: { items: Inv
 
       {/* UAID Modal */}
       {showUAIDModal && selectedItem && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/60 flex items-start justify-center z-50 pt-20 p-8 overflow-y-auto"
           onClick={closeModal}
         >
@@ -169,9 +188,9 @@ export default function ClientInventoryGrid({ items, scannedTime }: { items: Inv
           >
             <div className="flex justify-between items-start mb-3">
               <div>
-                <h3 className="text-white text-lg font-semibold">{selectedItem.name}</h3>
+                <h3 className="text-white text-lg font-semibold">{selectedItem?.name}</h3>
                 <p className="text-slate-400 text-xs">
-                  {selectedItem.count} {selectedItem.count === 1 ? 'copy' : 'copies'} • {selectedItem.rap.toLocaleString()} R$ each
+                  {selectedItem?.count} {selectedItem?.count === 1 ? 'copy' : 'copies'} • {selectedItem?.rap?.toLocaleString()} R$ each
                 </p>
               </div>
               <button
@@ -198,10 +217,10 @@ export default function ClientInventoryGrid({ items, scannedTime }: { items: Inv
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1">
               {(() => {
                 // Create array of objects with index for sorting
-                const uaidData = selectedItem.userAssetIds?.map((uaid, index) => ({
+                const uaidData = selectedItem?.userAssetIds?.map((uaid, index) => ({
                   uaid,
                   index,
-                  serial: selectedItem.serialNumbers?.[index]
+                  serial: selectedItem?.serialNumbers?.[index]
                 })) || [];
 
                 // Sort based on selected option
@@ -242,8 +261,8 @@ export default function ClientInventoryGrid({ items, scannedTime }: { items: Inv
                 ));
               })()}
             </div>
-            </div>
           </div>
+        </div>
       )}
     </>
   );

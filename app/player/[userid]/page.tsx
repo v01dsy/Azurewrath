@@ -283,7 +283,7 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
               </p>
             </div>
           ) : (
-            <ClientInventoryGrid items={inventory as any[]} scannedTime={scannedTime} />
+            <ClientInventoryGrid items={inventory as any[]} />
           )}
         </div>
       </div>

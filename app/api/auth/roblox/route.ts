@@ -1,45 +1,47 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import crypto from 'crypto';
+
+function base64URLEncode(str: Buffer) {
+  return str.toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+}
+
+function sha256(buffer: string) {
+  return crypto.createHash('sha256').update(buffer).digest();
+}
 
 export async function GET() {
   const clientId = process.env.ROBLOX_CLIENT_ID;
   const redirectUri = process.env.ROBLOX_REDIRECT_URI;
   const state = Math.random().toString(36).substring(2, 15);
   
-  // Debug logging
-  console.log('Environment variables check:');
-  console.log('CLIENT_ID:', clientId ? 'Set' : 'MISSING');
-  console.log('REDIRECT_URI:', redirectUri ? redirectUri : 'MISSING');
-  console.log('All env vars:', Object.keys(process.env).filter(key => key.startsWith('ROBLOX')));
+  // Generate PKCE code verifier and challenge
+  const codeVerifier = base64URLEncode(crypto.randomBytes(32));
+  const codeChallenge = base64URLEncode(sha256(codeVerifier));
   
-  // Fail early if missing
-  if (!clientId || !redirectUri) {
-    return NextResponse.json(
-      { 
-        error: 'Missing environment variables',
-        details: {
-          clientId: clientId ? 'set' : 'missing',
-          redirectUri: redirectUri || 'missing'
-        }
-      },
-      { status: 500 }
-    );
-  }
-  
-  // Store state in cookie for CSRF protection
   const cookieStore = await cookies();
   cookieStore.set('oauth_state', state, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    maxAge: 600, // 10 minutes
+    maxAge: 600,
+  });
+  cookieStore.set('code_verifier', codeVerifier, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 600,
   });
   
   const authUrl = new URL('https://apis.roblox.com/oauth/v1/authorize');
-  authUrl.searchParams.append('client_id', clientId);
-  authUrl.searchParams.append('redirect_uri', redirectUri);
+  authUrl.searchParams.append('client_id', clientId!);
+  authUrl.searchParams.append('redirect_uri', redirectUri!);
   authUrl.searchParams.append('scope', 'openid profile');
   authUrl.searchParams.append('response_type', 'code');
   authUrl.searchParams.append('state', state);
+  authUrl.searchParams.append('code_challenge', codeChallenge);
+  authUrl.searchParams.append('code_challenge_method', 'S256');
   
   return NextResponse.redirect(authUrl.toString());
 }

@@ -8,51 +8,39 @@ export async function GET(request: NextRequest) {
   
   const cookieStore = await cookies();
   const storedState = cookieStore.get('oauth_state')?.value;
-  
-  console.log('Callback received - code:', code ? 'present' : 'missing');
-  console.log('State match:', state === storedState);
+  const codeVerifier = cookieStore.get('code_verifier')?.value;
   
   if (state !== storedState) {
     return NextResponse.redirect(new URL('/verify?error=invalid_state', request.url));
   }
   
-  if (!code) {
+  if (!code || !codeVerifier) {
     return NextResponse.redirect(new URL('/verify?error=no_code', request.url));
   }
   
   try {
-    const clientId = process.env.ROBLOX_CLIENT_ID;
-    const clientSecret = process.env.ROBLOX_CLIENT_SECRET;
-    const redirectUri = process.env.ROBLOX_REDIRECT_URI;
-    
-    console.log('Env vars - clientId:', clientId ? 'set' : 'MISSING');
-    console.log('Env vars - clientSecret:', clientSecret ? 'set' : 'MISSING');
-    console.log('Env vars - redirectUri:', redirectUri || 'MISSING');
-    
     const tokenResponse = await fetch('https://apis.roblox.com/oauth/v1/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${Buffer.from(
-          `${clientId}:${clientSecret}`
-        ).toString('base64')}`,
       },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         code: code,
-        redirect_uri: redirectUri!,
+        client_id: process.env.ROBLOX_CLIENT_ID!,
+        client_secret: process.env.ROBLOX_CLIENT_SECRET!,
+        redirect_uri: process.env.ROBLOX_REDIRECT_URI!,
+        code_verifier: codeVerifier,
       }),
     });
     
-    console.log('Token response status:', tokenResponse.status);
-    const tokenText = await tokenResponse.text();
-    console.log('Token response body:', tokenText);
-    
     if (!tokenResponse.ok) {
-      throw new Error(`Token exchange failed: ${tokenResponse.status} - ${tokenText}`);
+      const error = await tokenResponse.text();
+      console.error('Token exchange failed:', error);
+      throw new Error('Token exchange failed');
     }
     
-    const tokens = JSON.parse(tokenText);
+    const tokens = await tokenResponse.json();
     
     const userInfoResponse = await fetch('https://apis.roblox.com/oauth/v1/userinfo', {
       headers: {

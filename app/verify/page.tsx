@@ -111,7 +111,7 @@ function VerifyContent() {
     
     // Redirect to their profile after 1.5 seconds
     setTimeout(() => {
-      window.location.href = `/profile/${data.userInfo.sub}`;
+      window.location.href = `/player/${data.userInfo.sub}`;
     }, 1500);
     
   } catch (error) {

@@ -60,25 +60,27 @@ export async function POST(request: NextRequest) {
     console.log('Roblox User Info:', userInfo);
     
     // TODO: Save user to database here
-    // Example:
+    // Example with Prisma:
     // await prisma.user.upsert({
     //   where: { robloxId: userInfo.sub },
     //   update: { 
     //     username: userInfo.preferred_username,
+    //     avatar: userInfo.picture,
     //     lastLogin: new Date()
     //   },
     //   create: {
     //     robloxId: userInfo.sub,
     //     username: userInfo.preferred_username,
+    //     avatar: userInfo.picture,
     //   }
     // });
     
     // Create a session cookie
     const cookieStore = await cookies();
-    cookieStore.set('roblox_user', JSON.stringify({
-      id: userInfo.sub,
+    cookieStore.set('session', JSON.stringify({
+      userId: userInfo.sub,
       username: userInfo.preferred_username,
-      profile_picture: userInfo.picture,
+      avatar: userInfo.picture,
     }), {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -89,7 +91,11 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({ 
       success: true,
-      userInfo 
+      userInfo: {
+        sub: userInfo.sub,
+        preferred_username: userInfo.preferred_username,
+        picture: userInfo.picture,
+      }
     });
     
   } catch (error) {

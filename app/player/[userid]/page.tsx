@@ -48,6 +48,12 @@ interface PlayerData {
   isPrivate?: boolean;
 }
 
+interface LoggedInUser {
+  userId: string;
+  username: string;
+  avatar: string;
+}
+
 // Helper function for "time ago"
 function timeAgo(dateString: string): string {
   const date = new Date(dateString);
@@ -82,6 +88,23 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
   const [showModal, setShowModal] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<{ id: string; date: string } | null>(null);
   const [showDescriptionModal, setShowDescriptionModal] = useState(false);
+  
+  // Auth state
+  const [loggedInUser, setLoggedInUser] = useState<LoggedInUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    // Check if user is logged in
+    fetch('/api/auth/me')
+      .then(res => res.json())
+      .then(data => {
+        setLoggedInUser(data.user);
+        setAuthLoading(false);
+      })
+      .catch(() => {
+        setAuthLoading(false);
+      });
+  }, []);
 
   useEffect(() => {
     fetchPlayerData();
@@ -117,6 +140,16 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
   const handleGraphPointClick = (snapshotId: string, date: string) => {
     setSelectedSnapshot({ id: snapshotId, date });
     setShowModal(true);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      setLoggedInUser(null);
+      window.location.reload();
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
   };
 
   if (loading && !data) {
@@ -169,10 +202,32 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
 
   const { user, inventory, stats, graphData, isPrivate } = data;
   const scannedTime = stats.lastScanned ? timeAgo(stats.lastScanned) : null;
+  const isOwnProfile = loggedInUser?.userId === user.robloxUserId;
 
   return (
     <div className="min-h-screen bg-slate-900 p-4">
       <div className="max-w-7xl mx-auto">
+        {/* Logged in indicator at top */}
+        {!authLoading && loggedInUser && (
+          <div className="mb-4 bg-slate-800 rounded-lg border border-purple-500/20 p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <img src={loggedInUser.avatar} alt="Avatar" className="w-10 h-10 rounded-full" />
+              <div>
+                <p className="text-white font-semibold">Logged in as {loggedInUser.username}</p>
+                {isOwnProfile && (
+                  <p className="text-purple-400 text-sm">This is your profile</p>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors"
+            >
+              Logout
+            </button>
+          </div>
+        )}
+
         {/* Top Row - Sidebar + Graph */}
         <div className="flex items-stretch gap-6 mb-8">
           {/* Left Sidebar - Avatar & Profile Info */}

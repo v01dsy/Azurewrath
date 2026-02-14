@@ -27,6 +27,31 @@ export default function RootLayout({
     <html lang="en" role="document">
       <head>
         <link rel="icon" type="image/png" href="/Images/icon.png" />
+        <style>{`
+          /* Custom Scrollbar */
+          ::-webkit-scrollbar {
+            width: 8px;
+          }
+          
+          ::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          
+          ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+          }
+          
+          ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+          }
+          
+          /* Firefox */
+          * {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+          }
+        `}</style>
       </head>
       <body className="bg-[#0a0a0a] text-[#e0e0e0]">
         <Script
@@ -54,6 +79,10 @@ export default function RootLayout({
             <a href="/deals">
               <img src="/Images/deals.png" alt="Deals icon" draggable="false" />
               <p>Deals</p>
+            </a>
+            <a href="/sales">
+              <img src="/Images/sales.png" alt="Sales icon" draggable="false" />
+              <p>Sales</p>
             </a>
             <ProfileDropdown />
           </nav>

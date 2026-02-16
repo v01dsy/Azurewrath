@@ -8,8 +8,7 @@ import axios from 'axios';
 type SearchMode = 'limited' | 'player';
 
 interface SearchResult {
-  id: string;
-  assetId: string;
+  assetId: string;  // REMOVED id field - assetId is the primary key
   name: string;
   displayName?: string;
   imageUrl?: string;

@@ -1,18 +1,47 @@
 import prisma from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
+// Helper to convert BigInt to string for JSON serialization
+function serializeBigInt<T>(obj: T): any {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'bigint') return obj.toString();
+  if (Array.isArray(obj)) return obj.map(item => serializeBigInt(item));
+  if (typeof obj === 'object') {
+    const serialized: any = {};
+    for (const key in obj) {
+      if (obj.hasOwnProperty(key)) {
+        serialized[key] = serializeBigInt((obj as any)[key]);
+      }
+    }
+    return serialized;
+  }
+  return obj;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: itemId } = await params;
+    const { id: itemIdString } = await params;
+    
+    // Convert itemId to BigInt for database query
+    const itemIdBigInt = BigInt(itemIdString);
+    
     const item = await prisma.item.findUnique({
       where: {
-        assetId: itemId
+        assetId: itemIdBigInt
       },
       include: {
         priceHistory: {
+          select: {
+            id: true,
+            itemId: true,
+            price: true,
+            rap: true,
+            salesVolume: true,
+            timestamp: true,
+          },
           orderBy: { timestamp: 'desc' },
           take: 1
         }
@@ -26,59 +55,39 @@ export async function GET(
       );
     }
 
+    // Fetch sales - now with oldRap and newRap
     const sales = await prisma.sale.findMany({
-      where: { itemId: item.assetId },
+      where: { itemId: itemIdBigInt },
       orderBy: {
         saleDate: 'desc',
       },
     });
 
-    // Get all price history for this item
-    const priceHistory = await prisma.priceHistory.findMany({
-      where: { itemId: item.assetId },
-      orderBy: { timestamp: 'asc' },
-    });
-
-    // Calculate actual sale prices
-    const salesWithCorrectPrices = sales.map((sale) => {
-      // Find the RAP at the time of sale (closest timestamp before or at sale date)
-      const rapAtSale = priceHistory
-        .filter(ph => new Date(ph.timestamp) <= new Date(sale.saleDate))
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
-
-      // Find the previous RAP entry before the sale (this is what we show in the RAP column)
-      const previousRap = priceHistory
-        .filter(ph => new Date(ph.timestamp) < new Date(rapAtSale?.timestamp || sale.saleDate))
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
-
-      if (rapAtSale && previousRap && rapAtSale.rap !== null && previousRap.rap !== null) {
-        const rapDifference = rapAtSale.rap - previousRap.rap;
-        // Sale Price = Previous RAP + (RAP Difference × 10)
-        const actualSalePrice = previousRap.rap + (rapDifference * 10);
-        
-        return {
-          ...sale,
-          salePrice: actualSalePrice,
-          rapAfterSale: rapAtSale.rap,  // NEW: RAP after the sale
-          rapBeforeSale: previousRap.rap,
-          rapDifference: rapDifference
-        };
-      }
-
-      // If we can't calculate, return the stored price
+    // Transform sales data - calculate sale price from oldRap and newRap
+    const salesWithCalculatedPrices = sales.map((sale) => {
+      const { itemId, oldRap, newRap, ...saleData } = sale;
+      
+      // Calculate sale price: oldRap + ((newRap - oldRap) * 10)
+      const rapDifference = newRap - oldRap;
+      const salePrice = oldRap + (rapDifference * 10);
+      
       return {
-        ...sale,
-        rapBeforeSale: null
+        ...saleData,
+        itemId: itemId.toString(), // Convert BigInt to string
+        oldRap: oldRap,
+        newRap: newRap,
+        salePrice: salePrice,
+        rapDifference: rapDifference
       };
     });
 
     // Get current RAP
     const currentRap = item.priceHistory[0]?.rap || null;
 
-    return NextResponse.json({
-      sales: salesWithCorrectPrices,
+    return NextResponse.json(serializeBigInt({
+      sales: salesWithCalculatedPrices,
       currentRap: currentRap
-    });
+    }));
   } catch (error) {
     console.error('Fetch sales error:', error);
     return NextResponse.json(

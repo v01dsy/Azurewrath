@@ -212,10 +212,10 @@ def process_items_batch(items_batch, rolimons_data, previous_raps):
         # [0] = name, [1] = best price, [2] = RAP, [3-8] = other data, [9] = thumbnail
         
         best_price = item_data[1] if len(item_data) > 1 and item_data[1] else None
-        rap = item_data[2] if len(item_data) > 2 and item_data[2] else None
+        current_rap = item_data[2] if len(item_data) > 2 and item_data[2] else None
         
         # Skip if no RAP data
-        if rap is None:
+        if current_rap is None:
             stats['skipped_no_rap'] += 1
             continue
         
@@ -224,20 +224,22 @@ def process_items_batch(items_batch, rolimons_data, previous_raps):
         
         # Use best_price as the price field
         price = best_price
-        lowest_resale = None
         
         # Check if RAP changed
         previous_rap = previous_raps.get(asset_id)
         rap_changed = False
+        old_rap = None
+        new_rap = None
         
-        if previous_rap is not None:
-            rap_changed = rap != previous_rap
-            if rap_changed:
-                logger.info(f"📈 RAP Change: {name} - {previous_rap} → {rap}")
+        if previous_rap is not None and previous_rap != current_rap:
+            rap_changed = True
+            old_rap = previous_rap
+            new_rap = current_rap
+            logger.info(f"📈 RAP Change: {name} - {old_rap} → {new_rap}")
         
         # Count good deals (best price < RAP)
-        if best_price and rap and best_price < rap:
-            discount = ((rap - best_price) / rap) * 100
+        if best_price and current_rap and best_price < current_rap:
+            discount = ((current_rap - best_price) / current_rap) * 100
             if discount > 5:  # Only count deals > 5% off
                 stats['deals_found'] += 1
         
@@ -245,9 +247,10 @@ def process_items_batch(items_batch, rolimons_data, previous_raps):
             'asset_id': asset_id,
             'name': name,
             'price': price,
-            'rap': rap,
-            'lowest_resale': lowest_resale,
-            'rap_changed': rap_changed
+            'rap': current_rap,  # This is the NEW/current RAP
+            'rap_changed': rap_changed,
+            'old_rap': old_rap,
+            'new_rap': new_rap
         })
     
     return results, stats
@@ -309,9 +312,12 @@ def bulk_insert_with_copy(cursor, data, table_name, columns):
         for val in row:
             if val is None:
                 converted_row.append('\\N')
-            elif isinstance(val, (int, float)):
-                # Convert numbers to float format for PostgreSQL Float columns
-                converted_row.append(str(float(val)))
+            elif isinstance(val, int):
+                # Keep integers as integers (for BigInt columns)
+                converted_row.append(str(val))
+            elif isinstance(val, float):
+                # Float values stay as floats
+                converted_row.append(str(val))
             else:
                 converted_row.append(str(val))
         
@@ -358,11 +364,10 @@ def save_results_to_db(results, is_new_window):
                     record_id = str(uuid.uuid4())
                     price_history_data.append((
                         record_id,              # id
-                        result['asset_id'],     # itemId (now using assetId)
+                        result['asset_id'],     # itemId
                         result['price'],        # price
-                        result['rap'],          # rap
-                        result['lowest_resale'],# lowestResale
-                        None,                   # salesVolume
+                        result['rap'],          # rap (this is the NEW/current RAP)
+                        None,                   # salesVolume (will be populated later if needed)
                         window_timestamp        # timestamp (start of 30min window)
                     ))
                     # Store record ID for future updates
@@ -373,7 +378,7 @@ def save_results_to_db(results, is_new_window):
                     cursor,
                     price_history_data,
                     'PriceHistory',
-                    ('id', 'itemId', 'price', 'rap', 'lowestResale', 'salesVolume', 'timestamp')
+                    ('id', 'itemId', 'price', 'rap', 'salesVolume', 'timestamp')
                 )
                 logger.info(f"✅ Inserted {len(price_history_data)} NEW PriceHistory records")
         
@@ -383,12 +388,12 @@ def save_results_to_db(results, is_new_window):
             
             # Fetch current values from database
             cursor.execute('''
-                SELECT id, "itemId", price, rap, "lowestResale"
+                SELECT id, "itemId", price, rap
                 FROM "PriceHistory"
                 WHERE timestamp = %s
             ''', (window_timestamp,))
             
-            current_records = {row[1]: {'id': row[0], 'price': row[2], 'rap': row[3], 'lowest_resale': row[4]} 
+            current_records = {row[1]: {'id': row[0], 'price': row[2], 'rap': row[3]} 
                                for row in cursor.fetchall()}
             
             logger.info(f"📋 Fetched {len(current_records)} existing records")
@@ -403,14 +408,12 @@ def save_results_to_db(results, is_new_window):
                     if current:
                         # Check if ANY field changed
                         if (current['price'] != result['price'] or 
-                            current['rap'] != result['rap'] or 
-                            current['lowest_resale'] != result['lowest_resale']):
+                            current['rap'] != result['rap']):
                             
                             update_data.append((
                                 current['id'],
                                 result['price'],
-                                result['rap'],
-                                result['lowest_resale']
+                                result['rap']
                             ))
             
             # Only UPDATE if there are changes
@@ -422,8 +425,7 @@ def save_results_to_db(results, is_new_window):
                     CREATE TEMPORARY TABLE temp_price_updates (
                         record_id UUID,
                         new_price REAL,
-                        new_rap REAL,
-                        new_lowest_resale REAL
+                        new_rap REAL
                     )
                 ''')
                 
@@ -432,7 +434,7 @@ def save_results_to_db(results, is_new_window):
                     cursor,
                     update_data,
                     'temp_price_updates',
-                    ('record_id', 'new_price', 'new_rap', 'new_lowest_resale')
+                    ('record_id', 'new_price', 'new_rap')
                 )
                 
                 # Single UPDATE statement
@@ -440,8 +442,7 @@ def save_results_to_db(results, is_new_window):
                     UPDATE "PriceHistory" ph
                     SET 
                         price = t.new_price,
-                        rap = t.new_rap,
-                        "lowestResale" = t.new_lowest_resale
+                        rap = t.new_rap
                     FROM temp_price_updates t
                     WHERE ph.id::text = t.record_id::text
                 ''')
@@ -454,17 +455,15 @@ def save_results_to_db(results, is_new_window):
             else:
                 logger.info("✅ No changes detected - skipping UPDATE")
         
-        # Handle Sales (RAP changes) - always INSERT when RAP changes
+        # Handle Sales (RAP changes) - INSERT when RAP changes with oldRap and newRap
         sale_data = []
         for result in results:
-            if result['rap_changed'] and result['rap'] is not None:
+            if result['rap_changed'] and result['old_rap'] is not None and result['new_rap'] is not None:
                 sale_data.append((
-                    str(uuid.uuid4()),  # id
-                    result['asset_id'], # itemId (now using assetId)
-                    result['rap'],      # salePrice
-                    None,               # sellerUsername
-                    None,               # buyerUsername
-                    None,               # serialNumber
+                    str(uuid.uuid4()),          # id
+                    result['asset_id'],         # itemId
+                    result['old_rap'],          # oldRap
+                    result['new_rap'],          # newRap
                     current_time.replace(tzinfo=None)  # saleDate (naive datetime in local time)
                 ))
         
@@ -474,7 +473,7 @@ def save_results_to_db(results, is_new_window):
                 cursor,
                 sale_data,
                 'Sale',
-                ('id', 'itemId', 'salePrice', 'sellerUsername', 'buyerUsername', 'serialNumber', 'saleDate')
+                ('id', 'itemId', 'oldRap', 'newRap', 'saleDate')
             )
             logger.info(f"✅ Inserted {len(sale_data)} Sale records")
         
@@ -626,7 +625,7 @@ def update_item_prices():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Get all items from database - FIXED: Changed from 'id' to 'assetId'
+        # Get all items from database
         logger.info("Fetching items from database...")
         cursor.execute('SELECT "assetId", name FROM "Item"')
         items = cursor.fetchall()
@@ -675,13 +674,14 @@ def update_item_prices():
 def main():
     """Main worker loop"""
     logger.info("=" * 80)
-    logger.info("🚀 Azurewrath Worker Starting (CHECK-THEN-UPDATE OPTIMIZED)")
+    logger.info("🚀 Azurewrath Worker Starting (Rolimons API)")
     logger.info("=" * 80)
     logger.info(f"Mode: Rolimons Deals Page Scraping")
     logger.info(f"Update interval: {WORKER_INTERVAL} seconds")
-    logger.info(f"PriceHistory: Snapshots every 30 minutes")
+    logger.info(f"PriceHistory: Snapshots every 30 minutes (rap = NEW RAP)")
+    logger.info(f"Sale: Created on RAP change (oldRap + newRap)")
     logger.info(f"Database: {DATABASE_URL[:30]}..." if DATABASE_URL else "No database URL!")
-    logger.info(f"Optimizations: Parallel processing, COPY bulk inserts, RAP caching, 30min windows, CHECK-THEN-UPDATE")
+    logger.info(f"Optimizations: Parallel processing, COPY bulk inserts, RAP caching, 30min windows")
     logger.info("=" * 80)
     
     # Initialize connection pool

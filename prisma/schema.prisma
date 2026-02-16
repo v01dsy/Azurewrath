@@ -8,7 +8,7 @@ datasource db {
 }
 
 model Item {
-  assetId        String          @id
+  assetId        BigInt          @id
   name           String
   imageUrl       String?
   description    String?
@@ -23,7 +23,7 @@ model Item {
 
 model PriceHistory {
   id           String   @id @default(cuid())
-  itemId       String
+  itemId       BigInt   // CHANGED FROM String TO BigInt
   price        Float
   rap          Float?
   lowestResale Float?
@@ -36,21 +36,19 @@ model PriceHistory {
 }
 
 model Sale {
-  id             String   @id @default(cuid())
-  itemId         String
-  salePrice      Float
-  sellerUsername String?
-  buyerUsername  String?
-  serialNumber   Int?
-  saleDate       DateTime @default(now())
-  item           Item     @relation(fields: [itemId], references: [assetId], onDelete: Cascade)
+  id       String   @id @default(cuid())
+  itemId   BigInt
+  oldRap   Float
+  newRap   Float
+  saleDate DateTime @default(now())
+  item     Item     @relation(fields: [itemId], references: [assetId], onDelete: Cascade)
 
   @@index([itemId, saleDate])
   @@index([saleDate])
 }
 
 model User {
-  robloxUserId      String              @id
+  robloxUserId      BigInt              @id  // CHANGE FROM String TO BigInt
   username          String
   displayName       String?
   avatarUrl         String?
@@ -64,7 +62,7 @@ model User {
 
 model InventorySnapshot {
   id          String          @id @default(cuid())
-  userId      String
+  userId      BigInt          // CHANGE FROM String TO BigInt
   createdAt   DateTime        @default(now())
   totalRAP    Float?
   totalItems  Int?
@@ -79,7 +77,7 @@ model InventorySnapshot {
 model InventoryItem {
   id           String            @id @default(cuid())
   snapshotId   String
-  assetId      String
+  assetId      BigInt            // CHANGED FROM String TO BigInt
   userAssetId  String
   scannedAt    DateTime          @default(now())
   serialNumber Int?
@@ -95,7 +93,7 @@ model InventoryItem {
 model Session {
   id           String   @id @default(cuid())
   sessionToken String   @unique
-  userId       String
+  userId       BigInt   // CHANGE FROM String TO BigInt
   user         User     @relation(fields: [userId], references: [robloxUserId], onDelete: Cascade)
   expires      DateTime
   createdAt    DateTime @default(now())

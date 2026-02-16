@@ -1,5 +1,5 @@
 // app/api/sales/route.ts
-// CALCULATES SALE PRICE using Roblox RAP formula: Sale Price = (New RAP - Old RAP) × 10 + Old RAP
+// Sale price is calculated from oldRap and newRap: Sale Price = oldRap + ((newRap - oldRap) × 10)
 
 import { NextResponse } from 'next/server';
 import { Pool } from 'pg';
@@ -24,50 +24,24 @@ export async function GET(request: Request) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    // Calculate sale price using RAP formula: Sale Price = (New RAP - Old RAP) × 10 + Old RAP
+    // Sale table now has oldRap and newRap directly
     const query = `
-      WITH sales_with_rap AS (
-        SELECT 
-          s.id,
-          s."itemId",
-          s."saleDate",
-          s."sellerUsername",
-          s."buyerUsername",
-          s."serialNumber",
-          i.name as "itemName",
-          i."assetId",
-          i."imageUrl" as "thumbnailUrl",
-          -- Old RAP: previous sale's salePrice (which stores RAP)
-          LAG(s."salePrice") OVER (
-            PARTITION BY s."itemId" 
-            ORDER BY s."saleDate"
-          ) as "oldRap",
-          -- New RAP: current sale's salePrice (which stores RAP)
-          s."salePrice" as "newRap"
-        FROM "Sale" s
-        JOIN "Item" i ON s."itemId" = i.id
-      )
       SELECT 
-        id,
-        "itemId",
-        "saleDate",
-        "sellerUsername",
-        "buyerUsername",
-        "serialNumber",
-        "itemName",
-        "assetId",
-        "thumbnailUrl",
-        "oldRap",
-        "newRap",
-        -- Calculate sale price: (New RAP - Old RAP) × 10 + Old RAP
-        CASE 
-          WHEN "oldRap" IS NOT NULL THEN 
-            ROUND(("newRap" - "oldRap") * 10 + "oldRap")
-          ELSE 
-            "newRap"
-        END as "salePrice"
-      FROM sales_with_rap
-      ORDER BY "saleDate" DESC
+        s.id,
+        s."itemId",
+        s."saleDate",
+        s."oldRap",
+        s."newRap",
+        i.name as "itemName",
+        i."assetId",
+        i."imageUrl" as "thumbnailUrl",
+        -- Calculate sale price: oldRap + ((newRap - oldRap) × 10)
+        ROUND(s."oldRap" + ((s."newRap" - s."oldRap") * 10)) as "salePrice",
+        -- Calculate RAP difference
+        (s."newRap" - s."oldRap") as "rapDifference"
+      FROM "Sale" s
+      JOIN "Item" i ON s."itemId" = i."assetId"
+      ORDER BY s."saleDate" DESC
       LIMIT $1 OFFSET $2
     `;
 
@@ -78,8 +52,15 @@ export async function GET(request: Request) {
     const countResult = await pool.query(countQuery);
     const totalCount = parseInt(countResult.rows[0].count);
 
+    // Convert BigInt to string for JSON serialization
+    const sales = result.rows.map(row => ({
+      ...row,
+      itemId: row.itemId.toString(),
+      assetId: row.assetId.toString()
+    }));
+
     return NextResponse.json({
-      sales: result.rows,
+      sales: sales,
       pagination: {
         total: totalCount,
         limit,
@@ -121,16 +102,18 @@ export async function POST(request: Request) {
       SELECT 
         s.id,
         s."itemId",
-        s."salePrice",
+        s."oldRap",
+        s."newRap",
         s."saleDate",
-        s."sellerUsername",
-        s."buyerUsername",
-        s."serialNumber",
         i.name as "itemName",
         i."assetId",
-        i."imageUrl" as "thumbnailUrl"
+        i."imageUrl" as "thumbnailUrl",
+        -- Calculate sale price: oldRap + ((newRap - oldRap) × 10)
+        ROUND(s."oldRap" + ((s."newRap" - s."oldRap") * 10)) as "salePrice",
+        -- Calculate RAP difference
+        (s."newRap" - s."oldRap") as "rapDifference"
       FROM "Sale" s
-      JOIN "Item" i ON s."itemId" = i.id
+      JOIN "Item" i ON s."itemId" = i."assetId"
       WHERE s."itemId" = $1
       ORDER BY s."saleDate" DESC
       LIMIT $2
@@ -138,8 +121,15 @@ export async function POST(request: Request) {
 
     const result = await pool.query(query, [itemId, Math.min(limit, 100)]);
 
+    // Convert BigInt to string for JSON serialization
+    const sales = result.rows.map(row => ({
+      ...row,
+      itemId: row.itemId.toString(),
+      assetId: row.assetId.toString()
+    }));
+
     return NextResponse.json({
-      sales: result.rows
+      sales: sales
     });
 
   } catch (error) {

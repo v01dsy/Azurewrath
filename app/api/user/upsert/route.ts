@@ -6,7 +6,10 @@ import { fetchRobloxUserInfo, fetchRobloxHeadshotUrl } from '../../../../lib/rob
 export async function POST(req: NextRequest) {
   const body = await req.json();
   let { robloxUserId, username, displayName, avatarUrl, description } = body;
+  
+  // Convert robloxUserId to string first (in case it's a number from API)
   robloxUserId = robloxUserId?.toString();
+  
   // If only robloxUserId is provided, fetch Roblox info and headshot
   if (robloxUserId && (!username || !avatarUrl)) {
     const robloxInfo = await fetchRobloxUserInfo(robloxUserId);
@@ -18,17 +21,41 @@ export async function POST(req: NextRequest) {
     description = robloxInfo.description;
     avatarUrl = await fetchRobloxHeadshotUrl(robloxUserId);
   }
+  
   if (!robloxUserId || !username) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
+  
   try {
+    // IMPORTANT: Convert string to BigInt for Prisma
+    const robloxUserIdBigInt = BigInt(robloxUserId);
+    
     const user = await prisma.user.upsert({
-      where: { robloxUserId },
-      update: { username, displayName, avatarUrl, description },
-      create: { robloxUserId, username, displayName, avatarUrl, description },
+      where: { 
+        robloxUserId: robloxUserIdBigInt 
+      },
+      update: { 
+        username, 
+        displayName, 
+        avatarUrl, 
+        description 
+      },
+      create: { 
+        robloxUserId: robloxUserIdBigInt, 
+        username, 
+        displayName, 
+        avatarUrl, 
+        description 
+      },
     });
-    return NextResponse.json(user);
+    
+    // Convert BigInt back to string for JSON response
+    return NextResponse.json({
+      ...user,
+      robloxUserId: user.robloxUserId.toString()
+    });
   } catch (error) {
+    console.error('User upsert error:', error);
     let message = 'Failed to upsert user';
     if (error && typeof error === 'object' && 'message' in error && typeof (error as any).message === 'string') {
       message = (error as any).message;

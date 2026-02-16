@@ -68,10 +68,14 @@ export async function POST(request: NextRequest) {
     
     console.log('Roblox User Info:', userInfo);
     
+    // IMPORTANT: Convert robloxUserId to BigInt
+    // The 'sub' field from OAuth is a string, but we need to convert it to BigInt
+    const robloxUserIdBigInt = BigInt(userInfo.sub);
+    
     // Upsert user in database
     const user = await prisma.user.upsert({
       where: {
-        robloxUserId: userInfo.sub,
+        robloxUserId: robloxUserIdBigInt,
       },
       update: {
         username: userInfo.preferred_username,
@@ -80,7 +84,7 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date(),
       },
       create: {
-        robloxUserId: userInfo.sub,
+        robloxUserId: robloxUserIdBigInt,
         username: userInfo.preferred_username,
         displayName: userInfo.preferred_username,
         avatarUrl: userInfo.picture || null,
@@ -92,25 +96,32 @@ export async function POST(request: NextRequest) {
     const sessionToken = generateSessionToken();
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
     
-    // Delete any existing sessions for this user - using executeRaw
-    await prisma.$executeRaw`DELETE FROM "Session" WHERE "userId" = ${user.robloxUserId}`;
+    // Delete any existing sessions for this user
+    await prisma.session.deleteMany({
+      where: {
+        userId: user.robloxUserId
+      }
+    });
 
-    // Create new session in database - using executeRaw
-    const sessionId = crypto.randomUUID();
-    const now = new Date();
-    await prisma.$executeRaw`
-      INSERT INTO "Session" ("id", "sessionToken", "userId", "expires", "createdAt", "updatedAt")
-      VALUES (${sessionId}, ${sessionToken}, ${user.robloxUserId}, ${expiresAt}, ${now}, ${now})
-    `;
+    // Create new session in database
+    await prisma.session.create({
+      data: {
+        sessionToken,
+        userId: user.robloxUserId,
+        expires: expiresAt,
+      }
+    });
     
     // Create response with user data
+    // Convert BigInt to string for JSON serialization
     const response = NextResponse.json({ 
       success: true,
       user: {
-        robloxUserId: user.robloxUserId,
+        robloxUserId: user.robloxUserId.toString(), // Convert BigInt to string for JSON
         username: user.username,
         displayName: user.displayName,
         avatarUrl: user.avatarUrl,
+        description: user.description,
       }
     });
     
@@ -125,7 +136,7 @@ export async function POST(request: NextRequest) {
       path: '/',
     });
     
-    console.log('Session created successfully for user:', user.robloxUserId);
+    console.log('Session created successfully for user:', user.robloxUserId.toString());
     
     return response;
     

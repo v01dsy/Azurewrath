@@ -14,17 +14,24 @@ export async function GET(
     let item;
     
     if (isAssetId) {
-      // Direct assetId lookup
+      // Direct assetId lookup - convert to BigInt
       item = await prisma.item.findUnique({
-        where: { assetId: itemId },
+        where: { assetId: BigInt(itemId) },
         include: {
           priceHistory: {
+            select: {
+              id: true,
+              itemId: true,
+              price: true,
+              rap: true,
+              salesVolume: true,
+              timestamp: true,
+            },
             orderBy: {
               timestamp: 'desc',
             },
             take: 1,
           },
-          marketTrends: true,
         },
       });
     } else {
@@ -40,12 +47,19 @@ export async function GET(
         },
         include: {
           priceHistory: {
+            select: {
+              id: true,
+              itemId: true,
+              price: true,
+              rap: true,
+              salesVolume: true,
+              timestamp: true,
+            },
             orderBy: {
               timestamp: 'desc',
             },
             take: 1,
           },
-          marketTrends: true,
         },
       });
     }
@@ -61,10 +75,15 @@ export async function GET(
     const latestPrice = item.priceHistory[0];
     const response = {
       ...item,
+      assetId: item.assetId.toString(), // Convert BigInt to string
       currentPrice: latestPrice?.price || null,
       currentRap: latestPrice?.rap || null,
-      lowestResale: latestPrice?.lowestResale || null,
+      salesVolume: latestPrice?.salesVolume || null,
       lastUpdated: latestPrice?.timestamp || null,
+      priceHistory: item.priceHistory.map(ph => ({
+        ...ph,
+        itemId: ph.itemId.toString(), // Convert BigInt to string
+      })),
     };
 
     return NextResponse.json(response);

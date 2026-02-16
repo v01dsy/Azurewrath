@@ -1,6 +1,3 @@
-// This is your Prisma schema file.
-// Learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,98 +8,89 @@ datasource db {
 }
 
 model Item {
-  id                String            @id @default(cuid())
-  assetId           String            @unique
-  name              String
-  imageUrl          String?
-  description       String?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  
-  priceHistory      PriceHistory[]
-  marketTrends      MarketTrends?
-  manualValue       ManualValue?
-  sales             Sale[]
-  inventoryItems    InventoryItem[]
-  
+  id             String          @id @default(cuid())
+  assetId        String          @unique
+  name           String
+  imageUrl       String?
+  description    String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  inventoryItems InventoryItem[]
+  manualValue    ManualValue?
+  marketTrends   MarketTrends?
+  priceHistory   PriceHistory[]
+  sales          Sale[]
+
   @@index([assetId])
+  @@index([assetId], map: "idx_item_assetid")
 }
 
 model PriceHistory {
-  id                String            @id @default(cuid())
-  itemId            String
-  item              Item              @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  
-  price             Float
-  rap               Float?            // Recent Average Price
-  lowestResale      Float?            // Lowest Resale Price
-  salesVolume       Int?              // Daily sales volume
-  
-  timestamp         DateTime          @default(now())
-  
+  id           String   @id @default(cuid())
+  itemId       String
+  price        Float
+  rap          Float?
+  lowestResale Float?
+  salesVolume  Int?
+  timestamp    DateTime @default(now())
+  item         Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
   @@index([itemId, timestamp])
   @@index([timestamp])
+  @@index([itemId, timestamp(sort: Desc)], map: "idx_pricehistory_itemid_timestamp")
+  @@index([timestamp], map: "idx_pricehistory_timestamp")
 }
 
 model MarketTrends {
-  id                String            @id @default(cuid())
-  itemId            String            @unique
-  item              Item              @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  
-  // Calculated metrics (updated on each ingest)
-  avgPrice7d        Float?            // 7-day average price
-  avgPrice30d       Float?            // 30-day average price
-  priceChange7d     Float?            // % change in 7 days
-  priceChange30d    Float?            // % change in 30 days
-  
-  trend             String            @default("stable") // increasing, decreasing, stable
-  demandRating      String            @default("moderate") // low, moderate, high
-  rarity            String            @default("common") // common, rare, very_rare
-  
-  lastUpdated       DateTime          @default(now()) @updatedAt
-  
+  id             String   @id @default(cuid())
+  itemId         String   @unique
+  avgPrice7d     Float?
+  avgPrice30d    Float?
+  priceChange7d  Float?
+  priceChange30d Float?
+  trend          String   @default("stable")
+  demandRating   String   @default("moderate")
+  rarity         String   @default("common")
+  lastUpdated    DateTime @default(now()) @updatedAt
+  item           Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
   @@index([trend])
   @@index([demandRating])
 }
 
 model ManualValue {
-  id                String            @id @default(cuid())
-  itemId            String            @unique
-  item              Item              @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  
-  overrideValue     Float
-  reason            String?           // Why this override exists
-  
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  
+  id            String   @id @default(cuid())
+  itemId        String   @unique
+  overrideValue Float
+  reason        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  item          Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
   @@index([itemId])
 }
 
 model IngestLog {
-  id                String            @id @default(cuid())
-  itemsProcessed    Int
-  itemsUpdated      Int
-  status            String            // success, partial, failed
-  errorMessage      String?
-  
-  createdAt         DateTime          @default(now())
-  
+  id             String   @id @default(cuid())
+  itemsProcessed Int
+  itemsUpdated   Int
+  status         String
+  errorMessage   String?
+  createdAt      DateTime @default(now())
+
   @@index([createdAt])
 }
 
 model Sale {
-  id                String            @id @default(cuid())
-  itemId            String
-  item              Item              @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  
-  salePrice         Float             // Price sold at
-  sellerUsername    String?           // Seller's Roblox username
-  buyerUsername     String?           // Buyer's Roblox username
-  serialNumber      Int?              // Serial number if applicable
-  
-  saleDate          DateTime          @default(now())
-  
+  id             String   @id @default(cuid())
+  itemId         String
+  salePrice      Float
+  sellerUsername String?
+  buyerUsername  String?
+  serialNumber   Int?
+  saleDate       DateTime @default(now())
+  item           Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
   @@index([itemId, saleDate])
   @@index([saleDate])
 }
@@ -118,36 +106,48 @@ model User {
   updatedAt         DateTime            @updatedAt
   
   inventorySnapshots InventorySnapshot[]
+  sessions          Session[]           // <-- ADD THIS LINE
 }
 
 model InventorySnapshot {
-  id            String          @id @default(cuid())
-  userId        String
-  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items         InventoryItem[]
-  
-  totalRAP      Float?
-  totalItems    Int?
-  uniqueItems   Int?
-  
-  createdAt     DateTime        @default(now())
-  
+  id          String          @id @default(cuid())
+  userId      String
+  createdAt   DateTime        @default(now())
+  totalRAP    Float?
+  totalItems  Int?
+  uniqueItems Int?
+  items       InventoryItem[]
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId, createdAt])
   @@index([createdAt])
 }
 
 model InventoryItem {
-  id          String            @id @default(cuid())
-  snapshotId  String
-  snapshot    InventorySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
-  assetId     String
-  item        Item?             @relation(fields: [assetId], references: [assetId])
-  userAssetId String
-  serialNumber Int?              // Serial number for Limited U items (null for regular limiteds/collectibles)
-  scannedAt   DateTime          @default(now())  // ADD THIS LINE
-  
+  id           String            @id @default(cuid())
+  snapshotId   String
+  assetId      String
+  userAssetId  String
+  scannedAt    DateTime          @default(now())
+  serialNumber Int?
+  item         Item              @relation(fields: [assetId], references: [assetId])
+  snapshot     InventorySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
   @@index([snapshotId])
   @@index([assetId])
   @@index([userAssetId])
-  @@index([serialNumber])        // Added index for faster queries
+  @@index([serialNumber])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([sessionToken])
+  @@index([userId])
 }

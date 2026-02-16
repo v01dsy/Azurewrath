@@ -36,7 +36,7 @@ export async function GET(
     // Find user by robloxUserId only (no more separate id field)
     const user = await prisma.user.findUnique({
       where: {
-        robloxUserId: userid
+        robloxUserId: BigInt(userid)
       }
     });
 
@@ -44,11 +44,14 @@ export async function GET(
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    // Convert BigInt to string for use in URLs and comparisons
+    const robloxUserIdString = user.robloxUserId.toString();
+
     // Fetch avatar from Roblox API (server-side)
     let avatarUrl: string | null = null;
     try {
       const avatarResponse = await fetch(
-        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${user.robloxUserId}&size=420x420&format=Png&isCircular=false`
+        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${robloxUserIdString}&size=420x420&format=Png&isCircular=false`
       );
       if (avatarResponse.ok) {
         const avatarData = await avatarResponse.json();
@@ -59,7 +62,7 @@ export async function GET(
     }
 
     // ✅ CHECK IF SCAN IS ALREADY RUNNING
-    if (ongoingScans.has(user.robloxUserId)) {
+    if (ongoingScans.has(robloxUserIdString)) {
       console.log(`⏳ Scan already in progress for ${user.username}, skipping...`);
     } else {
       // Check if snapshot exists
@@ -71,12 +74,12 @@ export async function GET(
 
       if (!latestSnapshotCheck) {
         // ✅ CHECK if inventory is private BEFORE trying to create snapshot
-        const canView = await canViewInventory(user.robloxUserId);
+        const canView = await canViewInventory(robloxUserIdString);
         
         if (!canView) {
           return NextResponse.json({
             user: {
-              robloxUserId: user.robloxUserId,
+              robloxUserId: robloxUserIdString,
               username: user.username,
               displayName: user.displayName,
               avatarUrl: avatarUrl || user.avatarUrl,
@@ -98,10 +101,10 @@ export async function GET(
         console.log(`📸 No snapshot exists for user ${user.username} - creating initial scan (BLOCKING)`);
         
         // ✅ MARK AS RUNNING
-        ongoingScans.add(user.robloxUserId);
+        ongoingScans.add(robloxUserIdString);
         
         try {
-          await saveInventorySnapshot(user.robloxUserId, user.robloxUserId);
+          await saveInventorySnapshot(robloxUserIdString, robloxUserIdString);
           console.log(`✅ Initial snapshot created successfully`);
         } catch (err) {
           console.error('❌ Initial scan failed:', err);
@@ -111,7 +114,7 @@ export async function GET(
           }, { status: 500 });
         } finally {
           // ✅ REMOVE LOCK
-          ongoingScans.delete(user.robloxUserId);
+          ongoingScans.delete(robloxUserIdString);
         }
       } else {
         // SNAPSHOT EXISTS - Check if it needs updating
@@ -124,9 +127,9 @@ export async function GET(
           console.log(`🔄 Triggering background rescan for ${user.username}...`);
           
           // ✅ MARK AS RUNNING
-          ongoingScans.add(user.robloxUserId);
+          ongoingScans.add(robloxUserIdString);
           
-          saveInventorySnapshot(user.robloxUserId, user.robloxUserId)
+          saveInventorySnapshot(robloxUserIdString, robloxUserIdString)
             .then(snapshot => {
               console.log(`✅ Background scan completed - Snapshot ID: ${snapshot.id}`);
             })
@@ -135,7 +138,7 @@ export async function GET(
             })
             .finally(() => {
               // ✅ REMOVE LOCK
-              ongoingScans.delete(user.robloxUserId);
+              ongoingScans.delete(robloxUserIdString);
             });
         } else {
           console.log(`⏭️ Skipping scan for ${user.username} (last scan was ${Math.round(snapshotAge / 1000)}s ago)`);
@@ -145,7 +148,7 @@ export async function GET(
 
     // Get latest snapshot with OPTIMIZED RAW SQL - INCLUDING scannedAt
     const inventoryData = await prisma.$queryRaw<Array<{
-      assetId: string;
+      assetId: bigint;
       userAssetId: string;
       name: string;
       imageUrl: string | null;
@@ -245,14 +248,14 @@ export async function GET(
 
     return NextResponse.json({
       user: {
-        robloxUserId: user.robloxUserId,
+        robloxUserId: robloxUserIdString,
         username: user.username,
         displayName: user.displayName,
         avatarUrl: avatarUrl || user.avatarUrl,
         description: user.description
       },
       inventory: inventoryData.map(item => ({
-        assetId: item.assetId,
+        assetId: item.assetId.toString(), // Convert BigInt to string
         name: item.name,
         imageUrl: item.imageUrl,
         rap: item.rap || 0,

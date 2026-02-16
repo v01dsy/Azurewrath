@@ -75,15 +75,15 @@ model InventorySnapshot {
 }
 
 model InventoryItem {
-  id           String            @id @default(cuid())
   snapshotId   String
-  assetId      BigInt            // CHANGED FROM String TO BigInt
+  assetId      BigInt
   userAssetId  String
   scannedAt    DateTime          @default(now())
   serialNumber Int?
   item         Item              @relation(fields: [assetId], references: [assetId])
   snapshot     InventorySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
 
+  @@id([snapshotId, userAssetId])
   @@index([snapshotId])
   @@index([assetId])
   @@index([userAssetId])

@@ -77,7 +77,7 @@ model InventorySnapshot {
 model InventoryItem {
   snapshotId   String
   assetId      BigInt
-  userAssetId  String
+  userAssetId  BigInt  // Changed from String to BigInt
   scannedAt    DateTime          @default(now())
   serialNumber Int?
   item         Item              @relation(fields: [assetId], references: [assetId])

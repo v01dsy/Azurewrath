@@ -5,11 +5,7 @@ export async function GET() {
   const [userCount, itemCount, uaidCount] = await Promise.all([
     prisma.user.count(),
     prisma.item.count(),
-    prisma.inventoryItem.count({
-      where: {
-        userAssetId: { not: "" },
-      },
-    }),
+    prisma.inventoryItem.count(), // No filter needed - just count all rows
   ]);
 
   return NextResponse.json({

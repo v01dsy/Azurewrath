@@ -82,7 +82,7 @@ export async function GET(
 
       const entry = inventoryMap.get(assetIdString)!;
       entry.count += 1;
-      entry.userAssetIds.push(invItem.userAssetId);
+      entry.userAssetIds.push(invItem.userAssetId.toString()); // Convert BigInt to string
       entry.serialNumbers.push(invItem.serialNumber);
     });
 

@@ -48,7 +48,7 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
 
   if (latestSnapshot) {
     console.log(`🔍 [DEBUG] Found latest snapshot: ID=${latestSnapshot.id}, created=${latestSnapshot.createdAt}, items=${latestSnapshot.items.length}`);
-    console.log(`🔍 [DEBUG] Latest snapshot UAIDs:`, latestSnapshot.items.map(i => i.userAssetId).slice(0, 10), '...');
+    console.log(`🔍 [DEBUG] Latest snapshot UAIDs:`, latestSnapshot.items.map(i => i.userAssetId.toString()).slice(0, 10), '...'); // Convert BigInt to string
   } else {
     console.log('🔍 [DEBUG] No previous snapshot found');
   }
@@ -89,7 +89,7 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
         items: {
           create: fullInventory.map((item: any) => ({
             assetId: BigInt(item.assetId.toString()),
-            userAssetId: item.userAssetId.toString(),
+            userAssetId: BigInt(item.userAssetId.toString()), // Convert to BigInt
             serialNumber: item.serialNumber ?? null,
             scannedAt: new Date()
           })),
@@ -105,7 +105,7 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
 
   // Compare UAIDs to find what's NEW
   console.log('🔍 [DEBUG] Comparing UAIDs...');
-  const previousUAIDSet = new Set(latestSnapshot.items.map(item => item.userAssetId));
+  const previousUAIDSet = new Set(latestSnapshot.items.map(item => item.userAssetId.toString())); // Convert BigInt to string
   const currentUAIDSet = new Set(currentUAIDList);
   
   console.log(`🔍 [DEBUG] Previous UAIDs count: ${previousUAIDSet.size}`);
@@ -183,7 +183,7 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
   // Add EXISTING items (unchanged) - reuse data from latestSnapshot
   let unchangedCount = 0;
   for (const item of latestSnapshot.items) {
-    if (currentUAIDSet.has(item.userAssetId)) {
+    if (currentUAIDSet.has(item.userAssetId.toString())) { // Convert BigInt to string for comparison
       // Item still in inventory, keep original data and timestamp
       allItemsForSnapshot.push({
         assetId: item.assetId,
@@ -200,7 +200,7 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
   for (const item of newItemsDetails) {
     allItemsForSnapshot.push({
       assetId: BigInt(item.assetId.toString()),
-      userAssetId: item.userAssetId.toString(),
+      userAssetId: BigInt(item.userAssetId.toString()), // Convert to BigInt
       serialNumber: item.serialNumber ?? null,
       scannedAt: new Date() // ✅ FRESH timestamp
     });

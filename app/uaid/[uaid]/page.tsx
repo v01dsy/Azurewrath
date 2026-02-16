@@ -12,9 +12,9 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
   
   // First, find the most recent snapshot that contains this UAID
   const mostRecentItem = await prisma.inventoryItem.findFirst({
-    where: { 
-      userAssetId: uaid
-    },
+    where: {
+      userAssetId: BigInt(uaid)
+    },  
     orderBy: { scannedAt: "desc" },
     include: {
       snapshot: true,
@@ -47,7 +47,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
   // Now fetch all items from that specific snapshot with this UAID
   const items = await prisma.inventoryItem.findMany({
     where: { 
-      userAssetId: uaid,
+      userAssetId: BigInt(uaid),
       snapshotId: mostRecentItem.snapshotId,
     },
     orderBy: { scannedAt: "desc" },

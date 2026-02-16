@@ -1,3 +1,4 @@
+// app/api/player/[userid]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { saveInventorySnapshot } from '@/lib/inventoryTracker';
@@ -149,13 +150,13 @@ export async function GET(
     // Get latest snapshot with OPTIMIZED RAW SQL - INCLUDING scannedAt
     const inventoryData = await prisma.$queryRaw<Array<{
       assetId: bigint;
-      userAssetId: string;
+      userAssetId: bigint;
       name: string;
       imageUrl: string | null;
       rap: number | null;
       itemCount: number;
       serialNumbers: (number | null)[];
-      userAssetIds: string[];
+      userAssetIds: bigint[];
       scannedAt: Date;
     }>>`
       WITH LatestSnapshot AS (
@@ -260,7 +261,7 @@ export async function GET(
         imageUrl: item.imageUrl,
         rap: item.rap || 0,
         count: item.itemCount,
-        userAssetIds: item.userAssetIds,
+        userAssetIds: item.userAssetIds.map(id => id.toString()),
         serialNumbers: item.serialNumbers,
         scannedAt: item.scannedAt
       })),

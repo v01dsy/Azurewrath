@@ -87,7 +87,7 @@ export async function GET(
 
     // Fetch all snapshots with items for graph data
     const allSnapshots = await prisma.inventorySnapshot.findMany({
-      where: { userId: dbUser.id },
+      where: { userId: dbUser.robloxUserId }, 
       orderBy: { createdAt: 'asc' },
       include: {
         items: {
@@ -132,8 +132,7 @@ export async function GET(
     // Return the complete player data
     return NextResponse.json({
       user: {
-        id: dbUser.id,
-        robloxUserId: dbUser.robloxUserId,
+        robloxUserId: dbUser.robloxUserId, // Removed id field
         username: dbUser.username,
         displayName: dbUser.displayName,
         avatarUrl: dbUser.avatarUrl,

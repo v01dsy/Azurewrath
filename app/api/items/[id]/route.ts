@@ -8,20 +8,47 @@ export async function GET(
   try {
     const { id: itemId } = await params;
 
-    const item = await prisma.item.findFirst({
-      where: {
-        OR: [{ id: itemId }, { assetId: itemId }],
-      },
-      include: {
-        priceHistory: {
-          orderBy: {
-            timestamp: 'desc',
+    // Check if it's all numbers (assetId) or contains letters (slug/name)
+    const isAssetId = /^\d+$/.test(itemId);
+    
+    let item;
+    
+    if (isAssetId) {
+      // Direct assetId lookup
+      item = await prisma.item.findUnique({
+        where: { assetId: itemId },
+        include: {
+          priceHistory: {
+            orderBy: {
+              timestamp: 'desc',
+            },
+            take: 1,
           },
-          take: 1, // Only get the most recent price history
+          marketTrends: true,
         },
-        marketTrends: true,
-      },
-    });
+      });
+    } else {
+      // Slug lookup - convert hyphens to spaces and search by name
+      const nameSearch = itemId.replace(/-/g, ' ');
+      
+      item = await prisma.item.findFirst({
+        where: {
+          name: {
+            equals: nameSearch,
+            mode: 'insensitive', // Case-insensitive search
+          },
+        },
+        include: {
+          priceHistory: {
+            orderBy: {
+              timestamp: 'desc',
+            },
+            take: 1,
+          },
+          marketTrends: true,
+        },
+      });
+    }
 
     if (!item) {
       return NextResponse.json(

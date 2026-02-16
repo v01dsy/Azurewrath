@@ -7,9 +7,9 @@ export async function GET(
 ) {
   try {
     const { id: itemId } = await params;
-    const item = await prisma.item.findFirst({
+    const item = await prisma.item.findUnique({
       where: {
-        OR: [{ id: itemId }, { assetId: itemId }],
+        assetId: itemId
       },
       include: {
         priceHistory: {
@@ -27,7 +27,7 @@ export async function GET(
     }
 
     const sales = await prisma.sale.findMany({
-      where: { itemId: item.id },
+      where: { itemId: item.assetId },
       orderBy: {
         saleDate: 'desc',
       },
@@ -35,7 +35,7 @@ export async function GET(
 
     // Get all price history for this item
     const priceHistory = await prisma.priceHistory.findMany({
-      where: { itemId: item.id },
+      where: { itemId: item.assetId },
       orderBy: { timestamp: 'asc' },
     });
 

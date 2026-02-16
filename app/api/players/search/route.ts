@@ -27,8 +27,8 @@ export async function GET(request: NextRequest) {
 
     // Transform to match the frontend format
     const players = users.map(user => ({
-      id: user.id,
-      assetId: user.robloxUserId, // Using robloxUserId for consistency
+      id: user.robloxUserId,
+      assetId: user.robloxUserId,
       name: user.username,
       displayName: user.displayName,
       imageUrl: user.avatarUrl || `https://www.roblox.com/headshot-thumbnail/image?userId=${user.robloxUserId}&width=150&height=150&format=png`,

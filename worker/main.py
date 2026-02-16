@@ -42,7 +42,7 @@ rap_cache = {}
 
 # Global variable to track current 30-minute window timestamp
 current_30min_window = None
-# Dictionary to store PriceHistory record IDs for updating {item_id: record_id}
+# Dictionary to store PriceHistory record IDs for updating {item_assetId: record_id}
 pricehistory_record_ids = {}
 
 def get_30min_window(dt):
@@ -198,7 +198,7 @@ def process_items_batch(items_batch, rolimons_data, previous_raps):
         'deals_found': 0
     }
     
-    for item_id, asset_id, name in items_batch:
+    for asset_id, name in items_batch:
         stats['processed'] += 1
         
         # Get data from Rolimons (key is asset_id as string)
@@ -227,7 +227,7 @@ def process_items_batch(items_batch, rolimons_data, previous_raps):
         lowest_resale = None
         
         # Check if RAP changed
-        previous_rap = previous_raps.get(item_id)
+        previous_rap = previous_raps.get(asset_id)
         rap_changed = False
         
         if previous_rap is not None:
@@ -242,7 +242,7 @@ def process_items_batch(items_batch, rolimons_data, previous_raps):
                 stats['deals_found'] += 1
         
         results.append({
-            'item_id': item_id,
+            'asset_id': asset_id,
             'name': name,
             'price': price,
             'rap': rap,
@@ -358,7 +358,7 @@ def save_results_to_db(results, is_new_window):
                     record_id = str(uuid.uuid4())
                     price_history_data.append((
                         record_id,              # id
-                        result['item_id'],      # itemId
+                        result['asset_id'],     # itemId (now using assetId)
                         result['price'],        # price
                         result['rap'],          # rap
                         result['lowest_resale'],# lowestResale
@@ -366,7 +366,7 @@ def save_results_to_db(results, is_new_window):
                         window_timestamp        # timestamp (start of 30min window)
                     ))
                     # Store record ID for future updates
-                    pricehistory_record_ids[result['item_id']] = record_id
+                    pricehistory_record_ids[result['asset_id']] = record_id
             
             if price_history_data:
                 bulk_insert_with_copy(
@@ -397,8 +397,8 @@ def save_results_to_db(results, is_new_window):
             update_data = []
             for result in results:
                 if result['price'] is not None:
-                    item_id = result['item_id']
-                    current = current_records.get(item_id)
+                    asset_id = result['asset_id']
+                    current = current_records.get(asset_id)
                     
                     if current:
                         # Check if ANY field changed
@@ -460,7 +460,7 @@ def save_results_to_db(results, is_new_window):
             if result['rap_changed'] and result['rap'] is not None:
                 sale_data.append((
                     str(uuid.uuid4()),  # id
-                    result['item_id'],  # itemId
+                    result['asset_id'], # itemId (now using assetId)
                     result['rap'],      # salePrice
                     None,               # sellerUsername
                     None,               # buyerUsername
@@ -485,7 +485,7 @@ def save_results_to_db(results, is_new_window):
         global rap_cache
         for result in results:
             if result['rap'] is not None:
-                rap_cache[result['item_id']] = result['rap']
+                rap_cache[result['asset_id']] = result['rap']
         
     except psycopg2.Error as e:
         logger.error(f"❌ PostgreSQL error: {e}")
@@ -626,9 +626,9 @@ def update_item_prices():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Get all items from database
+        # Get all items from database - FIXED: Changed from 'id' to 'assetId'
         logger.info("Fetching items from database...")
-        cursor.execute('SELECT id, "assetId", name FROM "Item"')
+        cursor.execute('SELECT "assetId", name FROM "Item"')
         items = cursor.fetchall()
         
         if not items:

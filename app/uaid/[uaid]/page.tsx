@@ -1,3 +1,4 @@
+//app/uaid/[uaid]/page.tsx
 import prisma from "@/lib/prisma";
 import React from "react";
 import { LocalTime } from "@/components/LocalTime";
@@ -221,7 +222,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                     
                     return (
                       <tr 
-                        key={item.id} 
+                        key={item.assetId} 
                         className="hover:bg-slate-700/20 transition-colors"
                       >
                         <td className="px-6 py-4">

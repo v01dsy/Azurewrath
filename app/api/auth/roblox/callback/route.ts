@@ -93,14 +93,14 @@ export async function POST(request: NextRequest) {
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
     
     // Delete any existing sessions for this user - using executeRaw
-    await prisma.$executeRaw`DELETE FROM "Session" WHERE "userId" = ${user.id}`;
-    
+    await prisma.$executeRaw`DELETE FROM "Session" WHERE "userId" = ${user.robloxUserId}`;
+
     // Create new session in database - using executeRaw
     const sessionId = crypto.randomUUID();
     const now = new Date();
     await prisma.$executeRaw`
       INSERT INTO "Session" ("id", "sessionToken", "userId", "expires", "createdAt", "updatedAt")
-      VALUES (${sessionId}, ${sessionToken}, ${user.id}, ${expiresAt}, ${now}, ${now})
+      VALUES (${sessionId}, ${sessionToken}, ${user.robloxUserId}, ${expiresAt}, ${now}, ${now})
     `;
     
     // Create response with user data

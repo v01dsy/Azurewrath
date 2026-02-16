@@ -33,13 +33,10 @@ export async function GET(
   try {
     const { userid } = await params;
 
-    // Find user (try robloxUserId first, then id)
-    const user = await prisma.user.findFirst({
+    // Find user by robloxUserId only (no more separate id field)
+    const user = await prisma.user.findUnique({
       where: {
-        OR: [
-          { robloxUserId: userid },
-          { id: userid }
-        ]
+        robloxUserId: userid
       }
     });
 
@@ -62,12 +59,12 @@ export async function GET(
     }
 
     // ✅ CHECK IF SCAN IS ALREADY RUNNING
-    if (ongoingScans.has(user.id)) {
+    if (ongoingScans.has(user.robloxUserId)) {
       console.log(`⏳ Scan already in progress for ${user.username}, skipping...`);
     } else {
       // Check if snapshot exists
       const latestSnapshotCheck = await prisma.inventorySnapshot.findFirst({
-        where: { userId: user.id },
+        where: { userId: user.robloxUserId },
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true }
       });
@@ -79,7 +76,6 @@ export async function GET(
         if (!canView) {
           return NextResponse.json({
             user: {
-              id: user.id,
               robloxUserId: user.robloxUserId,
               username: user.username,
               displayName: user.displayName,
@@ -102,10 +98,10 @@ export async function GET(
         console.log(`📸 No snapshot exists for user ${user.username} - creating initial scan (BLOCKING)`);
         
         // ✅ MARK AS RUNNING
-        ongoingScans.add(user.id);
+        ongoingScans.add(user.robloxUserId);
         
         try {
-          await saveInventorySnapshot(user.id, user.robloxUserId);
+          await saveInventorySnapshot(user.robloxUserId, user.robloxUserId);
           console.log(`✅ Initial snapshot created successfully`);
         } catch (err) {
           console.error('❌ Initial scan failed:', err);
@@ -115,7 +111,7 @@ export async function GET(
           }, { status: 500 });
         } finally {
           // ✅ REMOVE LOCK
-          ongoingScans.delete(user.id);
+          ongoingScans.delete(user.robloxUserId);
         }
       } else {
         // SNAPSHOT EXISTS - Check if it needs updating
@@ -128,9 +124,9 @@ export async function GET(
           console.log(`🔄 Triggering background rescan for ${user.username}...`);
           
           // ✅ MARK AS RUNNING
-          ongoingScans.add(user.id);
+          ongoingScans.add(user.robloxUserId);
           
-          saveInventorySnapshot(user.id, user.robloxUserId)
+          saveInventorySnapshot(user.robloxUserId, user.robloxUserId)
             .then(snapshot => {
               console.log(`✅ Background scan completed - Snapshot ID: ${snapshot.id}`);
             })
@@ -139,7 +135,7 @@ export async function GET(
             })
             .finally(() => {
               // ✅ REMOVE LOCK
-              ongoingScans.delete(user.id);
+              ongoingScans.delete(user.robloxUserId);
             });
         } else {
           console.log(`⏭️ Skipping scan for ${user.username} (last scan was ${Math.round(snapshotAge / 1000)}s ago)`);
@@ -162,7 +158,7 @@ export async function GET(
       WITH LatestSnapshot AS (
         SELECT id, "createdAt"
         FROM "InventorySnapshot"
-        WHERE "userId" = ${user.id}
+        WHERE "userId" = ${user.robloxUserId}
         ORDER BY "createdAt" DESC
         LIMIT 1
       ),
@@ -185,7 +181,7 @@ export async function GET(
         LEFT JOIN LATERAL (
           SELECT rap
           FROM "PriceHistory"
-          WHERE "itemId" = i.id
+          WHERE "itemId" = i."assetId"
           ORDER BY timestamp DESC
           LIMIT 1
         ) ph ON true
@@ -215,7 +211,7 @@ export async function GET(
       WITH RecentSnapshots AS (
         SELECT id, "createdAt"
         FROM "InventorySnapshot"
-        WHERE "userId" = ${user.id}
+        WHERE "userId" = ${user.robloxUserId}
         ORDER BY "createdAt" DESC
         LIMIT 30
       )
@@ -231,7 +227,7 @@ export async function GET(
       LEFT JOIN LATERAL (
         SELECT rap
         FROM "PriceHistory"
-        WHERE "itemId" = i.id
+        WHERE "itemId" = i."assetId"
         ORDER BY timestamp DESC
         LIMIT 1
       ) ph ON true
@@ -249,7 +245,6 @@ export async function GET(
 
     return NextResponse.json({
       user: {
-        id: user.id,
         robloxUserId: user.robloxUserId,
         username: user.username,
         displayName: user.displayName,

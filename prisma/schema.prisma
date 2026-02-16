@@ -8,21 +8,17 @@ datasource db {
 }
 
 model Item {
-  id             String          @id @default(cuid())
-  assetId        String          @unique
+  assetId        String          @id
   name           String
   imageUrl       String?
   description    String?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   inventoryItems InventoryItem[]
-  manualValue    ManualValue?
-  marketTrends   MarketTrends?
   priceHistory   PriceHistory[]
   sales          Sale[]
 
   @@index([assetId])
-  @@index([assetId], map: "idx_item_assetid")
 }
 
 model PriceHistory {
@@ -33,52 +29,10 @@ model PriceHistory {
   lowestResale Float?
   salesVolume  Int?
   timestamp    DateTime @default(now())
-  item         Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  item         Item     @relation(fields: [itemId], references: [assetId], onDelete: Cascade)
 
   @@index([itemId, timestamp])
   @@index([timestamp])
-  @@index([itemId, timestamp(sort: Desc)], map: "idx_pricehistory_itemid_timestamp")
-  @@index([timestamp], map: "idx_pricehistory_timestamp")
-}
-
-model MarketTrends {
-  id             String   @id @default(cuid())
-  itemId         String   @unique
-  avgPrice7d     Float?
-  avgPrice30d    Float?
-  priceChange7d  Float?
-  priceChange30d Float?
-  trend          String   @default("stable")
-  demandRating   String   @default("moderate")
-  rarity         String   @default("common")
-  lastUpdated    DateTime @default(now()) @updatedAt
-  item           Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
-
-  @@index([trend])
-  @@index([demandRating])
-}
-
-model ManualValue {
-  id            String   @id @default(cuid())
-  itemId        String   @unique
-  overrideValue Float
-  reason        String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  item          Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
-
-  @@index([itemId])
-}
-
-model IngestLog {
-  id             String   @id @default(cuid())
-  itemsProcessed Int
-  itemsUpdated   Int
-  status         String
-  errorMessage   String?
-  createdAt      DateTime @default(now())
-
-  @@index([createdAt])
 }
 
 model Sale {
@@ -89,15 +43,14 @@ model Sale {
   buyerUsername  String?
   serialNumber   Int?
   saleDate       DateTime @default(now())
-  item           Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  item           Item     @relation(fields: [itemId], references: [assetId], onDelete: Cascade)
 
   @@index([itemId, saleDate])
   @@index([saleDate])
 }
 
 model User {
-  id                String              @id @default(cuid())
-  robloxUserId      String              @unique
+  robloxUserId      String              @id
   username          String
   displayName       String?
   avatarUrl         String?
@@ -106,7 +59,7 @@ model User {
   updatedAt         DateTime            @updatedAt
   
   inventorySnapshots InventorySnapshot[]
-  sessions          Session[]           // <-- ADD THIS LINE
+  sessions          Session[]
 }
 
 model InventorySnapshot {
@@ -117,7 +70,7 @@ model InventorySnapshot {
   totalItems  Int?
   uniqueItems Int?
   items       InventoryItem[]
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User            @relation(fields: [userId], references: [robloxUserId], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([createdAt])
@@ -143,7 +96,7 @@ model Session {
   id           String   @id @default(cuid())
   sessionToken String   @unique
   userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [robloxUserId], onDelete: Cascade)
   expires      DateTime
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

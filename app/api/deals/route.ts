@@ -7,7 +7,6 @@ export async function GET() {
   try {
     // Optimized query - only deals above 10%
     const items = await prisma.$queryRaw<Array<{
-      id: string;
       assetId: string;
       name: string;
       imageUrl: string | null;
@@ -16,7 +15,6 @@ export async function GET() {
       lowestResale: number | null;
     }>>`
       SELECT 
-        i.id,
         i."assetId",
         i.name,
         i."imageUrl",
@@ -27,7 +25,7 @@ export async function GET() {
       INNER JOIN LATERAL (
         SELECT price, rap, "lowestResale"
         FROM "PriceHistory"
-        WHERE "itemId" = i.id
+        WHERE "itemId" = i."assetId"
         ORDER BY timestamp DESC
         LIMIT 1
       ) ph ON true
@@ -45,7 +43,6 @@ export async function GET() {
       const percent = Math.round(((rap - bestPrice) / rap) * 100);
       
       return {
-        id: item.id,
         assetId: item.assetId,
         name: item.name,
         imageUrl: item.imageUrl,

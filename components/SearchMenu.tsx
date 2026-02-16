@@ -1,3 +1,4 @@
+//components/SearchMenu.tsx
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -158,7 +159,7 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
             <ul className="divide-y divide-slate-700">
               {results.map((item, index) => (
                 <li
-                  key={item.id}
+                  key={item.assetId}
                   onClick={() => handleSelectResult(item)}
                   className={`px-4 py-3 cursor-pointer transition ${
                     index === selectedIndex

@@ -1,3 +1,4 @@
+// scripts/updateItemsFromRoblox.js
 import prisma from '../lib/prisma.js';  // Note: relative path, not @/lib/prisma
 import { fetchRobloxItemData, fetchPriceData } from '../lib/robloxApi.js';
 
@@ -19,7 +20,7 @@ async function updateItemsFromRoblox() {
       if (robloxData) {
         // Update item
         await prisma.item.update({
-          where: { id: item.id },
+          where: { assetId: item.assetId },
           data: {
             name: robloxData.name || item.name,
             description: robloxData.description || item.description,
@@ -34,7 +35,7 @@ async function updateItemsFromRoblox() {
       if (priceData) {
         await prisma.priceHistory.create({
           data: {
-            itemId: item.id,
+            itemId: item.assetId,
             price: priceData.price || 0,
             rap: priceData.rap,
             lowestResale: priceData.lowestResale,

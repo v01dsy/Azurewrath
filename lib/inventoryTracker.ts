@@ -29,15 +29,19 @@ async function fetchItemDetailsByUAIDs(robloxUserId: string, uaids: string[]): P
   return filtered;
 }
 
-export async function saveInventorySnapshot(userId: string, robloxUserId: string) {
+export async function saveInventorySnapshot(userId: string | bigint, robloxUserId: string | bigint) {
+  // Convert to BigInt if string
+  const userIdBigInt = typeof userId === 'string' ? BigInt(userId) : userId;
+  const robloxUserIdString = typeof robloxUserId === 'bigint' ? robloxUserId.toString() : robloxUserId;
+  
   console.log('\n========== INVENTORY SCAN ==========');
-  console.log(`userId: ${userId}`);
-  console.log(`robloxUserId: ${robloxUserId}`);
+  console.log(`userId: ${userIdBigInt}`);
+  console.log(`robloxUserId: ${robloxUserIdString}`);
 
   // Get the most recent snapshot FIRST
   console.log('🔍 [DEBUG] Looking for latest snapshot...');
   const latestSnapshot = await prisma.inventorySnapshot.findFirst({
-    where: { userId },
+    where: { userId: userIdBigInt },
     orderBy: { createdAt: 'desc' },
     include: { items: true }
   });
@@ -51,16 +55,16 @@ export async function saveInventorySnapshot(userId: string, robloxUserId: string
 
   // Fetch ONLY the lightweight UAID list from Roblox
   console.log('🔍 [DEBUG] Calling scanInventoryUAIDs...');
-  const currentUAIDList = await scanInventoryUAIDs(robloxUserId);
+  const currentUAIDList = await scanInventoryUAIDs(robloxUserIdString);
   console.log(`📦 Fetched ${currentUAIDList.length} UAIDs from Roblox`);
 
   if (!latestSnapshot) {
     // FIRST SCAN EVER - need full details
     console.log('💾 FIRST EVER scan - fetching full inventory...');
-    const fullInventory = await scanFullInventory(robloxUserId);
+    const fullInventory = await scanFullInventory(robloxUserIdString);
     
-    // Ensure asset IDs exist in database
-    const uniqueAssetIds = [...new Set(fullInventory.map((item: any) => item.assetId.toString()))];
+    // Ensure asset IDs exist in database - convert to BigInt
+    const uniqueAssetIds = [...new Set(fullInventory.map((item: any) => BigInt(item.assetId.toString())))];
     const existingItems = await prisma.item.findMany({
       where: { assetId: { in: uniqueAssetIds } },
       select: { assetId: true }
@@ -81,10 +85,10 @@ export async function saveInventorySnapshot(userId: string, robloxUserId: string
 
     const snapshot = await prisma.inventorySnapshot.create({
       data: {
-        userId,
+        userId: userIdBigInt,
         items: {
           create: fullInventory.map((item: any) => ({
-            assetId: item.assetId.toString(),
+            assetId: BigInt(item.assetId.toString()),
             userAssetId: item.userAssetId.toString(),
             serialNumber: item.serialNumber ?? null,
             scannedAt: new Date()
@@ -119,12 +123,12 @@ export async function saveInventorySnapshot(userId: string, robloxUserId: string
   if (newUAIDs.length > 0) {
     console.log(`🔍 Fetching details for ${newUAIDs.length} NEW items only...`);
     console.log(`🔍 [DEBUG] About to call fetchItemDetailsByUAIDs with:`, newUAIDs);
-    newItemsDetails = await fetchItemDetailsByUAIDs(robloxUserId, newUAIDs);
+    newItemsDetails = await fetchItemDetailsByUAIDs(robloxUserIdString, newUAIDs);
     console.log(`🔍 [DEBUG] Got ${newItemsDetails.length} item details back`);
     console.log(`🔍 [DEBUG] New items:`, newItemsDetails.map(i => ({ assetId: i.assetId, uaid: i.userAssetId })));
     
-    // Ensure new assets exist in database
-    const newAssetIds = [...new Set(newItemsDetails.map(item => item.assetId.toString()))];
+    // Ensure new assets exist in database - convert to BigInt
+    const newAssetIds = [...new Set(newItemsDetails.map(item => BigInt(item.assetId.toString())))];
     const existingItems = await prisma.item.findMany({
       where: { assetId: { in: newAssetIds } },
       select: { assetId: true }
@@ -157,7 +161,7 @@ export async function saveInventorySnapshot(userId: string, robloxUserId: string
   console.log(`🔍 [DEBUG] Checking for today's snapshot (${todayStart} to ${todayEnd})...`);
   let todaysSnapshot = await prisma.inventorySnapshot.findFirst({
     where: {
-      userId,
+      userId: userIdBigInt,
       createdAt: {
         gte: todayStart,
         lte: todayEnd
@@ -195,7 +199,7 @@ export async function saveInventorySnapshot(userId: string, robloxUserId: string
   // Add NEW items with fresh timestamp
   for (const item of newItemsDetails) {
     allItemsForSnapshot.push({
-      assetId: item.assetId.toString(),
+      assetId: BigInt(item.assetId.toString()),
       userAssetId: item.userAssetId.toString(),
       serialNumber: item.serialNumber ?? null,
       scannedAt: new Date() // ✅ FRESH timestamp
@@ -238,7 +242,7 @@ export async function saveInventorySnapshot(userId: string, robloxUserId: string
     
     const newSnapshot = await prisma.inventorySnapshot.create({
       data: {
-        userId,
+        userId: userIdBigInt,
         items: {
           create: allItemsForSnapshot
         },
@@ -255,9 +259,10 @@ export async function saveInventorySnapshot(userId: string, robloxUserId: string
   }
 }
 
-export async function getLatestSnapshot(userId: string) {
+export async function getLatestSnapshot(userId: string | bigint) {
+  const userIdBigInt = typeof userId === 'string' ? BigInt(userId) : userId;
   return await prisma.inventorySnapshot.findFirst({
-    where: { userId },
+    where: { userId: userIdBigInt },
     orderBy: { createdAt: 'desc' },
     include: {
       items: {
@@ -269,9 +274,10 @@ export async function getLatestSnapshot(userId: string) {
   });
 }
 
-export async function getInventoryHistory(userId: string, limit: number = 10) {
+export async function getInventoryHistory(userId: string | bigint, limit: number = 10) {
+  const userIdBigInt = typeof userId === 'string' ? BigInt(userId) : userId;
   return await prisma.inventorySnapshot.findMany({
-    where: { userId },
+    where: { userId: userIdBigInt },
     orderBy: { createdAt: 'desc' },
     take: limit,
     include: {
@@ -299,12 +305,14 @@ export async function compareSnapshots(oldSnapshotId: string, newSnapshotId: str
   if (!oldSnapshot || !newSnapshot) return null;
   
   const oldItems = oldSnapshot.items.reduce((map, i) => {
-    map.set(i.assetId, (map.get(i.assetId) || 0) + 1);
+    const assetIdString = i.assetId.toString();
+    map.set(assetIdString, (map.get(assetIdString) || 0) + 1);
     return map;
   }, new Map<string, number>());
 
   const newItems = newSnapshot.items.reduce((map, i) => {
-    map.set(i.assetId, (map.get(i.assetId) || 0) + 1);
+    const assetIdString = i.assetId.toString();
+    map.set(assetIdString, (map.get(assetIdString) || 0) + 1);
     return map;
   }, new Map<string, number>());
   

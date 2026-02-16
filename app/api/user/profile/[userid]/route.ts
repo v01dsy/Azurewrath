@@ -11,7 +11,7 @@ export async function GET(
   try {
     // Fetch user with latest snapshot
     const dbUser = await prisma.user.findUnique({
-      where: { robloxUserId: userid },
+      where: { robloxUserId: BigInt(userid) },
       include: {
         inventorySnapshots: {
           orderBy: { createdAt: 'desc' },
@@ -22,6 +22,14 @@ export async function GET(
                 item: {
                   include: {
                     priceHistory: {
+                      select: {
+                        id: true,
+                        itemId: true,
+                        price: true,
+                        rap: true,
+                        salesVolume: true,
+                        timestamp: true,
+                      },
                       orderBy: { timestamp: 'desc' },
                       take: 1,
                     },
@@ -56,13 +64,13 @@ export async function GET(
     }>();
 
     latestSnapshot?.items.forEach(invItem => {
-      const assetId = invItem.assetId;
+      const assetIdString = invItem.assetId.toString(); // Convert BigInt to string
       
-      if (!inventoryMap.has(assetId)) {
+      if (!inventoryMap.has(assetIdString)) {
         const latestPrice = invItem.item?.priceHistory[0];
         
-        inventoryMap.set(assetId, {
-          assetId: assetId,
+        inventoryMap.set(assetIdString, {
+          assetId: assetIdString,
           name: invItem.item?.name || 'Unknown Item',
           imageUrl: invItem.item?.imageUrl || null,
           rap: latestPrice?.rap || 0,
@@ -72,7 +80,7 @@ export async function GET(
         });
       }
 
-      const entry = inventoryMap.get(assetId)!;
+      const entry = inventoryMap.get(assetIdString)!;
       entry.count += 1;
       entry.userAssetIds.push(invItem.userAssetId);
       entry.serialNumbers.push(invItem.serialNumber);
@@ -95,6 +103,14 @@ export async function GET(
             item: {
               include: {
                 priceHistory: {
+                  select: {
+                    id: true,
+                    itemId: true,
+                    price: true,
+                    rap: true,
+                    salesVolume: true,
+                    timestamp: true,
+                  },
                   orderBy: { timestamp: 'desc' },
                   take: 1,
                 },
@@ -117,7 +133,8 @@ export async function GET(
         
         snapshotTotalRAP += rap;
         snapshotTotalItems += 1;
-        snapshotInventoryMap.set(invItem.assetId, (snapshotInventoryMap.get(invItem.assetId) || 0) + 1);
+        const assetIdString = invItem.assetId.toString(); // Convert BigInt to string
+        snapshotInventoryMap.set(assetIdString, (snapshotInventoryMap.get(assetIdString) || 0) + 1);
       });
 
       return {
@@ -132,7 +149,7 @@ export async function GET(
     // Return the complete player data
     return NextResponse.json({
       user: {
-        robloxUserId: dbUser.robloxUserId, // Removed id field
+        robloxUserId: dbUser.robloxUserId.toString(), // Convert BigInt to string
         username: dbUser.username,
         displayName: dbUser.displayName,
         avatarUrl: dbUser.avatarUrl,

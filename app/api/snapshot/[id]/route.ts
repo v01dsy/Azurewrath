@@ -10,15 +10,14 @@ export async function GET(
   try {
     const { id: snapshotId } = await params;
 
-    // Rest stays exactly the same...
-    const snapshotData = await prisma.$queryRaw<Array<{
-      assetId: string;
-      name: string;
-      imageUrl: string | null;
-      rapThen: number | null;
-      rapNow: number | null;
-      itemCount: number;
-    }>>`
+  const snapshotData = await prisma.$queryRaw<Array<{
+    assetId: bigint; // 👈 change from string to bigint
+    name: string;
+    imageUrl: string | null;
+    rapThen: number | null;
+    rapNow: number | null;
+    itemCount: number;
+  }>>`
       WITH SnapshotItems AS (
         SELECT 
           ii."assetId",
@@ -71,16 +70,16 @@ export async function GET(
 
     return NextResponse.json({
       items: snapshotData.map(item => ({
-        assetId: item.assetId,
+        assetId: item.assetId.toString(), // 👈 convert BigInt to string
         name: item.name,
         imageUrl: item.imageUrl || `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=150&height=150&format=png`,
         rapThen: item.rapThen || 0,
         rapNow: item.rapNow || 0,
         count: item.itemCount
       })),
-      totalRapThen,
-      totalRapNow
-    });
+    totalRapThen,
+    totalRapNow
+  });
 
   } catch (error) {
     console.error('Snapshot fetch error:', error);

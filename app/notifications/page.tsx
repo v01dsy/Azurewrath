@@ -1,3 +1,4 @@
+// app/notifications/page.tsx
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
@@ -21,11 +22,7 @@ interface NotificationItem {
 }
 
 function timeAgo(dateStr: string): string {
-  // Prisma returns the worker's naive local time with a Z appended, making JS
-  // think it's UTC. Strip the Z and replace with the local timezone offset
-  // so the browser interprets it as the actual local time it was stored as.
-  const clean = dateStr.replace('Z', '').replace('T', ' ');
-  const date = new Date(clean);
+  const date = new Date(dateStr);
   const diff = Date.now() - date.getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
@@ -63,7 +60,6 @@ export default function NotificationsPage() {
     }
   }, [user?.robloxUserId]);
 
-  // Initial fetch
   useEffect(() => {
     if (!user) {
       router.push('/verify');
@@ -72,14 +68,11 @@ export default function NotificationsPage() {
     fetchNotifications();
   }, [user, router, fetchNotifications]);
 
-  // ADDED: Auto-refresh every 10 seconds to poll for new notifications
   useEffect(() => {
     if (!user) return;
-    
     const interval = setInterval(() => {
       fetchNotifications();
-    }, 10000); // 10 seconds
-    
+    }, 10000);
     return () => clearInterval(interval);
   }, [user, fetchNotifications]);
 
@@ -198,7 +191,6 @@ export default function NotificationsPage() {
                     : 'bg-slate-800/40 border-slate-700/50 hover:border-slate-600'
                   }`}
               >
-                {/* Thumbnail */}
                 <img
                   src={imgSrc}
                   alt={n.item.name}
@@ -207,16 +199,12 @@ export default function NotificationsPage() {
                     (e.target as HTMLImageElement).src = '/Images/icon.png';
                   }}
                 />
-
-                {/* Content */}
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm leading-snug ${!n.read ? 'text-white font-medium' : 'text-slate-300'}`}>
                     {n.message}
                   </p>
                   <p className="text-xs text-slate-500 mt-1">{timeAgo(n.createdAt)}</p>
                 </div>
-
-                {/* Unread indicator */}
                 {!n.read && (
                   <div className="flex-shrink-0 w-2 h-2 mt-2 rounded-full bg-purple-500" />
                 )}

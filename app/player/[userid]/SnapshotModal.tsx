@@ -100,7 +100,7 @@ export default function SnapshotModal({ isOpen, onClose, snapshotId, snapshotDat
                     <div className="text-xs space-y-1">
                       <div className="flex justify-between">
                         <span className="text-slate-400">Then:</span>
-                        <span className="text-purple-300">{(item.rapThen * item.count).toLocaleString()} R$</span>
+                        <span className="text-300">{(item.rapThen * item.count).toLocaleString()} R$</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Now:</span>

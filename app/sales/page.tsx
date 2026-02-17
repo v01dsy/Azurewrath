@@ -84,16 +84,16 @@ export default function SalesPage() {
     return () => clearInterval(interval);
   }, [isMonitoring]);
 
-  // Format time
   const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
+    const normalized = dateString.replace(' ', 'T');
+    const date = new Date(normalized);
     return date.toLocaleTimeString('en-US', { 
       hour: 'numeric', 
       minute: '2-digit',
       second: '2-digit',
-      hour12: true 
+      hour12: true,
     });
-  };
+};
 
   // Determine if RAP went up or down
   const getRapChange = (sale: Sale) => {

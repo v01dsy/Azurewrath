@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 
-export const revalidate = 600; // Cache for 10 minutes (snapshots are historical and don't change)
+export const revalidate = 600;
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ snapshotId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { snapshotId } = await params;
+    const { id: snapshotId } = await params;
 
-    // Optimized query - get snapshot with all items and their RAP values in one query
+    // Rest stays exactly the same...
     const snapshotData = await prisma.$queryRaw<Array<{
       assetId: string;
       name: string;
@@ -36,9 +36,7 @@ export async function GET(
           si.name,
           si."imageUrl",
           si.item_count,
-          -- RAP at snapshot time (closest before or at snapshot)
           ph_then.rap as rap_then,
-          -- Current RAP (latest)
           ph_now.rap as rap_now
         FROM SnapshotItems si
         LEFT JOIN LATERAL (
@@ -68,7 +66,6 @@ export async function GET(
       ORDER BY rap_now DESC NULLS LAST
     `;
 
-    // Calculate totals from fetched data (no extra queries!)
     const totalRapThen = snapshotData.reduce((sum, item) => sum + ((item.rapThen || 0) * item.itemCount), 0);
     const totalRapNow = snapshotData.reduce((sum, item) => sum + ((item.rapNow || 0) * item.itemCount), 0);
 

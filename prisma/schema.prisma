@@ -56,14 +56,18 @@ model User {
   description        String?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
-  
+
+  // ADD THESE ↓
+  discordId            String?
+  discordUsername      String?
+  discordNotifications Boolean           @default(false)
+
   inventorySnapshots InventorySnapshot[]
   sessions           Session[]
   watchlist          Watchlist[]
   notifications      Notification[]     
   pushSubscriptions  PushSubscription[]
 }
-
 model InventorySnapshot {
   id          String          @id @default(cuid())
   userId      BigInt          // CHANGE FROM String TO BigInt

@@ -190,6 +190,14 @@ export default function ProfileDropdown() {
                 )}
               </button>
               <div className="border-t border-slate-700 my-1" />
+              <Link
+                  href="/settings"
+                  className="block px-4 py-2 text-white hover:bg-purple-600 transition"
+                  onClick={() => setOpen(false)}
+                >
+                  Settings
+                </Link>
+                <div className="border-t border-slate-700 my-1" />
               <button
                 onClick={handleLogout}
                 className="block w-full text-left px-4 py-2 text-white hover:bg-purple-600 transition"

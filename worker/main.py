@@ -13,7 +13,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 import uuid
-
+from discord_notifications import send_discord_notifications
 
 load_dotenv()
 
@@ -499,6 +499,8 @@ def send_push_notifications(cursor, notification_rows):
             (expired_endpoints,)
         )
         logger.info(f"✅ Expired subscriptions removed")
+
+    send_discord_notifications(cursor, notification_rows)    
     
     logger.info("🔔 send_push_notifications() COMPLETE")
 

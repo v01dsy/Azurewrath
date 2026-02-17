@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { getUserSession } from '@/lib/userSession';
 
 // Try to get from env, fallback to direct value if not available
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BF1Q-9UiDsb0Uiu28DRuD0Cqpt7uMrxabBSoN3GdlS4TauK-e_GqjdTan08sgkvOo7P3RJ2uM0ujWpGy891gwgI';
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BGzI_aWB7XnN24zOKUeTLEnVNpwgfTx-raTG5gi50D6etI7S__l1X50maK64_N1dRUuJbtJlW9jwbJZ32fIkQM4';
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);

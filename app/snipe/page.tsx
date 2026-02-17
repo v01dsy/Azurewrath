@@ -135,7 +135,7 @@ export default function SnipePage() {
         setFiredDeals(prev => [{ ...deal, firedAt: Date.now() }, ...prev].slice(0, 20));
 
         // 🔥 Open the item page immediately in a new tab
-        window.open(`/item/${deal.assetId}`, '_blank', 'noopener');
+        window.open(`https://www.roblox.com/catalog/${deal.assetId}`, '_blank', 'noopener');
       } catch { /* malformed event */ }
     };
 

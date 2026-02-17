@@ -24,40 +24,61 @@ export function usePushNotifications() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('Notification' in window)) {
+      console.warn('⚠️ Push notifications not supported in this browser');
       setPermission('unsupported');
       return;
     }
-    setPermission(Notification.permission as PushPermission);
+    const currentPermission = Notification.permission as PushPermission;
+    console.log('🔔 Initial notification permission:', currentPermission);
+    setPermission(currentPermission);
   }, []);
 
   const subscribe = async () => {
     const user = getUserSession();
-    if (!user) return;
+    if (!user) {
+      console.error('❌ No user session found');
+      return;
+    }
 
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      console.error('❌ Push notifications not supported in this browser');
       alert('Push notifications are not supported in this browser.');
+      return;
+    }
+
+    if (!VAPID_PUBLIC_KEY) {
+      console.error('❌ VAPID_PUBLIC_KEY not configured');
+      alert('Push notifications are not properly configured. Missing VAPID_PUBLIC_KEY.');
       return;
     }
 
     setLoading(true);
     try {
-      // Register service worker
+      console.log('🔔 Step 1: Registering service worker...');
       const registration = await navigator.serviceWorker.register('/sw.js');
       await navigator.serviceWorker.ready;
+      console.log('✅ Service worker registered:', registration);
 
-      // Request permission
+      console.log('🔔 Step 2: Requesting notification permission...');
       const perm = await Notification.requestPermission();
       setPermission(perm as PushPermission);
-      if (perm !== 'granted') return;
+      console.log('✅ Permission result:', perm);
+      
+      if (perm !== 'granted') {
+        console.warn('⚠️ Notification permission denied by user');
+        return;
+      }
 
-      // Subscribe to push
+      console.log('🔔 Step 3: Subscribing to push notifications...');
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
+      console.log('✅ Push subscription created');
+      console.log('   Endpoint:', subscription.endpoint);
 
-      // Save to DB
-      await fetch('/api/user/push-subscription', {
+      console.log('🔔 Step 4: Saving subscription to database...');
+      const response = await fetch('/api/user/push-subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -65,8 +86,18 @@ export function usePushNotifications() {
           subscription: subscription.toJSON(),
         }),
       });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Failed to save subscription:', errorText);
+        throw new Error(`Failed to save subscription: ${errorText}`);
+      }
+      
+      console.log('✅ Subscription saved to database');
+      console.log('🎉 Push notifications enabled successfully!');
     } catch (err) {
-      console.error('Push subscription error:', err);
+      console.error('❌ Push subscription error:', err);
+      alert(`Failed to enable push notifications:\n${err instanceof Error ? err.message : String(err)}\n\nCheck the browser console for details.`);
     } finally {
       setLoading(false);
     }
@@ -75,24 +106,42 @@ export function usePushNotifications() {
   const unsubscribe = async () => {
     setLoading(true);
     try {
+      console.log('🔔 Unsubscribing from push notifications...');
       const registration = await navigator.serviceWorker.getRegistration('/sw.js');
-      if (!registration) return;
+      if (!registration) {
+        console.warn('⚠️ No service worker registration found');
+        return;
+      }
 
       const subscription = await registration.pushManager.getSubscription();
-      if (!subscription) return;
+      if (!subscription) {
+        console.warn('⚠️ No active push subscription found');
+        return;
+      }
 
       const endpoint = subscription.endpoint;
+      console.log('🔔 Unsubscribing endpoint:', endpoint);
+      
       await subscription.unsubscribe();
+      console.log('✅ Unsubscribed from push');
 
-      await fetch('/api/user/push-subscription', {
+      console.log('🔔 Removing subscription from database...');
+      const response = await fetch('/api/user/push-subscription', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ endpoint }),
       });
 
+      if (!response.ok) {
+        console.warn('⚠️ Failed to remove subscription from database:', await response.text());
+      } else {
+        console.log('✅ Subscription removed from database');
+      }
+
       setPermission('default');
+      console.log('🎉 Successfully unsubscribed from push notifications');
     } catch (err) {
-      console.error('Unsubscribe error:', err);
+      console.error('❌ Unsubscribe error:', err);
     } finally {
       setLoading(false);
     }

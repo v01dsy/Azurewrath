@@ -63,13 +63,25 @@ export default function NotificationsPage() {
     }
   }, [user?.robloxUserId]);
 
+  // Initial fetch
   useEffect(() => {
     if (!user) {
       router.push('/verify');
       return;
     }
     fetchNotifications();
-  }, []);
+  }, [user, router, fetchNotifications]);
+
+  // ADDED: Auto-refresh every 10 seconds to poll for new notifications
+  useEffect(() => {
+    if (!user) return;
+    
+    const interval = setInterval(() => {
+      fetchNotifications();
+    }, 10000); // 10 seconds
+    
+    return () => clearInterval(interval);
+  }, [user, fetchNotifications]);
 
   const markAllRead = async () => {
     if (!user || unreadCount === 0) return;
@@ -198,7 +210,7 @@ export default function NotificationsPage() {
 
                 {/* Content */}
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm leading-snug ${!n.read ? 'text-white' : 'text-slate-300'}`}>
+                  <p className={`text-sm leading-snug ${!n.read ? 'text-white font-medium' : 'text-slate-300'}`}>
                     {n.message}
                   </p>
                   <p className="text-xs text-slate-500 mt-1">{timeAgo(n.createdAt)}</p>
@@ -206,16 +218,12 @@ export default function NotificationsPage() {
 
                 {/* Unread indicator */}
                 {!n.read && (
-                  <span className="flex-shrink-0 mt-2 w-2 h-2 rounded-full bg-purple-500" />
+                  <div className="flex-shrink-0 w-2 h-2 mt-2 rounded-full bg-purple-500" />
                 )}
               </div>
             );
           })}
         </div>
-      )}
-
-      {notifications.length > 0 && (
-        <p className="text-center text-xs text-slate-600">Showing latest 30 notifications</p>
       )}
     </div>
   );

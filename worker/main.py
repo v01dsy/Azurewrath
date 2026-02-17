@@ -480,12 +480,18 @@ def build_notifications(results, watchlist_map, current_time):
     """
     For every result that has a price or RAP change, generate Notification
     rows for each watcher of that item.
+    
+    FIXED: Deduplicates notifications to prevent multiple notifications 
+    per user per item in the same update cycle.
 
     Returns a list of tuples ready for bulk_insert_with_copy.
     Columns: (id, userId, itemId, type, message, oldValue, newValue, read, createdAt)
     """
     notification_rows = []
     naive_now = current_time.replace(tzinfo=None)
+    
+    # Track notifications per user per item to prevent duplicates
+    user_item_notifications = {}  # (user_id, asset_id) -> notification_data
 
     for result in results:
         asset_id = result['asset_id']
@@ -494,47 +500,66 @@ def build_notifications(results, watchlist_map, current_time):
             continue
 
         name = result['name']
-
-        # RAP change notification
-        if result['rap_changed'] and result['old_rap'] is not None and result['new_rap'] is not None:
+        rap_changed = result['rap_changed'] and result['old_rap'] is not None and result['new_rap'] is not None
+        price_changed = result['price_changed'] and result['old_price'] is not None and result['new_price'] is not None
+        
+        # Skip if no changes
+        if not (rap_changed or price_changed):
+            continue
+        
+        # Build combined message for this item
+        messages = []
+        if rap_changed:
             direction = "📈 increased" if result['new_rap'] > result['old_rap'] else "📉 decreased"
-            message = (
-                f"{name} RAP {direction} from "
+            messages.append(
+                f"RAP {direction} from "
                 f"{int(result['old_rap']):,} to {int(result['new_rap']):,} Robux"
             )
-            for user_id in watchers:
-                notification_rows.append((
-                    str(uuid.uuid4()),   # id
-                    user_id,             # userId  (BigInt in DB, stays as int here)
-                    asset_id,            # itemId  (BigInt in DB)
-                    'rap_change',        # type
-                    message,             # message
-                    result['old_rap'],   # oldValue
-                    result['new_rap'],   # newValue
-                    False,               # read
-                    naive_now,           # createdAt
-                ))
-
-        # Best-price change notification
-        if result['price_changed'] and result['old_price'] is not None and result['new_price'] is not None:
+        
+        if price_changed:
             direction = "📉 dropped" if result['new_price'] < result['old_price'] else "📈 rose"
-            message = (
-                f"{name} best price {direction} from "
+            messages.append(
+                f"best price {direction} from "
                 f"{int(result['old_price']):,} to {int(result['new_price']):,} Robux"
             )
-            for user_id in watchers:
-                notification_rows.append((
-                    str(uuid.uuid4()),
-                    user_id,
-                    asset_id,
-                    'price_change',
-                    message,
-                    result['old_price'],
-                    result['new_price'],
-                    False,
-                    naive_now,
-                ))
-
+        
+        # Combine messages with " and " separator
+        combined_message = f"{name} " + " and ".join(messages)
+        
+        # Determine notification type based on what changed
+        if rap_changed and price_changed:
+            notif_type = "price_and_rap_change"
+        elif rap_changed:
+            notif_type = "rap_change"
+        else:
+            notif_type = "price_change"
+        
+        # Use first available value for oldValue/newValue
+        old_value = result['old_rap'] if rap_changed else result['old_price']
+        new_value = result['new_rap'] if rap_changed else result['new_price']
+        
+        # Create ONE notification per watcher for this item
+        for user_id in watchers:
+            key = (user_id, asset_id)
+            
+            # Deduplicate: Skip if we've already created a notification for this user+item
+            if key in user_item_notifications:
+                continue
+            
+            user_item_notifications[key] = True
+            
+            notification_rows.append((
+                str(uuid.uuid4()),       # id
+                user_id,                 # userId (BigInt in DB, stays as int here)
+                asset_id,                # itemId (BigInt in DB)
+                notif_type,              # type
+                combined_message,        # message
+                old_value,               # oldValue
+                new_value,               # newValue
+                False,                   # read
+                naive_now,               # createdAt
+            ))
+    
     return notification_rows
 
 def save_results_to_db(results, is_new_window):

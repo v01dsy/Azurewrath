@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { getUserSession } from '@/lib/userSession';
 
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
+// Try to get from env, fallback to direct value if not available
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BF1Q-9UiDsb0Uiu28DRuD0Cqpt7uMrxabBSoN3GdlS4TauK-e_GqjdTan08sgkvOo7P3RJ2uM0ujWpGy891gwgI';
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -70,6 +71,7 @@ export function usePushNotifications() {
       }
 
       console.log('🔔 Step 3: Subscribing to push notifications...');
+      console.log('   Using VAPID key:', VAPID_PUBLIC_KEY.substring(0, 20) + '...');
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),

@@ -60,7 +60,8 @@ model User {
   inventorySnapshots InventorySnapshot[]
   sessions           Session[]
   watchlist          Watchlist[]
-  notifications      Notification[]      // ADD THIS LINE
+  notifications      Notification[]     
+  pushSubscriptions  PushSubscription[]
 }
 
 model InventorySnapshot {
@@ -133,4 +134,16 @@ model Notification {
 
   @@index([userId, read])
   @@index([createdAt])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    BigInt
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [robloxUserId], onDelete: Cascade)
+
+  @@index([userId])
 }

@@ -382,6 +382,100 @@ def load_watchlist_map(cursor, asset_ids):
 
     return watchlist_map
 
+def send_push_notifications(cursor, notification_rows):
+    """
+    Send browser push notifications to subscribed users.
+    Fetches PushSubscription rows for affected users and fires web push.
+    Silently removes expired/invalid subscriptions from DB.
+    """
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        logger.warning("⚠️ pywebpush not installed - skipping browser push. Run: pip install pywebpush")
+        return
+
+    VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY')
+    VAPID_SUBJECT = os.getenv('VAPID_SUBJECT', 'mailto:admin@azurewrath.com')
+
+    if not VAPID_PRIVATE_KEY:
+        logger.warning("⚠️ VAPID_PRIVATE_KEY not set - skipping browser push")
+        return
+
+    # Get unique user IDs from notification rows
+    user_ids = list(set(row[1] for row in notification_rows))
+    if not user_ids:
+        return
+
+    # Fetch push subscriptions for these users
+    cursor.execute('''
+        SELECT id, "userId", endpoint, p256dh, auth
+        FROM "PushSubscription"
+        WHERE "userId" = ANY(%s)
+    ''', (user_ids,))
+    subscriptions = cursor.fetchall()
+
+    if not subscriptions:
+        return
+
+    # Build a map of userId -> latest message for that user
+    user_messages = {}
+    for row in notification_rows:
+        user_id = row[1]
+        message = row[4]  # message column
+        item_id = row[2]  # itemId column
+        if user_id not in user_messages:
+            user_messages[user_id] = {'message': message, 'item_id': item_id, 'count': 1}
+        else:
+            user_messages[user_id]['count'] += 1
+
+    expired_endpoints = []
+
+    for sub_id, user_id, endpoint, p256dh, auth in subscriptions:
+        if user_id not in user_messages:
+            continue
+
+        info = user_messages[user_id]
+        count = info['count']
+        body = info['message'] if count == 1 else f"{count} price changes on your watchlist"
+
+        import json
+        payload = json.dumps({
+            'title': 'Azurewrath',
+            'body': body,
+            'icon': '/Images/icon.png',
+            'url': f"/item/{info['item_id']}" if count == 1 else '/notifications',
+        })
+
+        try:
+            webpush(
+                subscription_info={
+                    'endpoint': endpoint,
+                    'keys': {'p256dh': p256dh, 'auth': auth}
+                },
+                data=payload,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={'sub': VAPID_SUBJECT},
+            )
+            logger.info(f"✅ Push sent to user {user_id}")
+        except WebPushException as e:
+            status = e.response.status_code if e.response else None
+            if status in (404, 410):
+                # Subscription expired - clean up
+                expired_endpoints.append(endpoint)
+                logger.info(f"🗑️ Expired push subscription removed for user {user_id}")
+            else:
+                logger.warning(f"⚠️ Push failed for user {user_id}: {e}")
+        except Exception as e:
+            logger.warning(f"⚠️ Push error for user {user_id}: {e}")
+
+    # Remove expired subscriptions
+    if expired_endpoints:
+        cursor.execute(
+            'DELETE FROM "PushSubscription" WHERE endpoint = ANY(%s)',
+            (expired_endpoints,)
+        )
+
+
 def build_notifications(results, watchlist_map, current_time):
     """
     For every result that has a price or RAP change, generate Notification
@@ -601,6 +695,8 @@ def save_results_to_db(results, is_new_window):
                         ('id', 'userId', 'itemId', 'type', 'message', 'oldValue', 'newValue', 'read', 'createdAt')
                     )
                     logger.info(f"✅ Inserted {len(notification_rows)} Notifications")
+                    # Send browser push notifications
+                    send_push_notifications(cursor, notification_rows)
                 else:
                     logger.info("✅ No notifications to send (no watchers affected)")
             else:

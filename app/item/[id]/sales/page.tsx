@@ -11,7 +11,7 @@ interface Sale {
   buyerUsername?: string;
   serialNumber?: number;
   saleDate: string;
-  rapAfterSale?: number;  // Changed
+  rapAfterSale?: number;
   rapBeforeSale?: number;
   rapAtSale?: number;
   previousRap?: number;
@@ -198,7 +198,6 @@ export default function SalesHistoryPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-700">
                   {sales.map((sale) => {
-                    // Determine if RAP increased or decreased
                     const rapIncreased = sale.rapDifference && sale.rapDifference > 0;
                     const rapDecreased = sale.rapDifference && sale.rapDifference < 0;
                     

@@ -63,20 +63,21 @@ export async function GET(
       },
     });
 
-    // Transform sales data - calculate sale price from oldRap and newRap
+    // Transform sales data to match frontend expectations
     const salesWithCalculatedPrices = sales.map((sale) => {
-      const { itemId, oldRap, newRap, ...saleData } = sale;
-      
-      // Calculate sale price: oldRap + ((newRap - oldRap) * 10)
-      const rapDifference = newRap - oldRap;
-      const salePrice = oldRap + (rapDifference * 10);
+      const rapDifference = sale.newRap - sale.oldRap;
       
       return {
-        ...saleData,
-        itemId: itemId.toString(), // Convert BigInt to string
-        oldRap: oldRap,
-        newRap: newRap,
-        salePrice: salePrice,
+        id: sale.id,
+        salePrice: sale.newRap, // Use newRap as the sale price
+        sellerUsername: undefined,
+        buyerUsername: undefined,
+        serialNumber: undefined,
+        saleDate: sale.saleDate.toISOString(),
+        rapAfterSale: sale.newRap,
+        rapBeforeSale: sale.oldRap,
+        rapAtSale: sale.newRap,
+        previousRap: sale.oldRap,
         rapDifference: rapDifference
       };
     });

@@ -80,6 +80,10 @@ export default function RootLayout({
               <img src="/Images/deals.png" alt="Deals icon" draggable="false" />
               <p>Deals</p>
             </a>
+            <a href="/snipe">
+              <img src="/Images/snipe.png" alt="Snipe icon" draggable="false" />
+              <p>Snipe</p>
+            </a>
             <a href="/sales">
               <img src="/Images/sales.png" alt="Sales icon" draggable="false" />
               <p>Sales</p>

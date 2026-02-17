@@ -18,13 +18,15 @@ model Item {
   priceHistory   PriceHistory[]
   sales          Sale[]
   watchlist      Watchlist[]
-  notifications  Notification[]  // ADD THIS LINE
+  notifications  Notification[]
+  snipeConfigs   SnipeConfig[]
 
   @@index([assetId])
 }
+
 model PriceHistory {
   id           String   @id @default(cuid())
-  itemId       BigInt   // CHANGED FROM String TO BigInt
+  itemId       BigInt
   price        Float
   rap          Float?
   lowestResale Float?
@@ -49,28 +51,27 @@ model Sale {
 }
 
 model User {
-  robloxUserId       BigInt              @id
-  username           String
-  displayName        String?
-  avatarUrl          String?
-  description        String?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-
-  // ADD THESE ↓
+  robloxUserId         BigInt              @id
+  username             String
+  displayName          String?
+  avatarUrl            String?
+  description          String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
   discordId            String?
   discordUsername      String?
-  discordNotifications Boolean           @default(false)
-
-  inventorySnapshots InventorySnapshot[]
-  sessions           Session[]
-  watchlist          Watchlist[]
-  notifications      Notification[]     
-  pushSubscriptions  PushSubscription[]
+  discordNotifications Boolean             @default(false)
+  inventorySnapshots   InventorySnapshot[]
+  sessions             Session[]
+  watchlist            Watchlist[]
+  notifications        Notification[]
+  pushSubscriptions    PushSubscription[]
+  snipeConfigs         SnipeConfig[]
 }
+
 model InventorySnapshot {
   id          String          @id @default(cuid())
-  userId      BigInt          // CHANGE FROM String TO BigInt
+  userId      BigInt
   createdAt   DateTime        @default(now())
   totalRAP    Float?
   totalItems  Int?
@@ -85,7 +86,7 @@ model InventorySnapshot {
 model InventoryItem {
   snapshotId   String
   assetId      BigInt
-  userAssetId  BigInt  // Changed from String to BigInt
+  userAssetId  BigInt
   scannedAt    DateTime          @default(now())
   serialNumber Int?
   item         Item              @relation(fields: [assetId], references: [assetId])
@@ -101,12 +102,12 @@ model InventoryItem {
 model Session {
   id           String   @id @default(cuid())
   sessionToken String   @unique
-  userId       BigInt   // CHANGE FROM String TO BigInt
+  userId       BigInt
   user         User     @relation(fields: [userId], references: [robloxUserId], onDelete: Cascade)
   expires      DateTime
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  
+
   @@index([sessionToken])
   @@index([userId])
 }
@@ -118,7 +119,7 @@ model Watchlist {
   user      User     @relation(fields: [userId], references: [robloxUserId], onDelete: Cascade)
   item      Item     @relation(fields: [itemId], references: [assetId], onDelete: Cascade)
 
-  @@id([userId, itemId]) // Composite primary key
+  @@id([userId, itemId])
   @@index([userId])
   @@index([itemId])
 }
@@ -127,7 +128,7 @@ model Notification {
   id        String   @id @default(cuid())
   userId    BigInt
   itemId    BigInt
-  type      String   // "price_change" or "sale"
+  type      String
   message   String
   oldValue  Float?
   newValue  Float?
@@ -150,4 +151,34 @@ model PushSubscription {
   user      User     @relation(fields: [userId], references: [robloxUserId], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model SnipeConfig {
+  id        String   @id @default(cuid())
+  userId    BigInt
+  assetId   BigInt?
+  minDeal   Float    @default(10)
+  minPrice  Float?
+  maxPrice  Float?
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [robloxUserId], onDelete: Cascade)
+  item      Item?    @relation(fields: [assetId], references: [assetId], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([assetId])
+}
+
+model SnipeDeal {
+  id        String   @id @default(cuid())
+  assetId   BigInt
+  name      String
+  imageUrl  String?
+  price     Float
+  rap       Float
+  deal      Float
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }

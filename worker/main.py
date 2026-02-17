@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 import uuid
 from discord_notifications import send_discord_notifications
+from snipe_events import fire_snipe_events
 
 load_dotenv()
 
@@ -687,6 +688,8 @@ def save_results_to_db(results, is_new_window):
                 logger.info("✅ No watchers for changed items")
         else:
             logger.info("✅ No price/RAP changes - skipping notifications")
+        
+        fire_snipe_events(cursor, results)
 
         conn.commit()
         logger.info(f"💾 Database commit successful!")

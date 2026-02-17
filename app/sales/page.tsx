@@ -24,6 +24,7 @@ export default function SalesPage() {
   const [error, setError] = useState<string | null>(null);
   const [isMonitoring, setIsMonitoring] = useState(true);
   const [newSaleIds, setNewSaleIds] = useState<Set<string>>(new Set());
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const prevSalesRef = useRef<Sale[]>([]);
 
   // Fetch sales with embedded RAP data
@@ -34,22 +35,24 @@ export default function SalesPage() {
       
       const data = await response.json();
       
-      // Detect new sales
-      const prevIds = new Set(prevSalesRef.current.map(s => s.id));
-      const newIds = new Set<string>();
-      
-      data.sales.forEach((sale: Sale) => {
-        if (!prevIds.has(sale.id)) {
-          newIds.add(sale.id);
+      // Detect new sales (only if not initial load)
+      if (!isInitialLoad) {
+        const prevIds = new Set(prevSalesRef.current.map(s => s.id));
+        const newIds = new Set<string>();
+        
+        data.sales.forEach((sale: Sale) => {
+          if (!prevIds.has(sale.id)) {
+            newIds.add(sale.id);
+          }
+        });
+        
+        if (newIds.size > 0) {
+          setNewSaleIds(newIds);
+          // Clear new sale indicators after animation completes
+          setTimeout(() => {
+            setNewSaleIds(new Set());
+          }, 800);
         }
-      });
-      
-      if (newIds.size > 0) {
-        setNewSaleIds(newIds);
-        // Clear new sale indicators after animation completes
-        setTimeout(() => {
-          setNewSaleIds(new Set());
-        }, 800);
       }
       
       prevSalesRef.current = data.sales;
@@ -59,6 +62,9 @@ export default function SalesPage() {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
+      if (isInitialLoad) {
+        setIsInitialLoad(false);
+      }
     }
   };
 
@@ -247,8 +253,6 @@ export default function SalesPage() {
                   style={{
                     animation: isNew 
                       ? `slideInFrom${direction} 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards`
-                      : loading 
-                      ? `slideInFrom${direction} 0.6s ease-out ${index * 50}ms both`
                       : 'none',
                     transition: 'all 0.5s ease-out'
                   }}

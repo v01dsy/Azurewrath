@@ -84,6 +84,7 @@ export default function ProfileDropdown() {
           ) : (
             <>
               <Link href={`/player/${user.robloxUserId}`} className="block px-4 py-2 text-white hover:bg-purple-600">Profile</Link>
+              <Link href="/watchlist" className="block px-4 py-2 text-white hover:bg-purple-600">Watchlist</Link>
               <button onClick={handleLogout} className="block w-full text-left px-4 py-2 text-white hover:bg-purple-600">Logout</button>
             </>
           )}

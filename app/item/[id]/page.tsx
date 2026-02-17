@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { getUserSession } from '@/lib/userSession';
 
 interface ItemDetail {
   id: string;
@@ -12,8 +13,8 @@ interface ItemDetail {
   name: string;
   imageUrl?: string;
   description?: string;
-  currentPrice?: number;  // ADDED
-  currentRap?: number;    // ADDED
+  currentPrice?: number;
+  currentRap?: number;
   priceHistory: Array<{
     id: string;
     price: number;
@@ -31,7 +32,6 @@ interface ItemDetail {
   };
 }
 
-
 export default function ItemPage() {
   const params = useParams();
   const router = useRouter();
@@ -40,6 +40,8 @@ export default function ItemPage() {
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isWatchlisted, setIsWatchlisted] = useState(false);
+  const [watchlistLoading, setWatchlistLoading] = useState(false);
 
   useEffect(() => {
     const fetchItem = async () => {
@@ -60,10 +62,60 @@ export default function ItemPage() {
   }, [itemId]);
 
   useEffect(() => {
-  if (item?.name) {
-    document.title = `${item.name} | Limited Item - Azurewrath`;
-  }
-}, [item]);
+    if (item?.name) {
+      document.title = `${item.name} | Limited Item - Azurewrath`;
+    }
+  }, [item]);
+
+  // Check if item is watchlisted
+  useEffect(() => {
+    const checkWatchlist = async () => {
+      const user = getUserSession();
+      if (!user || !item) return;
+
+      try {
+        const response = await axios.get(`/api/items/${itemId}/watchlist?userId=${user.robloxUserId}`);
+        setIsWatchlisted(response.data.isWatchlisted);
+      } catch (err) {
+        console.error('Failed to check watchlist status:', err);
+      }
+    };
+
+    checkWatchlist();
+  }, [item, itemId]);
+
+  const handleWatchlistToggle = async () => {
+    const user = getUserSession();
+    
+    if (!user) {
+      alert('Please log in to add items to your watchlist');
+      router.push('/');
+      return;
+    }
+
+    setWatchlistLoading(true);
+
+    try {
+      if (isWatchlisted) {
+        // Remove from watchlist
+        await axios.delete(`/api/items/${itemId}/watchlist`, {
+          data: { userId: user.robloxUserId }
+        });
+        setIsWatchlisted(false);
+      } else {
+        // Add to watchlist
+        await axios.post(`/api/items/${itemId}/watchlist`, {
+          userId: user.robloxUserId
+        });
+        setIsWatchlisted(true);
+      }
+    } catch (err: any) {
+      console.error('Watchlist error:', err);
+      alert(err.response?.data?.error || 'Failed to update watchlist');
+    } finally {
+      setWatchlistLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -91,7 +143,6 @@ export default function ItemPage() {
       rap: ph.rap,
     }));
 
- // CHANGED THESE TWO LINES
   const currentPrice = item.currentPrice;
   const currentRAP = item.currentRap;
   
@@ -221,15 +272,23 @@ export default function ItemPage() {
             >
               View Sales History 📊
             </button>
-            <button className="flex-1 bg-gradient-to-r from-neon-blue to-neon-purple px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition">
-              Add to Watchlist 👁️
+            <button 
+              onClick={handleWatchlistToggle}
+              disabled={watchlistLoading}
+              className={`flex-1 px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition ${
+                isWatchlisted 
+                  ? 'bg-gradient-to-r from-red-500 to-pink-600' 
+                  : 'bg-gradient-to-r from-neon-blue to-neon-purple'
+              }`}
+            >
+              {watchlistLoading ? '...' : isWatchlisted ? 'Remove from Watchlist ❌' : 'Add to Watchlist 👁️'}
             </button>
             <a
               href={`https://www.roblox.com/catalog/${item.assetId}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex-1 bg-gradient-to-r from-neon-purple to-neon-magenta px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition text-center"
-              >
+            >
               View on Roblox 🔗
             </a>
           </div>

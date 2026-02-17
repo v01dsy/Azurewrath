@@ -17,10 +17,11 @@ model Item {
   inventoryItems InventoryItem[]
   priceHistory   PriceHistory[]
   sales          Sale[]
+  watchlist      Watchlist[]
+  notifications  Notification[]  // ADD THIS LINE
 
   @@index([assetId])
 }
-
 model PriceHistory {
   id           String   @id @default(cuid())
   itemId       BigInt   // CHANGED FROM String TO BigInt
@@ -48,16 +49,18 @@ model Sale {
 }
 
 model User {
-  robloxUserId      BigInt              @id  // CHANGE FROM String TO BigInt
-  username          String
-  displayName       String?
-  avatarUrl         String?
-  description       String?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  robloxUserId       BigInt              @id
+  username           String
+  displayName        String?
+  avatarUrl          String?
+  description        String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
   
   inventorySnapshots InventorySnapshot[]
-  sessions          Session[]
+  sessions           Session[]
+  watchlist          Watchlist[]
+  notifications      Notification[]      // ADD THIS LINE
 }
 
 model InventorySnapshot {
@@ -101,4 +104,33 @@ model Session {
   
   @@index([sessionToken])
   @@index([userId])
+}
+
+model Watchlist {
+  userId    BigInt
+  itemId    BigInt
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [robloxUserId], onDelete: Cascade)
+  item      Item     @relation(fields: [itemId], references: [assetId], onDelete: Cascade)
+
+  @@id([userId, itemId]) // Composite primary key
+  @@index([userId])
+  @@index([itemId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    BigInt
+  itemId    BigInt
+  type      String   // "price_change" or "sale"
+  message   String
+  oldValue  Float?
+  newValue  Float?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [robloxUserId], onDelete: Cascade)
+  item      Item     @relation(fields: [itemId], references: [assetId], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([createdAt])
 }

@@ -145,6 +145,7 @@ export default function InventoryGraph({ data, onPointClick }: InventoryGraphPro
               ticks={rapTicks}
               tick={renderLeftTick}
               hide={leftHidden}
+              allowDuplicatedCategory={false}
             />
             <YAxis
               yAxisId="right"
@@ -156,6 +157,7 @@ export default function InventoryGraph({ data, onPointClick }: InventoryGraphPro
               ticks={itemTicks}
               tick={renderRightTick}
               hide={rightHidden}
+              allowDuplicatedCategory={false}
             />
             <Tooltip
               contentStyle={{

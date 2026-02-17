@@ -216,15 +216,27 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
     await prisma.inventoryItem.deleteMany({
       where: { snapshotId: todaysSnapshot.id }
     });
-    
+
     console.log(`🔍 [DEBUG] Creating ${allItemsForSnapshot.length} new inventory items...`);
+    console.log(`🔍 [DEBUG] todaysSnapshot.id: ${todaysSnapshot.id}`);
+    console.log(`🔍 [DEBUG] First item sample:`, JSON.stringify(allItemsForSnapshot[0], (key, value) =>
+      typeof value === 'bigint' ? value.toString() : value
+    ));
+
     await prisma.inventoryItem.createMany({
-      data: allItemsForSnapshot.map(item => ({
-        ...item,
-        snapshotId: todaysSnapshot.id
-      }))
+      data: allItemsForSnapshot.map(item => {
+        const mapped = {
+          snapshotId: todaysSnapshot.id,
+          // Handle both BigInt (from cache) and number/string (from new items)
+          userAssetId: typeof item.userAssetId === 'bigint' ? item.userAssetId : BigInt(item.userAssetId),
+          assetId: typeof item.assetId === 'bigint' ? item.assetId : BigInt(item.assetId),
+          scannedAt: item.scannedAt || new Date(),
+          serialNumber: item.serialNumber ?? null,
+        };
+        return mapped;
+      })
     });
-    
+        
     const updatedSnapshot = await prisma.inventorySnapshot.findUnique({
       where: { id: todaysSnapshot.id },
       include: { items: true }
@@ -244,7 +256,13 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
       data: {
         userId: userIdBigInt,
         items: {
-          create: allItemsForSnapshot
+          create: allItemsForSnapshot.map(item => ({
+            // Handle both BigInt (from cache) and number/string (from new items)
+            userAssetId: typeof item.userAssetId === 'bigint' ? item.userAssetId : BigInt(item.userAssetId),
+            assetId: typeof item.assetId === 'bigint' ? item.assetId : BigInt(item.assetId),
+            serialNumber: item.serialNumber ?? null,
+            scannedAt: item.scannedAt || new Date()
+          }))
         },
       },
       include: { items: true },

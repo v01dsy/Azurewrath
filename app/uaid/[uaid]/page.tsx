@@ -10,10 +10,13 @@ interface UAIDPageProps {
 export default async function UAIDPage({ params }: UAIDPageProps) {
   const { uaid } = await params;
   
+  // Convert string UAID to BigInt for database query
+  const uaidBigInt = BigInt(uaid);
+  
   // First, find the most recent snapshot that contains this UAID
   const mostRecentItem = await prisma.inventoryItem.findFirst({
     where: {
-      userAssetId: BigInt(uaid)
+      userAssetId: uaidBigInt
     },  
     orderBy: { scannedAt: "desc" },
     include: {
@@ -47,7 +50,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
   // Now fetch all items from that specific snapshot with this UAID
   const items = await prisma.inventoryItem.findMany({
     where: { 
-      userAssetId: BigInt(uaid),
+      userAssetId: uaidBigInt,
       snapshotId: mostRecentItem.snapshotId,
     },
     orderBy: { scannedAt: "desc" },

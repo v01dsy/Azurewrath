@@ -223,7 +223,7 @@ export async function GET(
         rs.id as "snapshotId",
         rs."createdAt",
         COALESCE(SUM(ph.rap), 0) as "totalRap",
-        COUNT(ii.id)::int as "itemCount",
+        COUNT(ii."userAssetId")::int as "itemCount",
         COUNT(DISTINCT ii."assetId")::int as "uniqueCount"
       FROM RecentSnapshots rs
       LEFT JOIN "InventoryItem" ii ON ii."snapshotId" = rs.id

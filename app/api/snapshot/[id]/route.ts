@@ -5,10 +5,10 @@ export const revalidate = 600; // Cache for 10 minutes (snapshots are historical
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ snapshotId: string }> }
 ) {
   try {
-    const { id: snapshotid } = await params;
+    const { snapshotId } = await params;
 
     // Optimized query - get snapshot with all items and their RAP values in one query
     const snapshotData = await prisma.$queryRaw<Array<{
@@ -27,7 +27,7 @@ export async function GET(
           COUNT(*) as item_count
         FROM "InventoryItem" ii
         LEFT JOIN "Item" i ON ii."assetId" = i."assetId"
-        WHERE ii."snapshotId" = ${snapshotid}
+        WHERE ii."snapshotId" = ${snapshotId}
         GROUP BY ii."assetId", i.name, i."imageUrl"
       ),
       ItemPrices AS (
@@ -41,19 +41,18 @@ export async function GET(
           -- Current RAP (latest)
           ph_now.rap as rap_now
         FROM SnapshotItems si
-        LEFT JOIN "Item" i ON si."assetId" = i."assetId"
         LEFT JOIN LATERAL (
           SELECT rap
           FROM "PriceHistory"
-          WHERE "itemId" = i.id
-            AND timestamp <= (SELECT "createdAt" FROM "InventorySnapshot" WHERE id = ${snapshotid})
+          WHERE "itemId" = si."assetId"
+            AND timestamp <= (SELECT "createdAt" FROM "InventorySnapshot" WHERE id = ${snapshotId})
           ORDER BY timestamp DESC
           LIMIT 1
         ) ph_then ON true
         LEFT JOIN LATERAL (
           SELECT rap
           FROM "PriceHistory"
-          WHERE "itemId" = i.id
+          WHERE "itemId" = si."assetId"
           ORDER BY timestamp DESC
           LIMIT 1
         ) ph_now ON true

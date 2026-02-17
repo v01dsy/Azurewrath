@@ -2,7 +2,11 @@
 // Sale price is calculated from oldRap and newRap: Sale Price = oldRap + ((newRap - oldRap) × 10)
 
 import { NextResponse } from 'next/server';
-import { Pool } from 'pg';
+import { Pool, types } from 'pg';
+
+// Tell pg to treat all timestamps as UTC (don't apply local timezone conversion)
+types.setTypeParser(1114, (str: string) => str + 'Z'); // TIMESTAMP WITHOUT TIME ZONE
+types.setTypeParser(1184, (str: string) => str + 'Z'); // TIMESTAMP WITH TIME ZONE
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -24,7 +28,6 @@ export async function GET(request: Request) {
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    // Sale table now has oldRap and newRap directly
     const query = `
       SELECT 
         s.id,
@@ -35,9 +38,7 @@ export async function GET(request: Request) {
         i.name as "itemName",
         i."assetId",
         i."imageUrl" as "thumbnailUrl",
-        -- Calculate sale price: oldRap + ((newRap - oldRap) × 10)
-        ROUND(s."oldRap" + ((s."newRap" - s."oldRap") * 10)) as "salePrice",
-        -- Calculate RAP difference
+        GREATEST(0, ROUND((s."newRap" * 10) - (s."oldRap" * 9))) as "salePrice",
         (s."newRap" - s."oldRap") as "rapDifference"
       FROM "Sale" s
       JOIN "Item" i ON s."itemId" = i."assetId"
@@ -47,16 +48,15 @@ export async function GET(request: Request) {
 
     const result = await pool.query(query, [limit, offset]);
 
-    // Get total count
     const countQuery = 'SELECT COUNT(*) FROM "Sale"';
     const countResult = await pool.query(countQuery);
     const totalCount = parseInt(countResult.rows[0].count);
 
-    // Convert BigInt to string for JSON serialization
     const sales = result.rows.map(row => ({
       ...row,
       itemId: row.itemId.toString(),
-      assetId: row.assetId.toString()
+      assetId: row.assetId.toString(),
+      saleDate: row.saleDate instanceof Date ? row.saleDate.toISOString() : row.saleDate
     }));
 
     return NextResponse.json({
@@ -108,9 +108,7 @@ export async function POST(request: Request) {
         i.name as "itemName",
         i."assetId",
         i."imageUrl" as "thumbnailUrl",
-        -- Calculate sale price: oldRap + ((newRap - oldRap) × 10)
         ROUND(s."oldRap" + ((s."newRap" - s."oldRap") * 10)) as "salePrice",
-        -- Calculate RAP difference
         (s."newRap" - s."oldRap") as "rapDifference"
       FROM "Sale" s
       JOIN "Item" i ON s."itemId" = i."assetId"
@@ -121,11 +119,11 @@ export async function POST(request: Request) {
 
     const result = await pool.query(query, [itemId, Math.min(limit, 100)]);
 
-    // Convert BigInt to string for JSON serialization
     const sales = result.rows.map(row => ({
       ...row,
       itemId: row.itemId.toString(),
-      assetId: row.assetId.toString()
+      assetId: row.assetId.toString(),
+      saleDate: row.saleDate instanceof Date ? row.saleDate.toISOString() : row.saleDate
     }));
 
     return NextResponse.json({

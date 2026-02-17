@@ -7,14 +7,9 @@ import axios from 'axios';
 interface Sale {
   id: string;
   salePrice: number;
-  sellerUsername?: string;
-  buyerUsername?: string;
-  serialNumber?: number;
   saleDate: string;
   rapAfterSale?: number;
   rapBeforeSale?: number;
-  rapAtSale?: number;
-  previousRap?: number;
   rapDifference?: number;
 }
 
@@ -29,12 +24,16 @@ export default function SalesHistoryPage() {
   const router = useRouter();
   const params = useParams();
   const itemId = params.id as string;
-  
+
   const [item, setItem] = useState<ItemInfo | null>(null);
   const [sales, setSales] = useState<Sale[]>([]);
   const [currentRap, setCurrentRap] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const [bestPrice, setBestPrice] = useState<number | null>(null);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     if (item?.name) {
@@ -49,7 +48,6 @@ export default function SalesHistoryPage() {
           axios.get(`/api/items/${itemId}`),
           axios.get(`/api/items/${itemId}/sales`),
         ]);
-        
         setItem({
           id: itemRes.data.id,
           name: itemRes.data.name,
@@ -57,7 +55,9 @@ export default function SalesHistoryPage() {
           imageUrl: itemRes.data.imageUrl,
         });
         setSales(salesRes.data.sales);
+        
         setCurrentRap(salesRes.data.currentRap);
+        setBestPrice(itemRes.data.currentPrice ?? null);
       } catch (err) {
         setError('Failed to load sales data');
         console.error(err);
@@ -65,15 +65,12 @@ export default function SalesHistoryPage() {
         setLoading(false);
       }
     };
-
-    if (itemId) {
-      fetchData();
-    }
+    if (itemId) fetchData();
   }, [itemId]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-8">
+      <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white p-32 -mt-20 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin text-4xl mb-4">⚙️</div>
           <p className="text-slate-400">Loading sales history...</p>
@@ -84,7 +81,7 @@ export default function SalesHistoryPage() {
 
   if (error || !item) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-8">
+      <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white p-32 -mt-20 flex items-center justify-center">
         <div className="max-w-2xl w-full">
           <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8">
             <h1 className="text-3xl font-bold text-red-400 mb-4">Error</h1>
@@ -95,13 +92,13 @@ export default function SalesHistoryPage() {
     );
   }
 
-  const avgPrice = sales.length > 0
-    ? sales.reduce((sum, s) => sum + s.salePrice, 0) / sales.length
-    : 0;
+  const avgPrice =
+    sales.length > 0 ? sales.reduce((sum, s) => sum + s.salePrice, 0) / sales.length : 0;
 
   return (
-    <div className="min-h-screen bg-slate-900 p-4">
+    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white p-32 -mt-20">
       <div className="max-w-4xl mx-auto space-y-6">
+
         {/* Back Button */}
         <button
           onClick={() => router.push(`/item/${itemId}`)}
@@ -113,17 +110,12 @@ export default function SalesHistoryPage() {
           Back to Item
         </button>
 
-        {/* Header Card - Item Info */}
+        {/* Header Card */}
         <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
           <div className="flex items-start gap-6">
-            {/* Item Thumbnail */}
             <div className="w-32 h-32 bg-slate-700/50 rounded-lg overflow-hidden flex-shrink-0">
               {item.imageUrl ? (
-                <img 
-                  src={item.imageUrl} 
-                  alt={item.name}
-                  className="w-full h-full object-cover"
-                />
+                <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <svg className="w-12 h-12 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -132,19 +124,22 @@ export default function SalesHistoryPage() {
                 </div>
               )}
             </div>
-
-            {/* Item Details */}
             <div className="flex-1">
-              <h1 className="text-3xl font-bold text-white mb-2">
-                {item.name}
-              </h1>
+              <h1 className="text-3xl font-bold text-white mb-2">{item.name}</h1>
               <p className="text-slate-400 text-sm uppercase tracking-wider">Sales History</p>
             </div>
           </div>
         </div>
 
+
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-3 gap-6">
+          <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
+            <div className="text-slate-400 text-xs uppercase tracking-wider mb-2">Best Price</div>
+            <div className="text-blue-400 text-3xl font-bold">
+              {bestPrice ? bestPrice.toLocaleString() : 'N/A'} R$
+            </div>
+          </div>
           <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
             <div className="text-slate-400 text-xs uppercase tracking-wider mb-2">Current RAP</div>
             <div className="text-green-400 text-3xl font-bold">
@@ -152,9 +147,9 @@ export default function SalesHistoryPage() {
             </div>
           </div>
           <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
-            <div className="text-slate-400 text-xs uppercase tracking-wider mb-2">Average Sale Price</div>
-            <div className="text-blue-400 text-3xl font-bold">
-              {avgPrice > 0 ? Math.round(avgPrice).toLocaleString() : 'N/A'} R$
+            <div className="text-slate-400 text-xs uppercase tracking-wider mb-2">Total Sales</div>
+            <div className="text-purple-400 text-3xl font-bold">
+              {sales.length.toLocaleString()}
             </div>
           </div>
         </div>
@@ -170,58 +165,44 @@ export default function SalesHistoryPage() {
             </h2>
             <p className="text-slate-400 text-sm mt-1">All recorded sales for this item</p>
           </div>
-          
+
           {sales.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-slate-700/30">
                   <tr className="border-b border-slate-700">
-                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">
-                      Date
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">
-                      Sale Price
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">
-                      RAP
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">
-                      Seller
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">
-                      Buyer
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">
-                      Serial #
-                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">Sale Price</th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">Old RAP</th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">New RAP</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-700">
                   {sales.map((sale) => {
                     const rapIncreased = sale.rapDifference && sale.rapDifference > 0;
                     const rapDecreased = sale.rapDifference && sale.rapDifference < 0;
-                    
+
                     return (
-                      <tr 
-                        key={sale.id} 
+                      <tr
+                        key={sale.id}
                         className={`transition-colors ${
-                          rapIncreased 
-                            ? 'hover:bg-green-900/40 bg-green-900/30' 
-                            : rapDecreased 
-                            ? 'hover:bg-red-900/40 bg-red-900/30' 
+                          rapIncreased
+                            ? 'hover:bg-green-900/40 bg-green-900/30'
+                            : rapDecreased
+                            ? 'hover:bg-red-900/40 bg-red-900/30'
                             : 'hover:bg-slate-700/20'
                         }`}
                       >
                         <td className="px-6 py-4">
                           <div className="text-slate-300 text-sm">
-                            {new Date(sale.saleDate).toLocaleString(undefined, {
+                            {mounted ? new Date(sale.saleDate).toLocaleString(undefined, {
                               year: 'numeric',
                               month: 'short',
                               day: 'numeric',
                               hour: '2-digit',
                               minute: '2-digit',
-                              hour12: true
-                            })}
+                              hour12: true,
+                            }) : ''}
                           </div>
                         </td>
                         <td className="px-6 py-4">
@@ -230,24 +211,14 @@ export default function SalesHistoryPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <div className="text-green-400 font-semibold">
-                            {sale.rapAfterSale ? sale.rapAfterSale.toLocaleString() : 'N/A'} R$
+                          <div className="text-slate-300 font-semibold">
+                            {sale.rapBeforeSale ? sale.rapBeforeSale.toLocaleString() : 'N/A'} R$
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-slate-400 text-sm">
-                            {sale.sellerUsername || 'Unknown'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="text-slate-400 text-sm">
-                            {sale.buyerUsername || 'Unknown'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`text-sm font-semibold ${sale.serialNumber ? 'text-orange-400' : 'text-slate-500'}`}>
-                            {sale.serialNumber ? `#${sale.serialNumber}` : 'N/A'}
-                          </span>
+                          <div className={`font-semibold ${rapIncreased ? 'text-green-400' : rapDecreased ? 'text-red-400' : 'text-slate-300'}`}>
+                            {sale.rapAfterSale ? sale.rapAfterSale.toLocaleString() : 'N/A'} R$
+                          </div>
                         </td>
                       </tr>
                     );

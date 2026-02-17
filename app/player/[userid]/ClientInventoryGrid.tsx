@@ -168,7 +168,7 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
           onClick={closeModal}
         >
           <div
-            className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6 max-w-lg w-full max-h-[80vh] overflow-y-auto"
+            className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6 max-w-xl w-full max-h-[80vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-start mb-4">
@@ -225,7 +225,7 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                   <a
                     key={uaid}
                     href={`/uaid/${uaid}`}
-                    className={`${serial ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-500 hover:bg-blue-600'} text-white text-sm font-mono px-2 py-2 rounded-lg text-center transition-colors truncate block`}
+                    className={`${serial ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-500 hover:bg-blue-600'} text-white text-xs font-bold py-2 rounded-lg text-center transition-colors truncate block`}
                     title={`UAID: ${uaid}${serial ? ` • Serial: #${serial}` : ''}`}
                   >
                     {serial ? `#${serial}` : uaid}

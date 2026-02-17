@@ -85,14 +85,14 @@ export default function SalesPage() {
   }, [isMonitoring]);
 
   const formatTime = (dateString: string) => {
-    const normalized = dateString.replace(' ', 'T');
-    const date = new Date(normalized);
-    return date.toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true,
-    });
+  const normalized = dateString.endsWith('Z') ? dateString : dateString.replace(' ', 'T') + 'Z';
+  const date = new Date(normalized);
+  return date.toLocaleTimeString(undefined, { 
+    hour: 'numeric', 
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
 };
 
   // Determine if RAP went up or down
@@ -141,7 +141,7 @@ export default function SalesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] text-white p-8">
+      <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white p-32 -mt-20">
         <div className="max-w-7xl mx-auto">
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -153,7 +153,7 @@ export default function SalesPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] text-white p-8">
+      <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white p-32 -mt-20">
         <div className="max-w-7xl mx-auto">
           <div className="bg-red-900/20 border border-red-500 rounded-lg p-6 text-center">
             <p className="text-red-400">Error: {error}</p>
@@ -317,7 +317,7 @@ export default function SalesPage() {
 
                   {/* Right: Price Info */}
                   <div className="flex gap-6 ml-6">
-                    {sale.salePrice && (
+                    {sale.salePrice != null && (
                       <div className="text-center">
                         <p className="text-xs text-gray-400 mb-1">Sale Price</p>
                         <span className="text-lg font-bold text-white">

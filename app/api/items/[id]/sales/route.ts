@@ -69,11 +69,11 @@ export async function GET(
       
       return {
         id: sale.id,
-        salePrice: sale.newRap, // Use newRap as the sale price
+        salePrice: Math.round(sale.oldRap + ((sale.newRap - sale.oldRap) * 10)),
         sellerUsername: undefined,
         buyerUsername: undefined,
         serialNumber: undefined,
-        saleDate: sale.saleDate.toISOString(),
+        saleDate: sale.saleDate.toISOString().replace('T', ' ').replace('Z', ''),
         rapAfterSale: sale.newRap,
         rapBeforeSale: sale.oldRap,
         rapAtSale: sale.newRap,

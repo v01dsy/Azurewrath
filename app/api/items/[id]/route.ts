@@ -1,3 +1,4 @@
+// app/api/items/[id]/route.ts
 import prisma from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -8,13 +9,11 @@ export async function GET(
   try {
     const { id: itemId } = await params;
 
-    // Check if it's all numbers (assetId) or contains letters (slug/name)
     const isAssetId = /^\d+$/.test(itemId);
     
     let item;
     
     if (isAssetId) {
-      // Direct assetId lookup - convert to BigInt
       item = await prisma.item.findUnique({
         where: { assetId: BigInt(itemId) },
         include: {
@@ -28,21 +27,19 @@ export async function GET(
               timestamp: true,
             },
             orderBy: {
-              timestamp: 'desc',
+              timestamp: 'asc',
             },
-            take: 1,
           },
         },
       });
     } else {
-      // Slug lookup - convert hyphens to spaces and search by name
       const nameSearch = itemId.replace(/-/g, ' ');
       
       item = await prisma.item.findFirst({
         where: {
           name: {
             equals: nameSearch,
-            mode: 'insensitive', // Case-insensitive search
+            mode: 'insensitive',
           },
         },
         include: {
@@ -56,9 +53,8 @@ export async function GET(
               timestamp: true,
             },
             orderBy: {
-              timestamp: 'desc',
+              timestamp: 'asc',
             },
-            take: 1,
           },
         },
       });
@@ -71,18 +67,17 @@ export async function GET(
       );
     }
 
-    // Add latest price data to the top level for easier access
-    const latestPrice = item.priceHistory[0];
+    const latestPrice = item.priceHistory[item.priceHistory.length - 1];
     const response = {
       ...item,
-      assetId: item.assetId.toString(), // Convert BigInt to string
+      assetId: item.assetId.toString(),
       currentPrice: latestPrice?.price || null,
       currentRap: latestPrice?.rap || null,
       salesVolume: latestPrice?.salesVolume || null,
       lastUpdated: latestPrice?.timestamp || null,
       priceHistory: item.priceHistory.map(ph => ({
         ...ph,
-        itemId: ph.itemId.toString(), // Convert BigInt to string
+        itemId: ph.itemId.toString(),
       })),
     };
 

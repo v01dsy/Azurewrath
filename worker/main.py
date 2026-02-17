@@ -388,14 +388,21 @@ def send_push_notifications(cursor, notification_rows):
     Fetches PushSubscription rows for affected users and fires web push.
     Silently removes expired/invalid subscriptions from DB.
     """
+    logger.info("🔔 send_push_notifications() CALLED")
+    logger.info(f"   Received {len(notification_rows)} notification rows")
+    
     try:
         from pywebpush import webpush, WebPushException
+        logger.info("✅ pywebpush imported successfully")
     except ImportError:
-        logger.warning("⚠️ pywebpush not installed - skipping browser push. Run: pip install pywebpush")
+        logger.warning("⚠️ pywebpush not installed - skipping browser push. Run: pip install pywebpush --break-system-packages")
         return
 
     VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY')
     VAPID_SUBJECT = os.getenv('VAPID_SUBJECT', 'mailto:admin@azurewrath.com')
+
+    logger.info(f"🔑 VAPID_PRIVATE_KEY present: {bool(VAPID_PRIVATE_KEY)}")
+    logger.info(f"🔑 VAPID_SUBJECT: {VAPID_SUBJECT}")
 
     if not VAPID_PRIVATE_KEY:
         logger.warning("⚠️ VAPID_PRIVATE_KEY not set - skipping browser push")
@@ -403,10 +410,14 @@ def send_push_notifications(cursor, notification_rows):
 
     # Get unique user IDs from notification rows
     user_ids = list(set(row[1] for row in notification_rows))
+    logger.info(f"👥 User IDs to notify: {user_ids}")
+    
     if not user_ids:
+        logger.warning("⚠️ No user IDs found in notification rows")
         return
 
     # Fetch push subscriptions for these users
+    logger.info(f"🔍 Querying PushSubscription table for users: {user_ids}")
     cursor.execute('''
         SELECT id, "userId", endpoint, p256dh, auth
         FROM "PushSubscription"
@@ -414,7 +425,10 @@ def send_push_notifications(cursor, notification_rows):
     ''', (user_ids,))
     subscriptions = cursor.fetchall()
 
+    logger.info(f"📋 Found {len(subscriptions)} push subscription(s) in database")
+
     if not subscriptions:
+        logger.warning("⚠️ No push subscriptions found for these users")
         return
 
     # Build a map of userId -> latest message for that user
@@ -428,15 +442,21 @@ def send_push_notifications(cursor, notification_rows):
         else:
             user_messages[user_id]['count'] += 1
 
+    logger.info(f"📨 Prepared messages for {len(user_messages)} user(s)")
+
     expired_endpoints = []
 
     for sub_id, user_id, endpoint, p256dh, auth in subscriptions:
         if user_id not in user_messages:
+            logger.info(f"⏭️  Skipping user {user_id} - no message for this user")
             continue
 
         info = user_messages[user_id]
         count = info['count']
         body = info['message'] if count == 1 else f"{count} price changes on your watchlist"
+
+        logger.info(f"📤 Attempting to send push to user {user_id}")
+        logger.info(f"   Endpoint: {endpoint[:50]}...")
 
         import json
         payload = json.dumps({
@@ -456,9 +476,11 @@ def send_push_notifications(cursor, notification_rows):
                 vapid_private_key=VAPID_PRIVATE_KEY,
                 vapid_claims={'sub': VAPID_SUBJECT},
             )
-            logger.info(f"✅ Push sent to user {user_id}")
+            logger.info(f"✅ Push sent successfully to user {user_id}")
         except WebPushException as e:
             status = e.response.status_code if e.response else None
+            logger.error(f"❌ WebPushException for user {user_id}: {e}")
+            logger.error(f"   Status code: {status}")
             if status in (404, 410):
                 # Subscription expired - clean up
                 expired_endpoints.append(endpoint)
@@ -466,14 +488,19 @@ def send_push_notifications(cursor, notification_rows):
             else:
                 logger.warning(f"⚠️ Push failed for user {user_id}: {e}")
         except Exception as e:
-            logger.warning(f"⚠️ Push error for user {user_id}: {e}")
+            logger.error(f"❌ Unexpected push error for user {user_id}: {e}")
+            logger.error(traceback.format_exc())
 
     # Remove expired subscriptions
     if expired_endpoints:
+        logger.info(f"🧹 Cleaning up {len(expired_endpoints)} expired subscriptions")
         cursor.execute(
             'DELETE FROM "PushSubscription" WHERE endpoint = ANY(%s)',
             (expired_endpoints,)
         )
+        logger.info(f"✅ Expired subscriptions removed")
+    
+    logger.info("🔔 send_push_notifications() COMPLETE")
 
 
 def build_notifications(results, watchlist_map, current_time):

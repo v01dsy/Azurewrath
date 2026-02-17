@@ -6,6 +6,10 @@ const nextConfig = {
       bodySizeLimit: '10mb',
     },
   },
+  // ADD THIS: Expose VAPID public key to the browser
+  env: {
+    NEXT_PUBLIC_VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
+  },
   images: {
     remotePatterns: [
       {

@@ -3,7 +3,7 @@
 // components/DiscordNotificationSettings.tsx
 // Drop this into your settings page.
 // Shows link/unlink button + toggle for Discord notifications.
-
+import { getUserSession } from '@/lib/userSession';
 import { useState } from 'react';
 
 interface Props {
@@ -21,8 +21,9 @@ export function DiscordNotificationSettings({
 
   // ── Link Discord ──────────────────────────────────────────────────────────
   const handleLink = () => {
-    window.location.href = '/api/auth/discord';
-  };
+    const session = getUserSession();
+    window.location.href = `/api/auth/discord?userId=${session?.robloxUserId}`;
+};
 
   // ── Unlink Discord ────────────────────────────────────────────────────────
   const handleUnlink = async () => {

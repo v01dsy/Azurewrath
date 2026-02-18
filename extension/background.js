@@ -26,15 +26,22 @@ async function handleDeal(deal) {
       return;
     }
 
+    console.log('[Azuresniper] collectibleItemId:', collectibleItemId);
+
     // 2. Get CSRF token
     const csrfToken = await getCsrfToken();
+    console.log('[Azuresniper] CSRF token:', csrfToken);
 
     // 3. Get the lowest listing
     const listingsRes = await fetch(
       `https://apis.roblox.com/marketplace-sales/v1/item/${collectibleItemId}/resale-instances?limit=1&sortOrder=Asc`,
-      { credentials: 'include' }
+      {
+        credentials: 'include',
+        headers: { 'x-csrf-token': csrfToken },
+      }
     );
     const listings = await listingsRes.json();
+    console.log('[Azuresniper] Listings response:', JSON.stringify(listings));
     const listing = listings?.data?.[0];
 
     if (!listing) {
@@ -48,6 +55,7 @@ async function handleDeal(deal) {
     });
     const userData = await userRes.json();
     const userId = userData.id?.toString();
+    console.log('[Azuresniper] userId:', userId);
 
     if (!userId) {
       console.warn('[Azuresniper] Not logged in to Roblox!');
@@ -82,7 +90,6 @@ async function handleDeal(deal) {
     const result = await buyRes.json();
     console.log('[Azuresniper] Purchase result:', result);
 
-    // Notify popup/snipe page of result
     chrome.runtime.sendMessage({
       type: 'SNIPE_RESULT',
       success: buyRes.ok,
@@ -96,7 +103,6 @@ async function handleDeal(deal) {
 }
 
 async function getCsrfToken() {
-  // Hit any Roblox POST endpoint to get the CSRF token back in the headers
   const res = await fetch('https://auth.roblox.com/v2/logout', {
     method: 'POST',
     credentials: 'include',

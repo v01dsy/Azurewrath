@@ -19,7 +19,7 @@ async function handleDeal(deal) {
   // Open the Roblox catalog tab
   const tab = await chrome.tabs.create({
     url: `https://www.roblox.com/catalog/${deal.assetId}`,
-    active: false, // open in background
+    active: true, // open in face
   });
 
   // Wait for the tab to finish loading, then click Buy

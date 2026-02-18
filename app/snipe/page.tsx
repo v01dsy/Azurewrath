@@ -1,18 +1,9 @@
 'use client';
 
 // app/snipe/page.tsx
-// ─────────────────────────────────────────────────────────────────────────────
-// Snipe page — requires Roblox login.
-// • Shows Robux balance
-// • Manage snipe configs (filters)
-// • Live SSE connection — auto-opens item page when a deal fires
-// ─────────────────────────────────────────────────────────────────────────────
-
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUserSession } from '@/lib/userSession';
-
-// ── types ─────────────────────────────────────────────────────────────────
 
 interface SnipeConfig {
   id: string;
@@ -31,14 +22,12 @@ interface DealEvent {
   imageUrl: string | null;
   price: number;
   rap: number;
-  deal: number; // %
+  deal: number;
 }
 
 interface FiredDeal extends DealEvent {
-  firedAt: number; // Date.now()
+  firedAt: number;
 }
-
-// ── helpers ───────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
   return n.toLocaleString();
@@ -50,12 +39,9 @@ function ago(ms: number): string {
   return `${Math.floor(s / 60)}m ago`;
 }
 
-// ── component ─────────────────────────────────────────────────────────────
-
 export default function SnipePage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
-  const [username, setUsername] = useState<string>('');
   const [robux, setRobux] = useState<number | null>(null);
   const [configs, setConfigs] = useState<SnipeConfig[]>([]);
   const [firedDeals, setFiredDeals] = useState<FiredDeal[]>([]);
@@ -65,14 +51,14 @@ export default function SnipePage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
+  const snipingRef = useRef(false); // stable ref so onerror closure stays accurate
   const tickRef = useRef<NodeJS.Timeout | null>(null);
   const [, forceRender] = useState(0);
 
-  // ── new config form state ─────────────────────────────────────────────
   const emptyForm = { assetId: '', minDeal: '10', minPrice: '', maxPrice: '' };
   const [form, setForm] = useState(emptyForm);
 
-  // ── auth guard ────────────────────────────────────────────────────────
+  // ── auth guard ──────────────────────────────────────────────────────────
   useEffect(() => {
     const session = getUserSession();
     if (!session) {
@@ -80,10 +66,9 @@ export default function SnipePage() {
       return;
     }
     setUserId(session.robloxUserId);
-    setUsername(session.username ?? session.displayName ?? '');
   }, [router]);
 
-  // ── fetch robux balance ───────────────────────────────────────────────
+  // ── robux balance ───────────────────────────────────────────────────────
   const fetchRobux = useCallback(async (uid: string) => {
     try {
       const res = await fetch(`/api/snipe/robux?userId=${uid}`);
@@ -99,7 +84,7 @@ export default function SnipePage() {
     return () => clearInterval(iv);
   }, [userId, fetchRobux]);
 
-  // ── load configs ──────────────────────────────────────────────────────
+  // ── load configs ────────────────────────────────────────────────────────
   const loadConfigs = useCallback(async (uid: string) => {
     const res = await fetch(`/api/snipe/config?userId=${uid}`);
     const data = await res.json();
@@ -110,19 +95,18 @@ export default function SnipePage() {
     if (userId) loadConfigs(userId);
   }, [userId, loadConfigs]);
 
-  // ── "ago" ticker ──────────────────────────────────────────────────────
+  // ── ago ticker ──────────────────────────────────────────────────────────
   useEffect(() => {
     tickRef.current = setInterval(() => forceRender(n => n + 1), 5_000);
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
   }, []);
 
-  // ── SSE connection ────────────────────────────────────────────────────
-  const startSniping = useCallback(() => {
-    if (!userId || sseRef.current) return;
-    setSniping(true);
-    setStatus('connecting');
+  // ── SSE connection ──────────────────────────────────────────────────────
+  const connect = useCallback((uid: string) => {
+    if (sseRef.current) return;
 
-    const es = new EventSource(`/api/snipe/stream?userId=${userId}`);
+    setStatus('connecting');
+    const es = new EventSource(`/api/snipe/stream?userId=${uid}`);
     sseRef.current = es;
 
     es.onopen = () => setStatus('live');
@@ -130,37 +114,49 @@ export default function SnipePage() {
     es.onmessage = (e) => {
       try {
         const deal: DealEvent = JSON.parse(e.data);
-
-        // Add to fired log
         setFiredDeals(prev => [{ ...deal, firedAt: Date.now() }, ...prev].slice(0, 20));
-
-        // 🔥 Open the item page immediately in a new tab
+        // 🔥 Open Roblox catalog page immediately
         window.open(`https://www.roblox.com/catalog/${deal.assetId}`, '_blank', 'noopener');
-      } catch { /* malformed event */ }
+      } catch { /* malformed */ }
     };
 
     es.onerror = () => {
-      setStatus('error');
-      // Auto-reconnect after 5 s
       es.close();
       sseRef.current = null;
-      setTimeout(() => {
-        if (sniping) startSniping();
-      }, 5_000);
+      // Only reconnect if user hasn't stopped sniping
+      if (snipingRef.current) {
+        setStatus('connecting');
+        // Reconnect after 2s — silent to the user, stays on "connecting"
+        setTimeout(() => {
+          if (snipingRef.current) connect(uid);
+        }, 2_000);
+      } else {
+        setStatus('idle');
+      }
     };
-  }, [userId, sniping]);
+  }, []);
+
+  const startSniping = useCallback(() => {
+    if (!userId) return;
+    setSniping(true);
+    snipingRef.current = true;
+    connect(userId);
+  }, [userId, connect]);
 
   const stopSniping = useCallback(() => {
     setSniping(false);
+    snipingRef.current = false;
     setStatus('idle');
     sseRef.current?.close();
     sseRef.current = null;
   }, []);
 
-  // Cleanup on unmount
-  useEffect(() => () => { sseRef.current?.close(); }, []);
+  useEffect(() => () => {
+    snipingRef.current = false;
+    sseRef.current?.close();
+  }, []);
 
-  // ── config CRUD ───────────────────────────────────────────────────────
+  // ── config CRUD ─────────────────────────────────────────────────────────
   const saveConfig = async () => {
     if (!userId) return;
     setSaving(true);
@@ -212,15 +208,14 @@ export default function SnipePage() {
     setEditingId(null);
   };
 
-  // ── status pill ───────────────────────────────────────────────────────
+  // ── status pill ─────────────────────────────────────────────────────────
   const statusConfig = {
-    idle:       { label: 'Idle',        dot: 'bg-zinc-500',   ring: 'ring-zinc-600' },
-    connecting: { label: 'Connecting…', dot: 'bg-yellow-400 animate-pulse', ring: 'ring-yellow-600' },
-    live:       { label: 'Live',        dot: 'bg-emerald-400 animate-pulse', ring: 'ring-emerald-600' },
-    error:      { label: 'Reconnecting…', dot: 'bg-red-500 animate-pulse', ring: 'ring-red-700' },
+    idle:       { label: 'Idle',         dot: 'bg-zinc-500',                  ring: 'ring-zinc-600' },
+    connecting: { label: 'Connecting…',  dot: 'bg-yellow-400 animate-pulse',  ring: 'ring-yellow-600' },
+    live:       { label: 'Live',         dot: 'bg-emerald-400 animate-pulse', ring: 'ring-emerald-600' },
+    error:      { label: 'Reconnecting…',dot: 'bg-red-500 animate-pulse',     ring: 'ring-red-700' },
   }[status];
 
-  // ── deal color ────────────────────────────────────────────────────────
   const dealColor = (pct: number) => {
     if (pct >= 60) return 'text-pink-400';
     if (pct >= 40) return 'text-yellow-400';
@@ -234,7 +229,7 @@ export default function SnipePage() {
   return (
     <div className="min-h-screen w-full text-white px-4 pb-20 pt-10 max-w-5xl mx-auto space-y-8">
 
-      {/* ── HEADER ─────────────────────────────────────────────────────── */}
+      {/* HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-4xl font-bold tracking-tight glow-purple">Sniper</h1>
@@ -243,22 +238,13 @@ export default function SnipePage() {
           </p>
         </div>
 
-        {/* Robux balance */}
         <div className="flex items-center gap-3">
           {robux !== null && (
             <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-800/80 border border-zinc-700/50">
-              <img
-                src="https://static.rbxcdn.com/images/robux-icon.png"
-                alt="R$"
-                className="w-4 h-4"
-                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-              />
               <span className="font-bold text-emerald-400">{fmt(robux)}</span>
               <span className="text-zinc-500 text-xs">R$</span>
             </div>
           )}
-
-          {/* Status pill */}
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 ring-1 ${statusConfig.ring}`}>
             <span className={`w-2 h-2 rounded-full ${statusConfig.dot}`} />
             <span className="text-xs font-medium text-zinc-300">{statusConfig.label}</span>
@@ -266,15 +252,13 @@ export default function SnipePage() {
         </div>
       </div>
 
-      {/* ── START / STOP ───────────────────────────────────────────────── */}
+      {/* START / STOP */}
       <div className="relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 flex flex-col sm:flex-row items-center gap-6">
-        {/* Glow when live */}
         {status === 'live' && (
           <div className="absolute inset-0 pointer-events-none">
             <div className="absolute -inset-px rounded-2xl ring-1 ring-emerald-500/30 animate-pulse" />
           </div>
         )}
-
         <div className="flex-1 space-y-1">
           <p className="font-semibold text-zinc-100">
             {sniping
@@ -282,15 +266,15 @@ export default function SnipePage() {
               : 'Start sniping to watch for deals matching your filters.'}
           </p>
           <p className="text-zinc-500 text-sm">
-            When a qualifying deal appears, the item page will instantly open in a new tab.
+            When a qualifying deal appears, the Roblox item page will instantly open in a new tab.
           </p>
         </div>
-
         <button
           onClick={sniping ? stopSniping : startSniping}
           disabled={configs.length === 0 && !sniping}
           className={`
-            relative px-8 py-3 rounded-xl font-bold text-sm transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed
+            relative px-8 py-3 rounded-xl font-bold text-sm transition-all duration-200
+            disabled:opacity-40 disabled:cursor-not-allowed
             ${sniping
               ? 'bg-red-600 hover:bg-red-700 text-white'
               : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg shadow-purple-900/40'}
@@ -302,11 +286,11 @@ export default function SnipePage() {
 
       {configs.length === 0 && !sniping && (
         <p className="text-zinc-500 text-sm text-center -mt-4">
-          Add at least one snipe config below before starting.
+          Add at least one snipe filter below before starting.
         </p>
       )}
 
-      {/* ── CONFIGS ────────────────────────────────────────────────────── */}
+      {/* FILTERS */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-zinc-200">Snipe Filters</h2>
@@ -318,7 +302,6 @@ export default function SnipePage() {
           </button>
         </div>
 
-        {/* Add form */}
         {showAddForm && (
           <div className="rounded-xl border border-blue-500/30 bg-zinc-900/80 p-5 space-y-4">
             <p className="text-sm text-zinc-400">
@@ -338,9 +321,7 @@ export default function SnipePage() {
               <label className="space-y-1">
                 <span className="text-xs text-zinc-500 uppercase tracking-wider">Min Deal %</span>
                 <input
-                  type="number"
-                  min={1}
-                  max={99}
+                  type="number" min={1} max={99}
                   value={form.minDeal}
                   onChange={e => setForm(f => ({ ...f, minDeal: e.target.value }))}
                   className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm focus:outline-none focus:border-blue-500"
@@ -349,8 +330,7 @@ export default function SnipePage() {
               <label className="space-y-1">
                 <span className="text-xs text-zinc-500 uppercase tracking-wider">Min Price (R$) — optional</span>
                 <input
-                  type="number"
-                  min={0}
+                  type="number" min={0}
                   placeholder="No minimum"
                   value={form.minPrice}
                   onChange={e => setForm(f => ({ ...f, minPrice: e.target.value }))}
@@ -360,8 +340,7 @@ export default function SnipePage() {
               <label className="space-y-1">
                 <span className="text-xs text-zinc-500 uppercase tracking-wider">Max Price (R$) — optional</span>
                 <input
-                  type="number"
-                  min={0}
+                  type="number" min={0}
                   placeholder="No maximum"
                   value={form.maxPrice}
                   onChange={e => setForm(f => ({ ...f, maxPrice: e.target.value }))}
@@ -381,7 +360,6 @@ export default function SnipePage() {
           </div>
         )}
 
-        {/* Config cards */}
         {configs.length === 0 && !showAddForm && (
           <div className="rounded-xl border border-dashed border-zinc-700 p-8 text-center text-zinc-500 text-sm">
             No filters yet. Sniper will not run until you add at least one.
@@ -401,7 +379,7 @@ export default function SnipePage() {
         ))}
       </section>
 
-      {/* ── FIRED DEALS LOG ────────────────────────────────────────────── */}
+      {/* FIRED DEALS LOG */}
       {firedDeals.length > 0 && (
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-zinc-200">Deals Fired This Session</h2>
@@ -409,7 +387,7 @@ export default function SnipePage() {
             {firedDeals.map((d, i) => (
               <a
                 key={i}
-                href={`/item/${d.assetId}`}
+                href={`https://www.roblox.com/catalog/${d.assetId}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800/60 px-4 py-3 transition group"
@@ -434,14 +412,14 @@ export default function SnipePage() {
         </section>
       )}
 
-      {/* ── HOW IT WORKS ───────────────────────────────────────────────── */}
+      {/* HOW IT WORKS */}
       <section className="rounded-2xl border border-zinc-800/60 bg-zinc-900/30 p-6 space-y-3">
         <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">How it works</h2>
         <ol className="space-y-2 text-sm text-zinc-400 list-decimal list-inside">
-          <li>The worker bot scans Roblox every few seconds for price changes.</li>
+          <li>The worker bot scans Rolimons every few minutes for price changes.</li>
           <li>When an item drops below RAP by your specified %, it records the deal.</li>
           <li>This page receives the deal instantly over a live connection.</li>
-          <li>The item listing page opens in a new tab automatically — you buy it.</li>
+          <li>The Roblox catalog page opens in a new tab automatically — you buy it.</li>
         </ol>
         <p className="text-xs text-zinc-600 mt-1">
           💡 Keep this tab open while sniping. Popup blockers may need to be disabled for your site.
@@ -472,9 +450,7 @@ function ConfigCard({ cfg, editing, onEdit, onSaveEdit, onToggle, onDelete }: Co
 
   return (
     <div className={`rounded-xl border transition-all ${cfg.enabled ? 'border-zinc-700 bg-zinc-900/60' : 'border-zinc-800 bg-zinc-950/40 opacity-60'}`}>
-      {/* main row */}
       <div className="flex items-center gap-3 px-4 py-3">
-        {/* item image */}
         {cfg.itemImage ? (
           <img src={cfg.itemImage} alt={cfg.itemName ?? ''} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
         ) : (
@@ -483,7 +459,6 @@ function ConfigCard({ cfg, editing, onEdit, onSaveEdit, onToggle, onDelete }: Co
           </div>
         )}
 
-        {/* info */}
         <div className="flex-1 min-w-0">
           <p className="font-medium text-zinc-100 truncate">
             {cfg.itemName ?? <span className="text-zinc-400 italic">All items</span>}
@@ -495,9 +470,7 @@ function ConfigCard({ cfg, editing, onEdit, onSaveEdit, onToggle, onDelete }: Co
           </p>
         </div>
 
-        {/* actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* toggle */}
           <button
             onClick={onToggle}
             title={cfg.enabled ? 'Disable' : 'Enable'}
@@ -520,7 +493,6 @@ function ConfigCard({ cfg, editing, onEdit, onSaveEdit, onToggle, onDelete }: Co
         </div>
       </div>
 
-      {/* inline edit */}
       {editing && (
         <div className="border-t border-zinc-800 px-4 py-4 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

@@ -109,6 +109,7 @@ export async function POST(request: NextRequest) {
         sessionToken,
         userId: user.robloxUserId,
         expires: expiresAt,
+        accessToken: tokens.access_token, // ← just add this line
       }
     });
     

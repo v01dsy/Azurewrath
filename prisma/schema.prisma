@@ -103,6 +103,7 @@ model Session {
   id           String   @id @default(cuid())
   sessionToken String   @unique
   userId       BigInt
+  accessToken  String?
   user         User     @relation(fields: [userId], references: [robloxUserId], onDelete: Cascade)
   expires      DateTime
   createdAt    DateTime @default(now())

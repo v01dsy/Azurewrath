@@ -203,8 +203,6 @@ export default function SnipePage() {
         setFiredDeals(prev => [{ ...deal, firedAt: Date.now() }, ...prev].slice(0, 20));
         // 🔥 Tell Azuresniper extension to auto-buy
         window.dispatchEvent(new CustomEvent('SNIPE_DEAL', { detail: deal }));
-        // Open Roblox catalog page
-        window.open(`https://www.roblox.com/catalog/${deal.assetId}`, '_blank', 'noopener');
       } catch { /* malformed */ }
     };
 

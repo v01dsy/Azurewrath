@@ -500,7 +500,7 @@ export default function SnipePage() {
       <section className="rounded-2xl border border-zinc-800/60 bg-zinc-900/30 p-6 space-y-3">
         <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">How it works</h2>
         <ol className="space-y-2 text-sm text-zinc-400 list-decimal list-inside">
-          <li>The worker bot scans Rolimons every few minutes for price changes.</li>
+          <li>The worker bot scans Roblox every few minutes for price changes.</li>
           <li>When an item drops below RAP by your specified %, it records the deal.</li>
           <li>This page receives the deal instantly over a live connection.</li>
           <li>The Azuresniper extension auto-buys it before the Roblox tab even loads.</li>

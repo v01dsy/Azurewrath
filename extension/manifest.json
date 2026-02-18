@@ -12,7 +12,9 @@
     "https://azurewrath.lol/*",
     "https://apis.roblox.com/*",
     "https://auth.roblox.com/*",
+    "https://catalog.roblox.com/*",
     "https://economy.roblox.com/*",
+    "https://users.roblox.com/*",
     "https://www.roblox.com/*"
   ],
   "background": {

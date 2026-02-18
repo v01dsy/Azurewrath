@@ -1,10 +1,5 @@
 // extension/background.js
-// Listens for deal messages from the snipe page and executes the purchase
-// in the context of the Roblox tab (so cookies are sent automatically).
 
-let pendingDeals = {}; // tabId -> deal info
-
-// Message from content script on snipe page: a deal fired
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'SNIPE_DEAL') {
     handleDeal(msg.deal);
@@ -14,15 +9,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 async function handleDeal(deal) {
   try {
-    // 1. Get collectibleItemId from assetId
+    // 1. Get collectibleItemId from catalog API (not economy API)
     const detailsRes = await fetch(
-      `https://economy.roblox.com/v2/assets/${deal.assetId}/details`
+      `https://catalog.roblox.com/v1/catalog/items/${deal.assetId}/details?itemType=Asset`,
+      { credentials: 'include' }
     );
     const details = await detailsRes.json();
-    const collectibleItemId = details.CollectibleItemId;
+    console.log('[Azuresniper] Catalog details:', JSON.stringify(details));
+
+    const collectibleItemId = details.collectibleItemId;
 
     if (!collectibleItemId) {
-      console.warn('[Azuresniper] Not a collectible:', deal.assetId);
+      console.warn('[Azuresniper] No collectibleItemId found for assetId:', deal.assetId);
       return;
     }
 
@@ -30,7 +28,6 @@ async function handleDeal(deal) {
 
     // 2. Get CSRF token
     const csrfToken = await getCsrfToken();
-    console.log('[Azuresniper] CSRF token:', csrfToken);
 
     // 3. Get the lowest listing
     const listingsRes = await fetch(
@@ -41,7 +38,7 @@ async function handleDeal(deal) {
       }
     );
     const listings = await listingsRes.json();
-    console.log('[Azuresniper] Listings response:', JSON.stringify(listings));
+    console.log('[Azuresniper] Listings:', JSON.stringify(listings));
     const listing = listings?.data?.[0];
 
     if (!listing) {
@@ -55,7 +52,6 @@ async function handleDeal(deal) {
     });
     const userData = await userRes.json();
     const userId = userData.id?.toString();
-    console.log('[Azuresniper] userId:', userId);
 
     if (!userId) {
       console.warn('[Azuresniper] Not logged in to Roblox!');

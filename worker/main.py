@@ -14,6 +14,7 @@ from io import StringIO
 import uuid
 from discord_notifications import send_discord_notifications
 from snipe_events import fire_snipe_events
+from snipe_server import start_snipe_server
 
 load_dotenv()
 
@@ -688,7 +689,8 @@ def save_results_to_db(results, is_new_window):
                 logger.info("✅ No watchers for changed items")
         else:
             logger.info("✅ No price/RAP changes - skipping notifications")
-        
+
+        # Snipe events — writes deals to SnipeDeal table for the SSE server
         fire_snipe_events(cursor, results)
 
         conn.commit()
@@ -934,6 +936,9 @@ def main():
         return
 
     create_indexes()
+
+    # Start the snipe SSE server in a background thread
+    start_snipe_server()
 
     cycle_count = 0
 

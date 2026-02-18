@@ -1,6 +1,6 @@
+// app/snipe/page.tsx
 'use client';
 
-// app/snipe/page.tsx
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { getUserSession } from '@/lib/userSession';
@@ -39,6 +39,92 @@ function ago(ms: number): string {
   return `${Math.floor(s / 60)}m ago`;
 }
 
+// ── ConfigCard ───────────────────────────────────────────────────────────────
+function ConfigCard({
+  cfg,
+  editing,
+  onEdit,
+  onSaveEdit,
+  onToggle,
+  onDelete,
+}: {
+  cfg: SnipeConfig;
+  editing: boolean;
+  onEdit: () => void;
+  onSaveEdit: (patch: Partial<SnipeConfig>) => void;
+  onToggle: () => void;
+  onDelete: () => void;
+}) {
+  const [draft, setDraft] = useState({
+    minDeal: String(cfg.minDeal),
+    minPrice: cfg.minPrice != null ? String(cfg.minPrice) : '',
+    maxPrice: cfg.maxPrice != null ? String(cfg.maxPrice) : '',
+  });
+
+  return (
+    <div className={`rounded-xl border ${cfg.enabled ? 'border-zinc-700' : 'border-zinc-800 opacity-60'} bg-zinc-900/60 p-4`}>
+      <div className="flex items-start gap-3">
+        {cfg.itemImage && (
+          <img src={cfg.itemImage} alt={cfg.itemName ?? ''} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-zinc-100 truncate">{cfg.itemName ?? 'All Items'}</p>
+          {!editing ? (
+            <p className="text-xs text-zinc-500 mt-0.5">
+              ≥{cfg.minDeal}% off
+              {cfg.minPrice != null ? ` · min ${fmt(cfg.minPrice)} R$` : ''}
+              {cfg.maxPrice != null ? ` · max ${fmt(cfg.maxPrice)} R$` : ''}
+            </p>
+          ) : (
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {[
+                { label: 'Min Deal %', key: 'minDeal' },
+                { label: 'Min R$', key: 'minPrice' },
+                { label: 'Max R$', key: 'maxPrice' },
+              ].map(({ label, key }) => (
+                <label key={key} className="space-y-0.5">
+                  <span className="text-[10px] text-zinc-500 uppercase tracking-wider">{label}</span>
+                  <input
+                    type="number"
+                    value={draft[key as keyof typeof draft]}
+                    onChange={e => setDraft(d => ({ ...d, [key]: e.target.value }))}
+                    className="w-full px-2 py-1 rounded bg-zinc-800 border border-zinc-700 text-white text-sm focus:outline-none focus:border-blue-500"
+                  />
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {editing ? (
+            <button
+              onClick={() => onSaveEdit({
+                minDeal: Number(draft.minDeal) || 10,
+                minPrice: draft.minPrice ? Number(draft.minPrice) : null,
+                maxPrice: draft.maxPrice ? Number(draft.maxPrice) : null,
+              })}
+              className="px-3 py-1 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition"
+            >
+              Save
+            </button>
+          ) : (
+            <button onClick={onEdit} className="p-1.5 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition text-xs">
+              ✏️
+            </button>
+          )}
+          <button onClick={onToggle} className={`p-1.5 rounded-lg text-xs transition ${cfg.enabled ? 'hover:bg-zinc-700 text-zinc-400' : 'hover:bg-zinc-700 text-zinc-600'}`}>
+            {cfg.enabled ? '⏸' : '▶'}
+          </button>
+          <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-red-900/40 text-zinc-600 hover:text-red-400 transition text-xs">
+            🗑
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 export default function SnipePage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
@@ -51,7 +137,7 @@ export default function SnipePage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
-  const snipingRef = useRef(false); // stable ref so onerror closure stays accurate
+  const snipingRef = useRef(false);
   const tickRef = useRef<NodeJS.Timeout | null>(null);
   const [, forceRender] = useState(0);
 
@@ -115,7 +201,9 @@ export default function SnipePage() {
       try {
         const deal: DealEvent = JSON.parse(e.data);
         setFiredDeals(prev => [{ ...deal, firedAt: Date.now() }, ...prev].slice(0, 20));
-        // 🔥 Open Roblox catalog page immediately
+        // 🔥 Tell Azuresniper extension to auto-buy
+        window.dispatchEvent(new CustomEvent('SNIPE_DEAL', { detail: deal }));
+        // Open Roblox catalog page
         window.open(`https://www.roblox.com/catalog/${deal.assetId}`, '_blank', 'noopener');
       } catch { /* malformed */ }
     };
@@ -123,10 +211,8 @@ export default function SnipePage() {
     es.onerror = () => {
       es.close();
       sseRef.current = null;
-      // Only reconnect if user hasn't stopped sniping
       if (snipingRef.current) {
         setStatus('connecting');
-        // Reconnect after 2s — silent to the user, stays on "connecting"
         setTimeout(() => {
           if (snipingRef.current) connect(uid);
         }, 2_000);
@@ -210,10 +296,10 @@ export default function SnipePage() {
 
   // ── status pill ─────────────────────────────────────────────────────────
   const statusConfig = {
-    idle:       { label: 'Idle',         dot: 'bg-zinc-500',                  ring: 'ring-zinc-600' },
-    connecting: { label: 'Connecting…',  dot: 'bg-yellow-400 animate-pulse',  ring: 'ring-yellow-600' },
-    live:       { label: 'Live',         dot: 'bg-emerald-400 animate-pulse', ring: 'ring-emerald-600' },
-    error:      { label: 'Reconnecting…',dot: 'bg-red-500 animate-pulse',     ring: 'ring-red-700' },
+    idle:       { label: 'Idle',          dot: 'bg-zinc-500',                  ring: 'ring-zinc-600' },
+    connecting: { label: 'Connecting…',   dot: 'bg-yellow-400 animate-pulse',  ring: 'ring-yellow-600' },
+    live:       { label: 'Live',          dot: 'bg-emerald-400 animate-pulse', ring: 'ring-emerald-600' },
+    error:      { label: 'Reconnecting…', dot: 'bg-red-500 animate-pulse',     ring: 'ring-red-700' },
   }[status];
 
   const dealColor = (pct: number) => {
@@ -360,8 +446,8 @@ export default function SnipePage() {
           </div>
         )}
 
-        {configs.length === 0 && !showAddForm && (
-          <div className="rounded-xl border border-dashed border-zinc-700 p-8 text-center text-zinc-500 text-sm">
+        {configs.length === 0 && (
+          <div className="rounded-xl border border-dashed border-zinc-700 p-6 text-center text-zinc-500 text-sm">
             No filters yet. Sniper will not run until you add at least one.
           </div>
         )}
@@ -419,125 +505,13 @@ export default function SnipePage() {
           <li>The worker bot scans Rolimons every few minutes for price changes.</li>
           <li>When an item drops below RAP by your specified %, it records the deal.</li>
           <li>This page receives the deal instantly over a live connection.</li>
-          <li>The Roblox catalog page opens in a new tab automatically — you buy it.</li>
+          <li>The Azuresniper extension auto-buys it before the Roblox tab even loads.</li>
         </ol>
         <p className="text-xs text-zinc-600 mt-1">
-          💡 Keep this tab open while sniping. Popup blockers may need to be disabled for your site.
+          💡 Keep this tab open and the Azuresniper extension installed while sniping.
         </p>
       </section>
 
-    </div>
-  );
-}
-
-// ── ConfigCard ────────────────────────────────────────────────────────────────
-
-interface ConfigCardProps {
-  cfg: SnipeConfig;
-  editing: boolean;
-  onEdit: () => void;
-  onSaveEdit: (patch: Partial<SnipeConfig>) => void;
-  onToggle: () => void;
-  onDelete: () => void;
-}
-
-function ConfigCard({ cfg, editing, onEdit, onSaveEdit, onToggle, onDelete }: ConfigCardProps) {
-  const [patch, setPatch] = useState({
-    minDeal: String(cfg.minDeal),
-    minPrice: cfg.minPrice != null ? String(cfg.minPrice) : '',
-    maxPrice: cfg.maxPrice != null ? String(cfg.maxPrice) : '',
-  });
-
-  return (
-    <div className={`rounded-xl border transition-all ${cfg.enabled ? 'border-zinc-700 bg-zinc-900/60' : 'border-zinc-800 bg-zinc-950/40 opacity-60'}`}>
-      <div className="flex items-center gap-3 px-4 py-3">
-        {cfg.itemImage ? (
-          <img src={cfg.itemImage} alt={cfg.itemName ?? ''} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
-        ) : (
-          <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center flex-shrink-0">
-            <span className="text-zinc-500 text-xl">🎯</span>
-          </div>
-        )}
-
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-zinc-100 truncate">
-            {cfg.itemName ?? <span className="text-zinc-400 italic">All items</span>}
-          </p>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            ≥{cfg.minDeal}% off
-            {cfg.minPrice != null && ` · min ${cfg.minPrice.toLocaleString()} R$`}
-            {cfg.maxPrice != null && ` · max ${cfg.maxPrice.toLocaleString()} R$`}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <button
-            onClick={onToggle}
-            title={cfg.enabled ? 'Disable' : 'Enable'}
-            className={`relative inline-flex h-5 w-9 rounded-full transition-colors ${cfg.enabled ? 'bg-emerald-500' : 'bg-zinc-700'}`}
-          >
-            <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform mt-0.5 ${cfg.enabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
-          </button>
-
-          <button onClick={onEdit} className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition" title="Edit">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-          </button>
-
-          <button onClick={onDelete} className="p-1.5 rounded-lg text-zinc-600 hover:text-red-400 hover:bg-red-900/20 transition" title="Delete">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      {editing && (
-        <div className="border-t border-zinc-800 px-4 py-4 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <label className="space-y-1">
-              <span className="text-xs text-zinc-500 uppercase tracking-wider">Min Deal %</span>
-              <input
-                type="number" min={1} max={99}
-                value={patch.minDeal}
-                onChange={e => setPatch(p => ({ ...p, minDeal: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm focus:outline-none focus:border-blue-500"
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs text-zinc-500 uppercase tracking-wider">Min Price (R$)</span>
-              <input
-                type="number" min={0} placeholder="None"
-                value={patch.minPrice}
-                onChange={e => setPatch(p => ({ ...p, minPrice: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm focus:outline-none focus:border-blue-500"
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs text-zinc-500 uppercase tracking-wider">Max Price (R$)</span>
-              <input
-                type="number" min={0} placeholder="None"
-                value={patch.maxPrice}
-                onChange={e => setPatch(p => ({ ...p, maxPrice: e.target.value }))}
-                className="w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-white text-sm focus:outline-none focus:border-blue-500"
-              />
-            </label>
-          </div>
-          <div className="flex justify-end">
-            <button
-              onClick={() => onSaveEdit({
-                minDeal: Number(patch.minDeal) || cfg.minDeal,
-                minPrice: patch.minPrice ? Number(patch.minPrice) : null,
-                maxPrice: patch.maxPrice ? Number(patch.maxPrice) : null,
-              })}
-              className="px-5 py-1.5 rounded-lg text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white transition"
-            >
-              Save
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

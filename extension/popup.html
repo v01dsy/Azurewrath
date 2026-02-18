@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 280px;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, rgba(0,102,255,0.15), rgba(139,92,246,0.15), rgba(236,72,153,0.15));
+      border-bottom: 1px solid transparent;
+      border-image: linear-gradient(135deg, #0066ff, #8b5cf6, #ec4899) 0 0 1 0;
+      padding: 16px 18px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-img {
+      height: 36px;
+      width: auto;
+    }
+
+    .title-block .name {
+      font-size: 15px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #0066ff, #8b5cf6, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1.2;
+    }
+
+    .title-block .sub {
+      font-size: 10px;
+      color: #555;
+      margin-top: 1px;
+    }
+
+    .body {
+      padding: 14px 18px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #111;
+      border: 1px solid #1e1e1e;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #e0e0e0;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: #22c55e;
+      box-shadow: 0 0 6px #22c55e;
+      animation: pulse 1.8s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .note {
+      font-size: 10.5px;
+      color: #3a3a3a;
+      line-height: 1.6;
+    }
+
+    .link {
+      font-size: 10.5px;
+      color: #8b5cf6;
+      text-decoration: none;
+      text-align: right;
+      display: block;
+    }
+
+    .link:hover {
+      color: #ec4899;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img class="logo-img" src="icon.png" alt="Azuresniper" />
+    <div class="title-block">
+      <div class="name">Azuresniper</div>
+      <div class="sub">by azurewrath.lol</div>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="status">
+      <div class="dot"></div>
+      <span>Ready — watching for deals</span>
+    </div>
+    <p class="note">Make sure you're logged into Roblox. Items are purchased automatically the moment a deal fires.</p>
+    <a class="link" href="https://azurewrath.lol/snipe" target="_blank">Open Sniper →</a>
+  </div>
+</body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Azuresniper",
+  "version": "1.0.0",
+  "description": "Auto-buys Roblox limiteds when a deal is detected. Part of the Azurewrath suite.",
+  "permissions": [
+    "cookies",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://azurewrath.lol/*",
+    "https://apis.roblox.com/*",
+    "https://auth.roblox.com/*",
+    "https://economy.roblox.com/*",
+    "https://www.roblox.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://azurewrath.lol/snipe*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  }
+}

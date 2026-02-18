@@ -1,7 +1,15 @@
 // extension/background.js
 
+chrome.runtime.onInstalled.addListener(() => {});
+chrome.runtime.onStartup.addListener(() => {});
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === 'keepalive') port.disconnect();
+});
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'SNIPE_DEAL') {
+    console.log('[Azuresniper] Deal received in background:', msg.deal);
     handleDeal(msg.deal);
     sendResponse({ ok: true });
   }
@@ -9,7 +17,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 async function handleDeal(deal) {
   try {
-    // 1. Get collectibleItemId from catalog API (not economy API)
+    // 1. Get collectibleItemId from catalog API
     const detailsRes = await fetch(
       `https://catalog.roblox.com/v1/catalog/items/${deal.assetId}/details?itemType=Asset`,
       { credentials: 'include' }
@@ -20,7 +28,7 @@ async function handleDeal(deal) {
     const collectibleItemId = details.collectibleItemId;
 
     if (!collectibleItemId) {
-      console.warn('[Azuresniper] No collectibleItemId found for assetId:', deal.assetId);
+      console.warn('[Azuresniper] No collectibleItemId for assetId:', deal.assetId);
       return;
     }
 

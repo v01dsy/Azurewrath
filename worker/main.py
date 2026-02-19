@@ -43,25 +43,16 @@ rap_cache = {}
 # Global cache for previous best prices (persists across cycles)
 price_cache = {}
 
-# Global variable to track current 30-minute window timestamp
-current_30min_window = None
-# Dictionary to store PriceHistory record IDs for updating {item_assetId: record_id}
-pricehistory_record_ids = {}
-
-def get_30min_window(dt):
-    """Get the start of the current 30-minute window in UTC (rounds down to :00 or :30)"""
-    if dt.minute < 30:
-        return dt.replace(minute=0, second=0, microsecond=0)
-    else:
-        return dt.replace(minute=30, second=0, microsecond=0)
 
 def get_current_time():
     """Get current time in UTC as naive datetime"""
     return datetime.utcnow()
 
+
 def format_time_12hr(dt):
     """Format datetime in 12-hour format with AM/PM"""
     return dt.strftime('%I:%M %p')
+
 
 def init_connection_pool():
     """Initialize the connection pool"""
@@ -77,6 +68,7 @@ def init_connection_pool():
         logger.error(f"❌ Failed to initialize connection pool: {e}")
         raise
 
+
 def get_db_connection():
     """Get PostgreSQL connection from pool"""
     try:
@@ -86,12 +78,14 @@ def get_db_connection():
         logger.error(f"❌ Failed to get connection from pool: {e}")
         raise
 
+
 def return_db_connection(conn):
     """Return connection to pool"""
     try:
         connection_pool.putconn(conn)
     except Exception as e:
         logger.error(f"❌ Failed to return connection to pool: {e}")
+
 
 def create_indexes():
     """Create performance indexes if they don't exist"""
@@ -146,6 +140,7 @@ def create_indexes():
         if conn:
             return_db_connection(conn)
 
+
 def fetch_rolimons_data():
     """Fetch all item data from Rolimons deals page (includes best price)"""
     try:
@@ -190,6 +185,7 @@ def fetch_rolimons_data():
         logger.error(traceback.format_exc())
         return {}
 
+
 def process_items_batch(items_batch, rolimons_data, previous_raps, previous_prices):
     """Process a batch of items (designed for parallel execution)"""
     results = []
@@ -220,29 +216,24 @@ def process_items_batch(items_batch, rolimons_data, previous_raps, previous_pric
         if best_price:
             stats['with_price'] += 1
 
-        price = best_price
-
         previous_rap = previous_raps.get(asset_id)
-        rap_changed = False
-        old_rap = None
-        new_rap = None
+        rap_changed = previous_rap is not None and previous_rap != current_rap
+        old_rap = previous_rap if rap_changed else None
+        new_rap = current_rap if rap_changed else None
 
-        if previous_rap is not None and previous_rap != current_rap:
-            rap_changed = True
-            old_rap = previous_rap
-            new_rap = current_rap
+        if rap_changed:
             logger.info(f"📈 RAP Change: {name} - {old_rap} → {new_rap}")
 
         previous_price = previous_prices.get(asset_id)
-        price_changed = False
-        old_price = None
-        new_price_val = None
+        price_changed = best_price is not None and previous_price is not None and previous_price != best_price
+        old_price = previous_price if price_changed else None
+        new_price_val = best_price if price_changed else None
 
-        if best_price is not None and previous_price is not None and previous_price != best_price:
-            price_changed = True
-            old_price = previous_price
-            new_price_val = best_price
+        if price_changed:
             logger.info(f"💰 Price Change: {name} - {old_price} → {new_price_val}")
+
+        # First-time seen item (not in cache yet) — always write initial record
+        is_first_seen = previous_rap is None and previous_price is None
 
         if best_price and current_rap and best_price < current_rap:
             discount = ((current_rap - best_price) / current_rap) * 100
@@ -252,7 +243,7 @@ def process_items_batch(items_batch, rolimons_data, previous_raps, previous_pric
         results.append({
             'asset_id': asset_id,
             'name': name,
-            'price': price,
+            'price': best_price,
             'rap': current_rap,
             'rap_changed': rap_changed,
             'old_rap': old_rap,
@@ -260,9 +251,11 @@ def process_items_batch(items_batch, rolimons_data, previous_raps, previous_pric
             'price_changed': price_changed,
             'old_price': old_price,
             'new_price': new_price_val,
+            'is_first_seen': is_first_seen,
         })
 
     return results, stats
+
 
 def process_items_data(items_from_db, rolimons_data, previous_raps, previous_prices):
     """Process all fetched data using parallel batches"""
@@ -306,6 +299,7 @@ def process_items_data(items_from_db, rolimons_data, previous_raps, previous_pri
 
     return all_results
 
+
 def bulk_insert_with_copy(cursor, data, table_name, columns):
     """Use PostgreSQL COPY for ultra-fast bulk inserts"""
     if not data:
@@ -338,6 +332,7 @@ def bulk_insert_with_copy(cursor, data, table_name, columns):
         null='\\N'
     )
 
+
 def load_watchlist_map(cursor, asset_ids):
     """
     Given a list of asset IDs, return a dict mapping
@@ -358,10 +353,9 @@ def load_watchlist_map(cursor, asset_ids):
 
     return watchlist_map
 
+
 def send_push_notifications(cursor, notification_rows):
-    """
-    Send browser push notifications to subscribed users.
-    """
+    """Send browser push notifications to subscribed users."""
     logger.info("🔔 send_push_notifications() CALLED")
     logger.info(f"   Received {len(notification_rows)} notification rows")
 
@@ -464,8 +458,6 @@ def build_notifications(results, watchlist_map, current_time):
     rows for each watcher of that item.
     """
     notification_rows = []
-
-    # Track notifications per user per item to prevent duplicates
     user_item_notifications = {}
 
     for result in results:
@@ -510,10 +502,8 @@ def build_notifications(results, watchlist_map, current_time):
 
         for user_id in watchers:
             key = (user_id, asset_id)
-
             if key in user_item_notifications:
                 continue
-
             user_item_notifications[key] = True
 
             notification_rows.append((
@@ -530,10 +520,14 @@ def build_notifications(results, watchlist_map, current_time):
 
     return notification_rows
 
-def save_results_to_db(results, is_new_window):
-    """Save results to database"""
-    global current_30min_window, pricehistory_record_ids
 
+def save_results_to_db(results, current_time):
+    """
+    Save results to database.
+    - Only insert a new PriceHistory row when price or RAP actually changed,
+      OR when the item is seen for the first time.
+    - Timestamp is always the real current UTC time (no bucketing).
+    """
     if not results:
         logger.warning("⚠️ No results to save")
         return
@@ -545,101 +539,42 @@ def save_results_to_db(results, is_new_window):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        current_time = get_current_time()
-        window_timestamp = get_30min_window(current_time)
+        # ── 1. PriceHistory: only insert rows for actual changes ──────────
+        price_history_data = []
+        for result in results:
+            if result['price'] is None:
+                continue
 
-        if is_new_window:
-            logger.info(f"🕐 New 30-minute window detected: {format_time_12hr(window_timestamp)}")
-            logger.info(f"Inserting NEW PriceHistory records for this window...")
+            should_write = (
+                result['is_first_seen']
+                or result['price_changed']
+                or result['rap_changed']
+            )
 
-            price_history_data = []
+            if not should_write:
+                continue
 
-            for result in results:
-                if result['price'] is not None:
-                    record_id = str(uuid.uuid4())
-                    price_history_data.append((
-                        record_id,
-                        result['asset_id'],
-                        result['price'],
-                        result['rap'],
-                        None,             # salesVolume
-                        window_timestamp  # UTC
-                    ))
-                    pricehistory_record_ids[result['asset_id']] = record_id
+            price_history_data.append((
+                str(uuid.uuid4()),   # id
+                result['asset_id'],  # itemId
+                result['price'],     # price
+                result['rap'],       # rap
+                None,                # salesVolume
+                current_time,        # timestamp — real UTC now
+            ))
 
-            if price_history_data:
-                bulk_insert_with_copy(
-                    cursor,
-                    price_history_data,
-                    'PriceHistory',
-                    ('id', 'itemId', 'price', 'rap', 'salesVolume', 'timestamp')
-                )
-                logger.info(f"✅ Inserted {len(price_history_data)} NEW PriceHistory records")
-
+        if price_history_data:
+            bulk_insert_with_copy(
+                cursor,
+                price_history_data,
+                'PriceHistory',
+                ('id', 'itemId', 'price', 'rap', 'salesVolume', 'timestamp')
+            )
+            logger.info(f"✅ Inserted {len(price_history_data)} PriceHistory records")
         else:
-            logger.info(f"🔄 Checking for changes in window: {format_time_12hr(window_timestamp)}")
+            logger.info("✅ No PriceHistory changes this cycle — skipping insert")
 
-            cursor.execute('''
-                SELECT id, "itemId", price, rap
-                FROM "PriceHistory"
-                WHERE timestamp = %s
-            ''', (window_timestamp,))
-
-            current_records = {row[1]: {'id': row[0], 'price': row[2], 'rap': row[3]}
-                               for row in cursor.fetchall()}
-
-            logger.info(f"📋 Fetched {len(current_records)} existing records")
-
-            update_data = []
-            for result in results:
-                if result['price'] is not None:
-                    asset_id = result['asset_id']
-                    current = current_records.get(asset_id)
-
-                    if current:
-                        if (current['price'] != result['price'] or
-                                current['rap'] != result['rap']):
-                            update_data.append((
-                                current['id'],
-                                result['price'],
-                                result['rap']
-                            ))
-
-            if update_data:
-                logger.info(f"📝 Found {len(update_data)} records with changes")
-
-                cursor.execute('''
-                    CREATE TEMPORARY TABLE temp_price_updates (
-                        record_id UUID,
-                        new_price REAL,
-                        new_rap REAL
-                    )
-                ''')
-
-                bulk_insert_with_copy(
-                    cursor,
-                    update_data,
-                    'temp_price_updates',
-                    ('record_id', 'new_price', 'new_rap')
-                )
-
-                cursor.execute('''
-                    UPDATE "PriceHistory" ph
-                    SET
-                        price = t.new_price,
-                        rap = t.new_rap
-                    FROM temp_price_updates t
-                    WHERE ph.id::text = t.record_id::text
-                ''')
-
-                update_count = cursor.rowcount
-                logger.info(f"✅ Updated {update_count} PriceHistory records")
-
-                cursor.execute('DROP TABLE temp_price_updates')
-            else:
-                logger.info("✅ No changes detected - skipping UPDATE")
-
-        # Sales (RAP changes)
+        # ── 2. Sales (RAP changes) ─────────────────────────────────────────
         sale_data = []
         for result in results:
             if result['rap_changed'] and result['old_rap'] is not None and result['new_rap'] is not None:
@@ -648,7 +583,7 @@ def save_results_to_db(results, is_new_window):
                     result['asset_id'],
                     result['old_rap'],
                     result['new_rap'],
-                    current_time  # UTC
+                    current_time,
                 ))
 
         if sale_data:
@@ -661,7 +596,7 @@ def save_results_to_db(results, is_new_window):
             )
             logger.info(f"✅ Inserted {len(sale_data)} Sale records")
 
-        # Notifications
+        # ── 3. Notifications ───────────────────────────────────────────────
         changed_asset_ids = [
             r['asset_id'] for r in results
             if r['rap_changed'] or r['price_changed']
@@ -688,15 +623,15 @@ def save_results_to_db(results, is_new_window):
             else:
                 logger.info("✅ No watchers for changed items")
         else:
-            logger.info("✅ No price/RAP changes - skipping notifications")
+            logger.info("✅ No price/RAP changes — skipping notifications")
 
-        # Snipe events — writes deals to SnipeDeal table for the SSE server
+        # ── 4. Snipe events ────────────────────────────────────────────────
         fire_snipe_events(cursor, results)
 
         conn.commit()
         logger.info(f"💾 Database commit successful!")
 
-        # Update caches
+        # ── 5. Update caches ───────────────────────────────────────────────
         global rap_cache, price_cache
         for result in results:
             if result['rap'] is not None:
@@ -719,6 +654,7 @@ def save_results_to_db(results, is_new_window):
             cursor.close()
         if conn:
             return_db_connection(conn)
+
 
 def load_rap_cache():
     """Load previous RAP values into memory cache"""
@@ -761,6 +697,7 @@ def load_rap_cache():
         if conn:
             return_db_connection(conn)
 
+
 def load_price_cache():
     """Load previous best-price values into memory cache"""
     global price_cache
@@ -802,41 +739,9 @@ def load_price_cache():
         if conn:
             return_db_connection(conn)
 
-def load_pricehistory_ids():
-    """Load the current PriceHistory record IDs for the current 30-minute window"""
-    global pricehistory_record_ids, current_30min_window
-
-    conn = None
-    cursor = None
-
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        logger.info(f"Loading PriceHistory record IDs for window: {format_time_12hr(current_30min_window)}")
-
-        cursor.execute('''
-            SELECT id, "itemId"
-            FROM "PriceHistory"
-            WHERE timestamp = %s
-        ''', (current_30min_window,))
-
-        pricehistory_record_ids = {row[1]: row[0] for row in cursor.fetchall()}
-        logger.info(f"✅ Loaded {len(pricehistory_record_ids)} PriceHistory record IDs")
-
-    except Exception as e:
-        logger.error(f"❌ Error loading PriceHistory IDs: {e}")
-        pricehistory_record_ids = {}
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            return_db_connection(conn)
 
 def update_item_prices():
-    """Main update logic using Rolimons deals page scraping"""
-    global current_30min_window
-
+    """Main update logic"""
     conn = None
     cursor = None
 
@@ -846,33 +751,6 @@ def update_item_prices():
         logger.info("=" * 80)
 
         current_time = get_current_time()
-        new_window = get_30min_window(current_time)
-
-        is_new_window = False
-        if current_30min_window is None:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('SELECT COUNT(*) FROM "PriceHistory" WHERE timestamp = %s', (new_window,))
-            existing_count = cursor.fetchone()[0]
-            cursor.close()
-            return_db_connection(conn)
-            conn = None
-            cursor = None
-
-            if existing_count > 0:
-                is_new_window = False
-                logger.info(f"🕐 30-minute window: {format_time_12hr(new_window)} (existing - found {existing_count} records)")
-            else:
-                is_new_window = True
-                logger.info(f"🕐 30-minute window: {format_time_12hr(new_window)} (New: True)")
-
-            current_30min_window = new_window
-        elif new_window != current_30min_window:
-            is_new_window = True
-            current_30min_window = new_window
-            logger.info(f"🕐 30-minute window: {format_time_12hr(new_window)} (New: True)")
-        else:
-            logger.info(f"🕐 30-minute window: {format_time_12hr(new_window)} (updating existing records)")
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -903,7 +781,7 @@ def update_item_prices():
 
         results = process_items_data(items, rolimons_data, previous_raps, previous_prices)
 
-        save_results_to_db(results, is_new_window)
+        save_results_to_db(results, current_time)
 
         logger.info("=" * 80)
         logger.info("✅ Price update cycle complete!")
@@ -918,14 +796,14 @@ def update_item_prices():
         if conn:
             return_db_connection(conn)
 
+
 def main():
     """Main worker loop"""
     logger.info("=" * 80)
-    logger.info("🚀 Azurewrath Worker Starting (Rolimons API)")
+    logger.info("🚀 Azurewrath Worker Starting")
     logger.info("=" * 80)
-    logger.info(f"Mode: Rolimons Deals Page Scraping")
     logger.info(f"Update interval: {WORKER_INTERVAL} seconds")
-    logger.info(f"Timestamps: UTC")
+    logger.info(f"Timestamps: real UTC (no bucketing)")
     logger.info(f"Database: {DATABASE_URL[:30]}..." if DATABASE_URL else "No database URL!")
     logger.info("=" * 80)
 
@@ -937,7 +815,6 @@ def main():
 
     create_indexes()
 
-    # Start the snipe SSE server in a background thread
     start_snipe_server()
 
     cycle_count = 0
@@ -967,6 +844,7 @@ def main():
             logger.error(traceback.format_exc())
             logger.info("⏳ Waiting 30 seconds before retry...")
             time.sleep(30)
+
 
 if __name__ == "__main__":
     main()

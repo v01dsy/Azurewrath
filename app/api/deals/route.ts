@@ -1,28 +1,28 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
-export const revalidate = 300; // Cache for 5 minutes
+export const revalidate = 0; // No cache - always fresh
 
 export async function GET() {
   try {
-    // Optimized query - only deals above 10%
-    // Now using only 'price' field since lowestResale was removed
     const items = await prisma.$queryRaw<Array<{
       assetId: bigint;
       name: string;
       imageUrl: string | null;
       price: number;
       rap: number;
+      timestamp: Date;
     }>>`
       SELECT 
         i."assetId",
         i.name,
         i."imageUrl",
         ph.price,
-        ph.rap
+        ph.rap,
+        ph.timestamp
       FROM "Item" i
       INNER JOIN LATERAL (
-        SELECT price, rap
+        SELECT price, rap, timestamp
         FROM "PriceHistory"
         WHERE "itemId" = i."assetId"
         ORDER BY timestamp DESC
@@ -31,23 +31,23 @@ export async function GET() {
       WHERE ph.rap > 0
         AND ph.price IS NOT NULL
         AND ph.price < ph.rap
-        AND ((ph.rap - ph.price) / ph.rap * 100) > 10
+        AND ((ph.rap - ph.price) / ph.rap * 100) > 0
       ORDER BY ((ph.rap - ph.price) / ph.rap * 100) DESC
     `;
 
-    // Quick calculation on already filtered data
     const deals = items.map(item => {
       const rap = item.rap;
       const bestPrice = item.price;
       const percent = Math.round(((rap - bestPrice) / rap) * 100);
-      
+
       return {
-        assetId: item.assetId.toString(), // Convert BigInt to string
+        assetId: item.assetId.toString(),
         name: item.name,
         imageUrl: item.imageUrl,
         percent,
         rap,
-        bestPrice
+        bestPrice,
+        timestamp: item.timestamp?.toISOString() ?? null,
       };
     });
 

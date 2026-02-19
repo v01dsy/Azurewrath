@@ -129,7 +129,7 @@ export default function Deals() {
   // Auto-refresh every 5 seconds when live
   useEffect(() => {
     if (!isLive) return;
-    const interval = setInterval(fetchDeals, 5000);
+    const interval = setInterval(fetchDeals, 1000);
     return () => clearInterval(interval);
   }, [isLive, fetchDeals]);
 
@@ -356,14 +356,14 @@ export default function Deals() {
                           <span className="text-white/90 truncate">{item.bestPrice.toLocaleString()}</span>
                         </div>
                         <div className="flex flex-row justify-between w-full gap-2">
+                          <span className="font-bold flex-shrink-0">RAP</span>
+                          <span className="text-white/90 truncate">{item.rap.toLocaleString()}</span>
+                        </div>
+                        <div className="flex flex-row justify-between w-full gap-2">
                           <span className="font-bold flex-shrink-0">Deal</span>
                           <span style={{ color: getColor(item.percent) }} className="font-bold truncate">
                             {item.percent}%
                           </span>
-                        </div>
-                        <div className="flex flex-row justify-between w-full gap-2">
-                          <span className="font-bold flex-shrink-0">RAP</span>
-                          <span className="text-white/90 truncate">{item.rap.toLocaleString()}</span>
                         </div>
                         {item.timestamp && (
                           <div className="flex flex-row justify-between w-full gap-2 mt-1">

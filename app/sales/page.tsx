@@ -79,7 +79,7 @@ export default function SalesPage() {
 
     const interval = setInterval(() => {
       fetchSales();
-    }, 5000);
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [isMonitoring]);
@@ -358,7 +358,7 @@ export default function SalesPage() {
 
         {/* Footer Info */}
         <div className="mt-8 text-center text-sm text-gray-500">
-          <p>Showing {sales.length} recent sales • Auto-refreshing every 5 seconds</p>
+          <p>Showing {sales.length} recent sales • Auto-refreshing every second</p>
         </div>
       </div>
     </div>

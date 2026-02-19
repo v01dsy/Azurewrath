@@ -16,16 +16,22 @@ interface SnipeConfig {
   enabled: boolean;
 }
 
-interface DealEvent {
+interface DealItem {
+  assetId: string;
+  name: string;
+  imageUrl?: string;
+  percent: number;
+  rap: number;
+  bestPrice: number;
+}
+
+interface FiredDeal {
   assetId: string;
   name: string;
   imageUrl: string | null;
   price: number;
   rap: number;
   deal: number;
-}
-
-interface FiredDeal extends DealEvent {
   firedAt: number;
 }
 
@@ -128,21 +134,29 @@ function ConfigCard({
 export default function SnipePage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
-  const [robux, setRobux] = useState<number | null>(null);
+
   const [configs, setConfigs] = useState<SnipeConfig[]>([]);
   const [firedDeals, setFiredDeals] = useState<FiredDeal[]>([]);
   const [sniping, setSniping] = useState(false);
-  const [status, setStatus] = useState<'idle' | 'connecting' | 'live' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'live'>('idle');
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const sseRef = useRef<EventSource | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const snipingRef = useRef(false);
+  const prevDealsRef = useRef<Set<string>>(new Set());
+  const configsRef = useRef<SnipeConfig[]>([]);
+  const isFirstPollRef = useRef(true);
   const tickRef = useRef<NodeJS.Timeout | null>(null);
   const [, forceRender] = useState(0);
 
   const emptyForm = { assetId: '', minDeal: '10', minPrice: '', maxPrice: '' };
   const [form, setForm] = useState(emptyForm);
+
+  // Keep configsRef in sync so the poll loop always has latest configs
+  useEffect(() => {
+    configsRef.current = configs;
+  }, [configs]);
 
   // ── auth guard ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -154,21 +168,7 @@ export default function SnipePage() {
     setUserId(session.robloxUserId);
   }, [router]);
 
-  // ── robux balance ───────────────────────────────────────────────────────
-  const fetchRobux = useCallback(async (uid: string) => {
-    try {
-      const res = await fetch(`/api/snipe/robux?userId=${uid}`);
-      const data = await res.json();
-      setRobux(data.robux ?? null);
-    } catch { /* silent */ }
-  }, []);
 
-  useEffect(() => {
-    if (!userId) return;
-    fetchRobux(userId);
-    const iv = setInterval(() => fetchRobux(userId), 60_000);
-    return () => clearInterval(iv);
-  }, [userId, fetchRobux]);
 
   // ── load configs ────────────────────────────────────────────────────────
   const loadConfigs = useCallback(async (uid: string) => {
@@ -187,57 +187,90 @@ export default function SnipePage() {
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
   }, []);
 
-  // ── SSE connection ──────────────────────────────────────────────────────
-  const connect = useCallback((uid: string) => {
-    if (sseRef.current) return;
+  // ── poll /api/deals every 1 second ──────────────────────────────────────
+  const poll = useCallback(async () => {
+    if (!snipingRef.current) return;
+    try {
+      const res = await fetch('/api/deals');
+      const deals: DealItem[] = await res.json();
 
-    setStatus('connecting');
-    const es = new EventSource(`/api/snipe/stream?userId=${uid}`);
-    sseRef.current = es;
+      const currentIds = new Set(deals.map(d => d.assetId));
+      const enabledConfigs = configsRef.current.filter(c => c.enabled);
 
-    es.onopen = () => setStatus('live');
+      for (const deal of deals) {
+        // On first poll, fire everything that matches configs (deals already on the board)
+        // On subsequent polls, only fire deals that are NEW (not seen before)
+        if (!isFirstPollRef.current && prevDealsRef.current.has(deal.assetId)) continue;
 
-    es.onmessage = (e) => {
-      try {
-        const deal: DealEvent = JSON.parse(e.data);
-        setFiredDeals(prev => [{ ...deal, firedAt: Date.now() }, ...prev].slice(0, 20));
-        // 🔥 Tell Azuresniper extension to auto-buy
-        window.dispatchEvent(new CustomEvent('SNIPE_DEAL', { detail: deal }));
-      } catch { /* malformed */ }
-    };
+        // Check against user's snipe configs
+        for (const cfg of enabledConfigs) {
+          if (cfg.assetId !== null && cfg.assetId !== deal.assetId) continue;
+          if (deal.percent < cfg.minDeal) continue;
+          if (cfg.minPrice !== null && deal.bestPrice < cfg.minPrice) continue;
+          if (cfg.maxPrice !== null && deal.bestPrice > cfg.maxPrice) continue;
 
-    es.onerror = () => {
-      es.close();
-      sseRef.current = null;
-      if (snipingRef.current) {
-        setStatus('connecting');
-        setTimeout(() => {
-          if (snipingRef.current) connect(uid);
-        }, 2_000);
-      } else {
-        setStatus('idle');
+          // Deal matches! Fire it.
+          const firedDeal: FiredDeal = {
+            assetId: deal.assetId,
+            name: deal.name,
+            imageUrl: deal.imageUrl ?? null,
+            price: deal.bestPrice,
+            rap: deal.rap,
+            deal: deal.percent,
+            firedAt: Date.now(),
+          };
+
+          setFiredDeals(prev => [firedDeal, ...prev].slice(0, 20));
+
+          // 🔥 Tell Azuresniper extension to auto-buy
+          window.dispatchEvent(new CustomEvent('SNIPE_DEAL', { detail: {
+            assetId: deal.assetId,
+            name: deal.name,
+            imageUrl: deal.imageUrl,
+            price: deal.bestPrice,
+            rap: deal.rap,
+            deal: deal.percent,
+          }}));
+
+          break;
+        }
       }
-    };
+
+      // After first poll, mark as no longer first
+      isFirstPollRef.current = false;
+
+      // Update seen deals
+      prevDealsRef.current = currentIds;
+
+    } catch (err) {
+      console.error('[snipe] poll error:', err);
+    }
   }, []);
 
   const startSniping = useCallback(() => {
     if (!userId) return;
     setSniping(true);
     snipingRef.current = true;
-    connect(userId);
-  }, [userId, connect]);
+    setStatus('live');
+    prevDealsRef.current = new Set(); // Reset seen deals on start
+    isFirstPollRef.current = true; // Reset first poll flag
+    intervalRef.current = setInterval(poll, 1_000);
+    poll(); // Fire immediately
+  }, [userId, poll]);
 
   const stopSniping = useCallback(() => {
     setSniping(false);
     snipingRef.current = false;
     setStatus('idle');
-    sseRef.current?.close();
-    sseRef.current = null;
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
   }, []);
 
   useEffect(() => () => {
     snipingRef.current = false;
-    sseRef.current?.close();
+    if (intervalRef.current) clearInterval(intervalRef.current);
   }, []);
 
   // ── config CRUD ─────────────────────────────────────────────────────────
@@ -294,10 +327,8 @@ export default function SnipePage() {
 
   // ── status pill ─────────────────────────────────────────────────────────
   const statusConfig = {
-    idle:       { label: 'Idle',          dot: 'bg-zinc-500',                  ring: 'ring-zinc-600' },
-    connecting: { label: 'Connecting…',   dot: 'bg-yellow-400 animate-pulse',  ring: 'ring-yellow-600' },
-    live:       { label: 'Live',          dot: 'bg-emerald-400 animate-pulse', ring: 'ring-emerald-600' },
-    error:      { label: 'Reconnecting…', dot: 'bg-red-500 animate-pulse',     ring: 'ring-red-700' },
+    idle: { label: 'Idle',  dot: 'bg-zinc-500',                  ring: 'ring-zinc-600' },
+    live: { label: 'Live',  dot: 'bg-emerald-400 animate-pulse', ring: 'ring-emerald-600' },
   }[status];
 
   const dealColor = (pct: number) => {
@@ -323,12 +354,7 @@ export default function SnipePage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {robux !== null && (
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-800/80 border border-zinc-700/50">
-              <span className="font-bold text-emerald-400">{fmt(robux)}</span>
-              <span className="text-zinc-500 text-xs">R$</span>
-            </div>
-          )}
+
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 ring-1 ${statusConfig.ring}`}>
             <span className={`w-2 h-2 rounded-full ${statusConfig.dot}`} />
             <span className="text-xs font-medium text-zinc-300">{statusConfig.label}</span>
@@ -500,9 +526,9 @@ export default function SnipePage() {
       <section className="rounded-2xl border border-zinc-800/60 bg-zinc-900/30 p-6 space-y-3">
         <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">How it works</h2>
         <ol className="space-y-2 text-sm text-zinc-400 list-decimal list-inside">
-          <li>The worker bot scans Roblox every few minutes for price changes.</li>
+          <li>The worker bot scans Roblox every second for price changes.</li>
           <li>When an item drops below RAP by your specified %, it records the deal.</li>
-          <li>This page receives the deal instantly over a live connection.</li>
+          <li>This page checks for new deals every second over a live connection.</li>
           <li>The Azuresniper extension auto-buys it before the Roblox tab even loads.</li>
         </ol>
         <p className="text-xs text-zinc-600 mt-1">

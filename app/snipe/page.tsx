@@ -193,6 +193,7 @@ export default function SnipePage() {
     try {
       const res = await fetch('/api/deals');
       const deals: DealItem[] = await res.json();
+      console.log('🕐 Deals received at:', Date.now() / 1000);
 
       const currentIds = new Set(deals.map(d => d.assetId));
       const enabledConfigs = configsRef.current.filter(c => c.enabled);

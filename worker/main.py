@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 DATABASE_URL = os.getenv('DATABASE_URL')
-WORKER_INTERVAL = float(os.getenv('WORKER_INTERVAL_SECONDS', 120))
+WORKER_INTERVAL = float(os.getenv('WORKER_INTERVAL_SECONDS', 1))
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -163,6 +163,7 @@ def fetch_rolimons_data():
                 item_details_str = match.group(1)
                 items_data = json.loads(item_details_str)
                 logger.info(f"✅ Successfully parsed {len(items_data)} items from Rolimons")
+                logger.info(f"🕐 Rolimons fetch timestamp: {time.time()}")
                 return items_data
             else:
                 logger.error("❌ Could not find item_details variable in page source")

@@ -249,29 +249,33 @@ export default function ItemPage() {
               <div className="flex items-center gap-3 flex-wrap mb-1">
                 <h1 className="text-3xl font-bold text-white">{item.name}</h1>
 
-                {/* Everyone sees this if manipulated */}
-                {item.manipulated && (
-                  <div className="flex items-center gap-1">
+                {canToggleManipulated ? (
+                  /* Admin/mod: only icon is clickable, text is separate */
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={handleManipulatedToggle}
+                      disabled={manipulatedLoading}
+                      className="hover:opacity-80 transition"
+                      title={item.manipulated ? 'Mark as not manipulated' : 'Mark as manipulated'}
+                    >
+                      <img
+                        src={item.manipulated ? '/Images/manipulated1.png' : '/Images/manipulated0.png'}
+                        alt="Toggle Manipulated"
+                        className="w-8 h-8"
+                      />
+                    </button>
+                    {item.manipulated && (
+                      <span className="text-red-400 text-sm font-bold">Manipulated</span>
+                    )}
+                  </div>
+                ) : item.manipulated ? (
+                  /* Regular user: read-only display */
+                  <div className="flex items-center gap-1.5">
                     <img src="/Images/manipulated1.png" alt="Manipulated" className="w-8 h-8" />
                     <span className="text-red-400 text-sm font-bold">Manipulated</span>
                   </div>
-                )}
+                ) : null}
 
-                {/* Only admins/mods see the toggle button */}
-                {canToggleManipulated && (
-                  <button
-                    onClick={handleManipulatedToggle}
-                    disabled={manipulatedLoading}
-                    className="hover:opacity-80 transition"
-                    title={item.manipulated ? 'Mark as not manipulated' : 'Mark as manipulated'}
-                  >
-                    <img
-                      src={item.manipulated ? '/Images/manipulated1.png' : '/Images/manipulated0.png'}
-                      alt="Toggle Manipulated"
-                      className="w-6 h-6 opacity-40 hover:opacity-100 transition"
-                    />
-                  </button>
-                )}
               </div>
               {item.description && (
                 <p className="text-slate-400 text-sm">{item.description}</p>

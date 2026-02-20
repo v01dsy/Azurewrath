@@ -122,17 +122,20 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
 
   if (loading && !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900">
-        <div className="text-white text-2xl">Loading player data...</div>
+      <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white -mt-20 pt-24 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mx-auto mb-4" />
+          <p className="text-slate-400">Loading player data...</p>
+        </div>
       </div>
     );
   }
 
   if (error === 'User not found in database') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900">
+      <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white -mt-20 pt-24 flex items-center justify-center">
         <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8 text-center max-w-md">
-          <h2 className="text-white text-2xl mb-4">User Not in Database</h2>
+          <h2 className="text-white text-2xl font-bold mb-4">User Not in Database</h2>
           <p className="text-slate-400 mb-6">
             This user isn't in the database yet. Would you like to add them?
           </p>
@@ -151,7 +154,7 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
                 alert('Error adding user');
               }
             }}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+            className="bg-gradient-to-r from-neon-blue to-neon-purple text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition"
           >
             Add User to Database
           </button>
@@ -162,8 +165,11 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
 
   if (error || !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900">
-        <div className="text-white text-2xl">{error || 'Failed to load data'}</div>
+      <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white -mt-20 pt-24 flex items-center justify-center">
+        <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8 max-w-md w-full">
+          <h1 className="text-3xl font-bold text-red-400 mb-2">Oops!</h1>
+          <p className="text-slate-400">{error || 'Failed to load data'}</p>
+        </div>
       </div>
     );
   }
@@ -172,7 +178,7 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
   const scannedTime = stats.lastScanned ? timeAgo(stats.lastScanned) : null;
 
   return (
-    <div className="min-h-screen bg-slate-900 p-4">
+    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white p-4 -mt-20 pt-24">
       <div className="max-w-7xl mx-auto">
         {/* Top Row - Sidebar + Graph */}
         <div className="flex items-stretch gap-6 mb-8">
@@ -201,19 +207,19 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
                 {/* Description with View More */}
                 {user.description && (
                   <div>
-                    <p className="text-slate-300 text-sm truncate">
+                    <p className="text-slate-400 text-sm truncate">
                       {user.description}
                     </p>
                     <button
                       onClick={() => setShowDescriptionModal(true)}
-                      className="text-purple-400 hover:text-purple-300 text-xs mt-1 transition-colors"
+                      className="text-purple-400 hover:text-purple-300 text-xs mt-1 transition"
                     >
                       View more
                     </button>
                   </div>
                 )}
                 
-                <div className="text-slate-400 text-xs">
+                <div className="text-slate-500 text-xs">
                   Roblox ID: {user.robloxUserId}
                 </div>
 
@@ -242,6 +248,12 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
                       <span className="text-slate-400 text-sm">Total RAP</span>
                       <span className="text-green-400 font-semibold">{stats.totalRAP.toLocaleString()} R$</span>
                     </div>
+                    {scannedTime && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-400 text-sm">Last Scanned</span>
+                        <span className="text-slate-500 text-sm">{scannedTime}</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -300,7 +312,7 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
       {/* Description Modal */}
       {showDescriptionModal && (
         <div 
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
           onClick={() => setShowDescriptionModal(false)}
         >
           <div 

@@ -359,7 +359,7 @@ export default function Deals() {
                       </h2>
                       {item.manipulated && (
                         <img
-                          src="/images/manipulated1.png"
+                          src="/Images/manipulated1.png"
                           alt="Manipulated"
                           title="This item's RAP may be manipulated"
                           className="w-6 h-6 flex-shrink-0 mt-0.5"

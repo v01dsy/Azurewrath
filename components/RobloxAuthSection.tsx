@@ -6,7 +6,7 @@ import { setUserSession } from "../lib/userSession";
 
 export default function RobloxAuthSection() {
   const [username, setUsername] = useState("");
-  const code = "676";
+  const [code] = useState(() => Math.floor(100 + Math.random() * 900).toString());
   const [status, setStatus] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const router = useRouter();

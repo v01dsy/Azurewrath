@@ -34,7 +34,6 @@ export async function GET(
   try {
     const { userid } = await params;
 
-    // Find user by robloxUserId only (no more separate id field)
     const user = await prisma.user.findUnique({
       where: {
         robloxUserId: BigInt(userid)
@@ -45,7 +44,6 @@ export async function GET(
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Convert BigInt to string for use in URLs and comparisons
     const robloxUserIdString = user.robloxUserId.toString();
 
     // Fetch avatar from Roblox API (server-side)
@@ -66,7 +64,6 @@ export async function GET(
     if (ongoingScans.has(robloxUserIdString)) {
       console.log(`⏳ Scan already in progress for ${user.username}, skipping...`);
     } else {
-      // Check if snapshot exists
       const latestSnapshotCheck = await prisma.inventorySnapshot.findFirst({
         where: { userId: user.robloxUserId },
         orderBy: { createdAt: 'desc' },
@@ -74,7 +71,6 @@ export async function GET(
       });
 
       if (!latestSnapshotCheck) {
-        // ✅ CHECK if inventory is private BEFORE trying to create snapshot
         const canView = await canViewInventory(robloxUserIdString);
         
         if (!canView) {
@@ -98,10 +94,7 @@ export async function GET(
           });
         }
 
-        // NO SNAPSHOT - Must scan NOW and WAIT for it (blocking)
         console.log(`📸 No snapshot exists for user ${user.username} - creating initial scan (BLOCKING)`);
-        
-        // ✅ MARK AS RUNNING
         ongoingScans.add(robloxUserIdString);
         
         try {
@@ -114,20 +107,15 @@ export async function GET(
             details: String(err)
           }, { status: 500 });
         } finally {
-          // ✅ REMOVE LOCK
           ongoingScans.delete(robloxUserIdString);
         }
       } else {
-        // SNAPSHOT EXISTS - Check if it needs updating
         const now = new Date();
         const snapshotAge = now.getTime() - latestSnapshotCheck.createdAt.getTime();
         const fiveMinutes = 5 * 60 * 1000;
         
-        // ✅ Only scan if last scan was more than 5 minutes ago
         if (snapshotAge > fiveMinutes) {
           console.log(`🔄 Triggering background rescan for ${user.username}...`);
-          
-          // ✅ MARK AS RUNNING
           ongoingScans.add(robloxUserIdString);
           
           saveInventorySnapshot(robloxUserIdString, robloxUserIdString)
@@ -138,7 +126,6 @@ export async function GET(
               console.error('❌ Background scan failed:', err);
             })
             .finally(() => {
-              // ✅ REMOVE LOCK
               ongoingScans.delete(robloxUserIdString);
             });
         } else {
@@ -147,12 +134,13 @@ export async function GET(
       }
     }
 
-    // Get latest snapshot with OPTIMIZED RAW SQL - INCLUDING scannedAt
+    // Get latest snapshot inventory
     const inventoryData = await prisma.$queryRaw<Array<{
       assetId: bigint;
       userAssetId: bigint;
       name: string;
       imageUrl: string | null;
+      manipulated: boolean;
       rap: number | null;
       itemCount: number;
       serialNumbers: (number | null)[];
@@ -174,6 +162,7 @@ export async function GET(
           ii."scannedAt",
           i.name,
           i."imageUrl",
+          i.manipulated,
           ph.rap,
           ARRAY_AGG(ii."userAssetId") OVER (PARTITION BY ii."assetId") as user_asset_ids,
           ARRAY_AGG(ii."serialNumber") OVER (PARTITION BY ii."assetId") as serial_numbers,
@@ -195,6 +184,7 @@ export async function GET(
         "userAssetId",
         COALESCE(name, 'Unknown Item') as name,
         "imageUrl",
+        COALESCE(manipulated, false) as manipulated,
         COALESCE(rap, 0) as rap,
         item_count::int as "itemCount",
         serial_numbers as "serialNumbers",
@@ -204,7 +194,7 @@ export async function GET(
       ORDER BY "assetId", rap DESC NULLS LAST
     `;
 
-    // Get graph data
+    // Get graph data directly from stored snapshot values
     const graphData = await prisma.$queryRaw<Array<{
       snapshotId: string;
       createdAt: Date;
@@ -212,40 +202,45 @@ export async function GET(
       itemCount: number;
       uniqueCount: number;
     }>>`
-      WITH RecentSnapshots AS (
-        SELECT id, "createdAt"
-        FROM "InventorySnapshot"
-        WHERE "userId" = ${user.robloxUserId}
-        ORDER BY "createdAt" DESC
-        LIMIT 30
-      )
-      SELECT 
-        rs.id as "snapshotId",
-        rs."createdAt",
-        COALESCE(SUM(ph.rap), 0) as "totalRap",
-        COUNT(ii."userAssetId")::int as "itemCount",
-        COUNT(DISTINCT ii."assetId")::int as "uniqueCount"
-      FROM RecentSnapshots rs
-      LEFT JOIN "InventoryItem" ii ON ii."snapshotId" = rs.id
-      LEFT JOIN "Item" i ON ii."assetId" = i."assetId"
-      LEFT JOIN LATERAL (
-        SELECT rap
-        FROM "PriceHistory"
-        WHERE "itemId" = i."assetId"
-        ORDER BY timestamp DESC
-        LIMIT 1
-      ) ph ON true
-      GROUP BY rs.id, rs."createdAt"
-      ORDER BY rs."createdAt" ASC
+      SELECT
+        id as "snapshotId",
+        "createdAt",
+        "totalRAP" as "totalRap",
+        "totalItems" as "itemCount",
+        "uniqueItems" as "uniqueCount"
+      FROM "InventorySnapshot"
+      WHERE "userId" = ${user.robloxUserId}
+      ORDER BY "createdAt" ASC
+      LIMIT 30
     `;
 
     // Calculate totals
     const totalRAP = inventoryData.reduce((sum, item) => sum + ((item.rap || 0) * item.itemCount), 0);
     const totalItems = inventoryData.reduce((sum, item) => sum + item.itemCount, 0);
 
-    const latestSnapshot = graphData.length > 0 
-      ? graphData[graphData.length - 1] 
+    const latestSnapshot = graphData.length > 0
+      ? graphData[graphData.length - 1]
       : null;
+
+    // Deduplicate: keep only the latest snapshot per calendar day
+    const dedupedGraphData = (() => {
+      const byDay = new Map<string, typeof graphData[0]>();
+      for (const snap of graphData) {
+        const day = new Date(snap.createdAt).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          timeZone: 'America/New_York',
+        });
+        byDay.set(day, snap);
+      }
+      return Array.from(byDay.entries()).map(([day, snap]) => ({
+        snapshotId: snap.snapshotId,
+        date: day,
+        rap: Number(snap.totalRap),
+        itemCount: Number(snap.itemCount),
+        uniqueCount: Number(snap.uniqueCount),
+      }));
+    })();
 
     return NextResponse.json({
       user: {
@@ -256,9 +251,10 @@ export async function GET(
         description: user.description
       },
       inventory: inventoryData.map(item => ({
-        assetId: item.assetId.toString(), // Convert BigInt to string
+        assetId: item.assetId.toString(),
         name: item.name,
         imageUrl: item.imageUrl,
+        manipulated: item.manipulated ?? false,
         rap: item.rap || 0,
         count: item.itemCount,
         userAssetIds: item.userAssetIds.map(id => id.toString()),
@@ -271,13 +267,7 @@ export async function GET(
         uniqueItems: inventoryData.length,
         lastScanned: latestSnapshot?.createdAt
       },
-      graphData: graphData.map(snap => ({
-        snapshotId: snap.snapshotId,
-        date: new Date(snap.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        rap: snap.totalRap,
-        itemCount: snap.itemCount,
-        uniqueCount: snap.uniqueCount
-      })),
+      graphData: dedupedGraphData,
       isPrivate: false
     });
 

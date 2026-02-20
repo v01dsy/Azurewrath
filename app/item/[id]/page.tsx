@@ -1,28 +1,37 @@
-// app/item/[id]/page.tsx
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
 import { getUserSession } from '@/lib/userSession';
 
-interface ItemDetail {
+interface PricePoint {
   id: string;
+  price: number;
+  rap?: number;
+  lowestResale?: number;
+  salesVolume?: number;
+  timestamp: string;
+}
+
+interface ItemDetail {
   assetId: string;
   name: string;
   imageUrl?: string;
   description?: string;
+  manipulated: boolean;
   currentPrice?: number;
   currentRap?: number;
-  priceHistory: Array<{
-    id: string;
-    price: number;
-    rap?: number;
-    lowestResale?: number;
-    salesVolume?: number;
-    timestamp: string;
-  }>;
+  priceHistory: PricePoint[];
   marketTrends?: {
     id: string;
     trend: string;
@@ -32,69 +41,86 @@ interface ItemDetail {
   };
 }
 
+function fmt(n: number) {
+  return n.toLocaleString();
+}
+
 export default function ItemPage() {
   const params = useParams();
   const router = useRouter();
   const itemId = params.id as string;
-  
+
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isWatchlisted, setIsWatchlisted] = useState(false);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
-
-  const handleLegendClick = (dataKey: string) => {
-    setHiddenLines(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(dataKey)) {
-        newSet.delete(dataKey);
-      } else {
-        newSet.add(dataKey);
-      }
-      return newSet;
-    });
-  };
+  const [userRole, setUserRole] = useState<string>('user');
+  const [manipulatedLoading, setManipulatedLoading] = useState(false);
 
   const legendItems = [
     { dataKey: 'rap', name: 'RAP', color: '#34d399' },
     { dataKey: 'price', name: 'Price', color: '#3b82f6' },
   ];
 
+  const toggleLine = (dataKey: string) => {
+    setHiddenLines(prev => {
+      const next = new Set(prev);
+      next.has(dataKey) ? next.delete(dataKey) : next.add(dataKey);
+      return next;
+    });
+  };
+
+  // Fetch item
   useEffect(() => {
-    const fetchItem = async () => {
+    if (!itemId) return;
+    const load = async () => {
       try {
-        const response = await axios.get(`/api/items/${itemId}`);
-        setItem(response.data);
-      } catch (err) {
+        const res = await axios.get(`/api/items/${itemId}`);
+        setItem(res.data);
+      } catch {
         setError('Failed to load item details');
-        console.error(err);
       } finally {
         setLoading(false);
       }
     };
-    if (itemId) fetchItem();
+    load();
   }, [itemId]);
 
+  // Page title
   useEffect(() => {
     if (item?.name) {
       document.title = `${item.name} | Limited Item - Azurewrath`;
     }
   }, [item]);
 
+  // Watchlist status
   useEffect(() => {
-    const checkWatchlist = async () => {
+    if (!item) return;
+    const check = async () => {
       const user = getUserSession();
-      if (!user || !item) return;
+      if (!user) return;
       try {
-        const response = await axios.get(`/api/items/${itemId}/watchlist?userId=${user.robloxUserId}`);
-        setIsWatchlisted(response.data.isWatchlisted);
-      } catch (err) {
-        console.error('Failed to check watchlist status:', err);
-      }
+        const res = await axios.get(`/api/items/${itemId}/watchlist?userId=${user.robloxUserId}`);
+        setIsWatchlisted(res.data.isWatchlisted);
+      } catch {}
     };
-    checkWatchlist();
+    check();
   }, [item, itemId]);
+
+  // User role
+  useEffect(() => {
+    const load = async () => {
+      const user = getUserSession();
+      if (!user) return;
+      try {
+        const res = await axios.get(`/api/user/role?userId=${user.robloxUserId}`);
+        setUserRole(res.data.role ?? 'user');
+      } catch {}
+    };
+    load();
+  }, []);
 
   const handleWatchlistToggle = async () => {
     const user = getUserSession();
@@ -113,16 +139,34 @@ export default function ItemPage() {
         setIsWatchlisted(true);
       }
     } catch (err: any) {
-      console.error('Watchlist error:', err);
       alert(err.response?.data?.error || 'Failed to update watchlist');
     } finally {
       setWatchlistLoading(false);
     }
   };
 
+  const handleManipulatedToggle = async () => {
+    const user = getUserSession();
+    if (!user || !item) return;
+    setManipulatedLoading(true);
+    try {
+      const res = await axios.patch(`/api/items/${itemId}/manipulated`, {
+        userId: user.robloxUserId,
+        assetId: item.assetId,
+      });
+      setItem(prev => prev ? { ...prev, manipulated: res.data.manipulated } : prev);
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to toggle manipulated');
+    } finally {
+      setManipulatedLoading(false);
+    }
+  };
+
+  const canToggleManipulated = ['admin', 'moderator'].includes(userRole);
+
   if (loading) {
     return (
-      <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white flex items-center justify-center -mt-20">
+      <div className="min-h-screen w-full text-white flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin text-4xl mb-4">⚙️</div>
           <p className="text-slate-400">Loading item details...</p>
@@ -133,7 +177,7 @@ export default function ItemPage() {
 
   if (error || !item) {
     return (
-      <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white flex items-center justify-center -mt-20">
+      <div className="min-h-screen w-full text-white flex items-center justify-center">
         <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8 max-w-md w-full">
           <h1 className="text-3xl font-bold text-red-400 mb-4">Oops!</h1>
           <p className="text-slate-400">{error || 'Item not found'}</p>
@@ -142,7 +186,7 @@ export default function ItemPage() {
     );
   }
 
-  const chartData = item.priceHistory
+  const chartData = [...item.priceHistory]
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
     .map(ph => ({
       timestamp: new Date(ph.timestamp).toLocaleString(undefined, {
@@ -157,17 +201,33 @@ export default function ItemPage() {
       rap: ph.rap,
     }));
 
-  const currentPrice = item.currentPrice;
-  const currentRAP = item.currentRap;
+  const displayImageUrl =
+    item.imageUrl ??
+    `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=420&height=420&format=png`;
 
-  const displayImageUrl = item.imageUrl
-    ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=420&height=420&format=png`;
+  const yMax = Math.max(...chartData.map(d => Math.max(d.price || 0, d.rap || 0)));
+  const targetCeiling = yMax * 1.2;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(targetCeiling)));
+  const niceNumbers = [1, 2, 4, 5, 8, 10];
+  const closestNice = niceNumbers.reduce((best, n) =>
+    Math.abs(n - targetCeiling / magnitude) < Math.abs(best - targetCeiling / magnitude) ? n : best
+  );
+  const ceiling = closestNice * magnitude;
+  const inc = ceiling / 4;
+  const yTicks = [0, inc, inc * 2, inc * 3, ceiling];
+
+  const formatY = (v: number) => {
+    if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}B`;
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+    if (v >= 1_000) return `${(v / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
+    return v.toString();
+  };
 
   return (
     <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white p-32 -mt-20">
       <div className="max-w-5xl mx-auto space-y-6">
 
-        {/* Back Button */}
+        {/* Back */}
         <button
           onClick={() => router.push('/search')}
           className="text-purple-400 hover:text-purple-300 transition flex items-center gap-2"
@@ -178,16 +238,32 @@ export default function ItemPage() {
           Back
         </button>
 
-        {/* Header Card */}
+        {/* Header */}
         <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
           <div className="flex items-start gap-6">
             <div className="w-32 h-32 bg-slate-700/50 rounded-lg overflow-hidden flex-shrink-0">
-              {displayImageUrl && (
-                <img src={displayImageUrl} alt={item.name} className="w-full h-full object-cover" />
-              )}
+              <img src={displayImageUrl} alt={item.name} className="w-full h-full object-cover" />
             </div>
             <div className="flex-1">
-              <h1 className="text-3xl font-bold text-white mb-1">{item.name}</h1>
+              <div className="flex items-center gap-3 flex-wrap mb-1">
+                <h1 className="text-3xl font-bold text-white">{item.name}</h1>
+                {canToggleManipulated ? (
+                  <div className="flex items-center gap-1">
+                    <button onClick={handleManipulatedToggle} disabled={manipulatedLoading} className="hover:opacity-80 transition">
+                      <img
+                        src={item.manipulated ? '/Images/manipulated1.png' : '/Images/manipulated0.png'}
+                        alt="Toggle Manipulated"
+                        className="w-8 h-8"
+                      />
+                    </button>
+                    {item.manipulated && (
+                      <span className="text-red-400 text-sm font-bold">Manipulated</span>
+                    )}
+                  </div>
+                ) : item.manipulated ? (
+                  <img src="/Images/manipulated1.png" alt="Manipulated" className="w-8 h-8" />
+                ) : null}
+              </div>
               {item.description && (
                 <p className="text-slate-400 text-sm">{item.description}</p>
               )}
@@ -196,23 +272,23 @@ export default function ItemPage() {
           </div>
         </div>
 
-        {/* Stats Cards */}
+        {/* Stats */}
         <div className="grid grid-cols-2 gap-6">
           <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
             <div className="text-slate-400 text-xs uppercase tracking-wider mb-2">Best Price</div>
             <div className="text-blue-400 text-3xl font-bold">
-              {currentPrice?.toLocaleString() ?? 'N/A'} R$
+              {item.currentPrice != null ? fmt(item.currentPrice) : 'N/A'} R$
             </div>
           </div>
           <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
             <div className="text-slate-400 text-xs uppercase tracking-wider mb-2">Current RAP</div>
             <div className="text-green-400 text-3xl font-bold">
-              {currentRAP?.toLocaleString() ?? 'N/A'} R$
+              {item.currentRap != null ? fmt(item.currentRap) : 'N/A'} R$
             </div>
           </div>
         </div>
 
-        {/* Price Chart */}
+        {/* Chart */}
         {chartData.length > 0 && (
           <>
             <h2 className="text-2xl font-bold text-white">Price History</h2>
@@ -223,66 +299,29 @@ export default function ItemPage() {
                   <XAxis
                     dataKey="timestamp"
                     stroke="#94a3b8"
-                    tick={({ x, y, payload }) => {
-                      const parts = payload.value.split(', ');
-                      const date = parts[0];
-                      const time = parts[1];
+                    height={50}
+                    interval={Math.floor(chartData.length / 6)}
+                    tick={({ x, y, payload }: any) => {
+                      const parts = (payload.value as string).split(', ');
                       return (
                         <g transform={`translate(${x},${y})`}>
                           <text x={0} y={0} dy={12} textAnchor="middle" fill="#94a3b8" fontSize={11}>
-                            {date}
+                            {parts[0]}
                           </text>
                           <text x={0} y={0} dy={26} textAnchor="middle" fill="#64748b" fontSize={10}>
-                            {time}
+                            {parts[1]}
                           </text>
                         </g>
                       );
                     }}
-                    interval={Math.floor(chartData.length / 6)}
-                    height={50}
                   />
                   <YAxis
                     stroke="#94a3b8"
                     tick={{ fontSize: 11, fill: '#94a3b8' }}
                     width={25}
-                    tickFormatter={(value: number) => {
-                      if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}B`;
-                      if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-                      if (value >= 1_000) return `${(value / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
-                      return value.toString();
-                    }}
-                    domain={[0, (dataMax: number) => {
-                      const targetCeiling = dataMax * 1.2;
-                      const magnitude = Math.pow(10, Math.floor(Math.log10(targetCeiling)));
-                      const normalized = targetCeiling / magnitude;
-                      const niceNumbers = [1, 2, 4, 5, 8, 10];
-                      let closestNumber = niceNumbers[0];
-                      let closestDiff = Math.abs(normalized - niceNumbers[0]);
-                      for (const num of niceNumbers) {
-                        const diff = Math.abs(normalized - num);
-                        if (diff < closestDiff) {
-                          closestDiff = diff;
-                          closestNumber = num;
-                        }
-                      }
-                      return closestNumber * magnitude;
-                    }]}
-                    ticks={(() => {
-                      const dataMax = Math.max(...chartData.map(d => Math.max(d.price || 0, d.rap || 0)));
-                      const targetCeiling = dataMax * 1.2;
-                      const magnitude = Math.pow(10, Math.floor(Math.log10(targetCeiling)));
-                      const normalized = targetCeiling / magnitude;
-                      const niceNumbers = [1, 2, 4, 5, 8, 10];
-                      let closestNumber = niceNumbers[0];
-                      let closestDiff = Math.abs(normalized - niceNumbers[0]);
-                      for (const num of niceNumbers) {
-                        const diff = Math.abs(normalized - num);
-                        if (diff < closestDiff) { closestDiff = diff; closestNumber = num; }
-                      }
-                      const ceiling = closestNumber * magnitude;
-                      const increment = ceiling / 4;
-                      return [0, increment, increment * 2, increment * 3, ceiling];
-                    })()}
+                    tickFormatter={formatY}
+                    domain={[0, ceiling]}
+                    ticks={yTicks}
                   />
                   <Tooltip
                     contentStyle={{
@@ -290,51 +329,28 @@ export default function ItemPage() {
                       border: '1px solid #a855f7',
                       borderRadius: '8px',
                     }}
-                    labelStyle={{ color: '#ffffff', marginBottom: '4px', fontSize: '12px', fontWeight: 'bold' }}
-                    formatter={(value: number, name: string) => [
-                      <span style={{ fontWeight: 'bold' }}>{value.toLocaleString()}</span>,
-                      name === 'rap' ? 'RAP' : 'Price'
-                    ]}
+                    labelStyle={{ color: '#fff', marginBottom: 4, fontSize: 12, fontWeight: 'bold' }}
+                    formatter={(value: number, name: string) => [fmt(value), name === 'rap' ? 'RAP' : 'Price']}
                   />
                   {!hiddenLines.has('rap') && (
-                    <Line
-                      type="monotone"
-                      dataKey="rap"
-                      stroke="#34d399"
-                      strokeWidth={2}
-                      dot={false}
-                      name="rap"
-                    />
+                    <Line type="monotone" dataKey="rap" stroke="#34d399" strokeWidth={2} dot={false} name="rap" />
                   )}
                   {!hiddenLines.has('price') && (
-                    <Line
-                      type="monotone"
-                      dataKey="price"
-                      stroke="#3b82f6"
-                      strokeWidth={2}
-                      dot={false}
-                      name="price"
-                    />
+                    <Line type="monotone" dataKey="price" stroke="#3b82f6" strokeWidth={2} dot={false} name="price" />
                   )}
                 </LineChart>
               </ResponsiveContainer>
-              {/* Clickable Legend */}
               <div className="flex justify-center gap-6 pt-2">
-                {legendItems.map((legendItem) => (
+                {legendItems.map(li => (
                   <button
-                    key={legendItem.dataKey}
-                    onClick={() => handleLegendClick(legendItem.dataKey)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                      hiddenLines.has(legendItem.dataKey)
-                        ? 'opacity-40 hover:opacity-60'
-                        : 'hover:opacity-80'
+                    key={li.dataKey}
+                    onClick={() => toggleLine(li.dataKey)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all ${
+                      hiddenLines.has(li.dataKey) ? 'opacity-40 hover:opacity-60' : 'hover:opacity-80'
                     }`}
                   >
-                    <span
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: legendItem.color }}
-                    />
-                    <span className="text-sm text-slate-300">{legendItem.name}</span>
+                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: li.color }} />
+                    <span className="text-sm text-slate-300">{li.name}</span>
                   </button>
                 ))}
               </div>
@@ -351,7 +367,9 @@ export default function ItemPage() {
             </div>
             <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
               <div className="text-slate-400 text-xs uppercase tracking-wider mb-2">Volatility</div>
-              <div className="text-purple-400 text-xl font-bold">{(item.marketTrends.volatility * 100).toFixed(1)}%</div>
+              <div className="text-purple-400 text-xl font-bold">
+                {(item.marketTrends.volatility * 100).toFixed(1)}%
+              </div>
             </div>
             <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
               <div className="text-slate-400 text-xs uppercase tracking-wider mb-2">Demand</div>
@@ -360,7 +378,7 @@ export default function ItemPage() {
           </div>
         )}
 
-        {/* Action Buttons */}
+        {/* Actions */}
         <div className="flex gap-4">
           <button
             onClick={() => router.push(`/item/${item.assetId}/sales`)}

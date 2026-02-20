@@ -8,6 +8,7 @@ interface InventoryItemDisplay {
   imageUrl: string;
   rap: number;
   count: number;
+  manipulated: boolean;
   serialNumbers?: (number | null)[];
   userAssetIds?: string[];
   scannedAt: Date;
@@ -34,25 +35,18 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
     return `${diffDays} days ago`;
   };
 
-  // Sort items
   const sortedItems = [...items].sort((a: any, b: any) => {
     switch (sortBy) {
-      case 'rap-high':
-        return b.rap - a.rap;
-      case 'rap-low':
-        return a.rap - b.rap;
-      case 'total-high':
-        return (b.rap * b.count) - (a.rap * a.count);
-      case 'total-low':
-        return (a.rap * a.count) - (b.rap * b.count);
-      case 'name':
-        return a.name.localeCompare(b.name);
+      case 'rap-high': return b.rap - a.rap;
+      case 'rap-low': return a.rap - b.rap;
+      case 'total-high': return (b.rap * b.count) - (a.rap * a.count);
+      case 'total-low': return (a.rap * a.count) - (b.rap * b.count);
+      case 'name': return a.name.localeCompare(b.name);
       case 'serial-low':
         const aSerial = a.serialNumbers?.filter((s: number | null) => s !== null).sort((x: number, y: number) => x - y)[0] ?? Infinity;
         const bSerial = b.serialNumbers?.filter((s: number | null) => s !== null).sort((x: number, y: number) => x - y)[0] ?? Infinity;
         return aSerial - bSerial;
-      default:
-        return 0;
+      default: return 0;
     }
   });
 
@@ -100,18 +94,31 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                 key={item.assetId}
                 className="bg-slate-700 rounded-lg p-4 border border-purple-500/10 hover:border-purple-500/30 transition-all flex flex-col"
               >
+                {/* Image box with overlays */}
                 <div className="aspect-square bg-slate-600 rounded mb-2 overflow-hidden relative flex items-center justify-center">
                   <img
                     src={item.imageUrl}
                     alt={item.name}
                     className="w-full h-full object-cover"
                   />
+                  {/* Manipulated icon — top left */}
+                  {item.manipulated && (
+                    <img
+                      src="/Images/manipulated1.png"
+                      alt="Manipulated"
+                      title="This item's RAP may be manipulated"
+                      className="w-6 h-6 absolute top-1 left-1"
+                    />
+                  )}
+                  {/* Serial badge — top right */}
                   {hasSerials && (
                     <div className="absolute top-1 right-1 bg-orange-500/90 text-white text-xs font-bold px-2 py-1 rounded shadow-lg">
                       #{validSerials[0]}{validSerials.length > 1 && ` +${validSerials.length - 1}`}
                     </div>
                   )}
                 </div>
+
+                {/* Name */}
                 <p className="text-white text-sm font-semibold truncate" title={item.name}>
                   {item.name}
                 </p>
@@ -208,16 +215,14 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
 
                 const sortedUaidData = [...uaidData].sort((a, b) => {
                   switch (uaidSortBy) {
-                    case 'index':
-                      return a.index - b.index;
+                    case 'index': return a.index - b.index;
                     case 'uaid-low':
                       if (a.serial && b.serial) return a.serial - b.serial;
                       return (parseInt(a.uaid) || 0) - (parseInt(b.uaid) || 0);
                     case 'uaid-high':
                       if (a.serial && b.serial) return b.serial - a.serial;
                       return (parseInt(b.uaid) || 0) - (parseInt(a.uaid) || 0);
-                    default:
-                      return 0;
+                    default: return 0;
                   }
                 });
 

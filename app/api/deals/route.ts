@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
-export const revalidate = 0; // No cache - always fresh
+export const revalidate = 0;
 
 export async function GET() {
   try {
@@ -12,11 +12,13 @@ export async function GET() {
       price: number;
       rap: number;
       timestamp: Date;
+      manipulated: boolean;
     }>>`
       SELECT 
         i."assetId",
         i.name,
         i."imageUrl",
+        i.manipulated,
         ph.price,
         ph.rap,
         ph.timestamp
@@ -44,6 +46,7 @@ export async function GET() {
         assetId: item.assetId.toString(),
         name: item.name,
         imageUrl: item.imageUrl,
+        manipulated: item.manipulated,
         percent,
         rap,
         bestPrice,

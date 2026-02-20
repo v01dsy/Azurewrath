@@ -1,3 +1,4 @@
+// app/player/[userid]/SnapshotModal.tsx
 'use client';
 
 import { useState, useEffect } from 'react';

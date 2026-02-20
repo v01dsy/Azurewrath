@@ -8,10 +8,11 @@ import axios from 'axios';
 type SearchMode = 'limited' | 'player';
 
 interface SearchResult {
-  assetId: string;  // REMOVED id field - assetId is the primary key
+  assetId: string;
   name: string;
   displayName?: string;
   imageUrl?: string;
+  manipulated?: boolean;
   priceHistory?: Array<{
     price: number;
     rap?: number;
@@ -39,11 +40,10 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
       if (query.trim().length > 0) {
         setIsLoading(true);
         try {
-          // Call different endpoints based on mode
-          const endpoint = mode === 'player' 
-            ? '/api/players/search' 
+          const endpoint = mode === 'player'
+            ? '/api/players/search'
             : '/api/items/search';
-          
+
           const response = await axios.get(endpoint, {
             params: { q: query },
           });
@@ -70,7 +70,6 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
         setIsOpen(false);
       }
     }
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
@@ -85,9 +84,7 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setSelectedIndex(prev =>
-          prev < results.length - 1 ? prev + 1 : prev
-        );
+        setSelectedIndex(prev => prev < results.length - 1 ? prev + 1 : prev);
         break;
       case 'ArrowUp':
         e.preventDefault();
@@ -95,9 +92,7 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
         break;
       case 'Enter':
         e.preventDefault();
-        if (selectedIndex >= 0) {
-          handleSelectResult(results[selectedIndex]);
-        }
+        if (selectedIndex >= 0) handleSelectResult(results[selectedIndex]);
         break;
       case 'Escape':
         setIsOpen(false);
@@ -107,15 +102,15 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
 
   const handleSelectResult = (item: SearchResult) => {
     if (mode === 'player') {
-      router.push(`/player/${item.assetId}`); // Route to player profile
+      router.push(`/player/${item.assetId}`);
     } else {
-      router.push(`/item/${item.assetId}`); // Route to item page
+      router.push(`/item/${item.assetId}`);
     }
     setQuery('');
     setIsOpen(false);
   };
 
-  const placeholderText = mode === 'limited' 
+  const placeholderText = mode === 'limited'
     ? "Search limited items..."
     : "Search players...";
 
@@ -124,7 +119,7 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
     : `No players found matching "${query}"`;
 
   const noResultsSubtext = mode === 'limited'
-    ? "Try searching with the item name or asset ID"  
+    ? "Try searching with the item name or asset ID"
     : "Try searching with the player's username";
 
   return (
@@ -143,11 +138,9 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
           placeholder={placeholderText}
           className="w-full px-4 py-3 bg-slate-800 border border-neon-blue/30 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-neon-blue focus:ring-1 focus:ring-neon-blue/50 transition"
         />
-        
+
         {isLoading && (
-          <div className="absolute right-4 top-3.5 animate-spin">
-            ⚙️
-          </div>
+          <div className="absolute right-4 top-3.5 animate-spin">⚙️</div>
         )}
       </div>
 
@@ -167,34 +160,45 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    <img
-                      src={item.imageUrl
-                        ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=100&height=100&format=png`}
-                      alt={item.name}
-                      className="w-10 h-10 rounded object-cover"
-                    />
+                    {/* Thumbnail with manipulated overlay */}
+                    <div className="relative flex-shrink-0">
+                      <img
+                        src={item.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=100&height=100&format=png`}
+                        alt={item.name}
+                        className="w-10 h-10 rounded object-cover"
+                      />
+                      {item.manipulated && (
+                        <img
+                          src="/Images/manipulated1.png"
+                          alt="Manipulated"
+                          title="This item's RAP may be manipulated"
+                          className="absolute -top-1 -left-1 w-4 h-4"
+                        />
+                      )}
+                    </div>
+
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-white truncate">
-                        {item.name}
-                      </h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold text-white truncate">
+                          {item.name}
+                        </h3>
+                        {item.manipulated && (
+                          <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/40 whitespace-nowrap">
+                            ⚠️ Manipulated
+                          </span>
+                        )}
+                      </div>
+
                       {mode === 'player' ? (
-                        // Player display
                         <>
                           {item.displayName && (
-                            <p className="text-xs text-slate-400">
-                              Display Name: {item.displayName}
-                            </p>
+                            <p className="text-xs text-slate-400">Display Name: {item.displayName}</p>
                           )}
-                          <p className="text-xs text-slate-400">
-                            User ID: {item.assetId}
-                          </p>
+                          <p className="text-xs text-slate-400">User ID: {item.assetId}</p>
                         </>
                       ) : (
-                        // Item display
                         <>
-                          <p className="text-xs text-slate-400">
-                            Asset ID: {item.assetId}
-                          </p>
+                          <p className="text-xs text-slate-400">Asset ID: {item.assetId}</p>
                           {item.priceHistory?.[0] && (
                             <p className="text-sm text-neon-blue mt-1">
                               Price: {(item.priceHistory[0].lowestResale ?? item.priceHistory[0].price).toLocaleString()} Robux

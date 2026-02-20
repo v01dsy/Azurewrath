@@ -1,3 +1,4 @@
+// prisma/seed.js
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 import dotenv from 'dotenv';

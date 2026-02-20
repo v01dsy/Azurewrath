@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
         assetId: entry.item.assetId.toString(),
         name: entry.item.name,
         imageUrl: entry.item.imageUrl,
+        manipulated: entry.item.manipulated,
         currentPrice: latest?.price ?? null,
         currentRap: latest?.rap ?? null,
         lastUpdated: latest?.timestamp ?? null,

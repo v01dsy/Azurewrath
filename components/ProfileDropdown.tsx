@@ -1,14 +1,16 @@
+// app/components/ProfileDropdown.tsx
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getUserSession, clearUserSession } from "../lib/userSession";
+import { getUserSession, setUserSession, clearUserSession } from "../lib/userSession";
 
 type UserSession = {
   robloxUserId: string;
   username: string;
   displayName?: string;
   avatarUrl?: string;
+  authMethod?: string;
 };
 
 export default function ProfileDropdown() {
@@ -20,8 +22,28 @@ export default function ProfileDropdown() {
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    const session = getUserSession();
-    setUser(session ?? null);
+    const restore = async () => {
+      // First try localStorage
+      const local = getUserSession();
+      if (local) {
+        setUser(local);
+        return;
+      }
+
+      // localStorage is empty — try restoring from cookie via server
+      try {
+        const res = await fetch('/api/auth/session');
+        const data = await res.json();
+        if (data.user) {
+          setUserSession(data.user); // restore localStorage
+          setUser(data.user);
+        }
+      } catch {
+        // silently fail — user just stays logged out
+      }
+    };
+
+    restore();
   }, []);
 
   const fetchUnreadCount = useCallback(async (userId: string) => {
@@ -45,18 +67,19 @@ export default function ProfileDropdown() {
     };
   }, [user, fetchUnreadCount]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     clearUserSession();
     setUser(null);
     setUnreadCount(0);
     setOpen(false);
+    // Also clear the cookie
+    await fetch('/api/auth/logout', { method: 'POST' });
     window.location.reload();
   };
 
   const handleNotificationsClick = async () => {
     setOpen(false);
     if (user && unreadCount > 0) {
-      // Mark all read when navigating to notifications page
       try {
         await fetch('/api/user/notifications', {
           method: 'PATCH',
@@ -191,13 +214,13 @@ export default function ProfileDropdown() {
               </button>
               <div className="border-t border-slate-700 my-1" />
               <Link
-                  href="/settings"
-                  className="block px-4 py-2 text-white hover:bg-purple-600 transition"
-                  onClick={() => setOpen(false)}
-                >
-                  Settings
-                </Link>
-                <div className="border-t border-slate-700 my-1" />
+                href="/settings"
+                className="block px-4 py-2 text-white hover:bg-purple-600 transition"
+                onClick={() => setOpen(false)}
+              >
+                Settings
+              </Link>
+              <div className="border-t border-slate-700 my-1" />
               <button
                 onClick={handleLogout}
                 className="block w-full text-left px-4 py-2 text-white hover:bg-purple-600 transition"

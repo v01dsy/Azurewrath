@@ -1,3 +1,4 @@
+// app/deals/page.tsx
 "use client";
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";

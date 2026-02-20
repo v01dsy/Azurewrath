@@ -1,3 +1,4 @@
+// app/api/load-user/[userid]/route.ts
 import prisma from '@/lib/prisma';
 import { fetchRobloxUserInfo, fetchRobloxHeadshotUrl } from '@/lib/robloxApi';
 import { NextResponse } from 'next/server';

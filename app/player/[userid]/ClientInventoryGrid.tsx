@@ -1,3 +1,4 @@
+// app/player/[userid]/ClientInventoryGrid.tsx
 'use client';
 
 import { useState } from 'react';

@@ -1,8 +1,6 @@
+//app/components/DiscordNotificationSettings.tsx
 'use client';
 
-// components/DiscordNotificationSettings.tsx
-// Drop this into your settings page.
-// Shows link/unlink button + toggle for Discord notifications.
 import { getUserSession } from '@/lib/userSession';
 import { useState } from 'react';
 

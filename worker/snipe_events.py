@@ -1,5 +1,6 @@
+
+# worker/snipe_events.py
 """
-worker/snipe_events.py
 ──────────────────────
 Call  fire_snipe_events(cursor, results)  inside save_results_to_db(),
 right after the existing notifications block.

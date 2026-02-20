@@ -1,3 +1,4 @@
+// lib/inventoryTracker.ts
 import { scanFullInventory } from './robloxApi';
 import prisma from './prisma';
 

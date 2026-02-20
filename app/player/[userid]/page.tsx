@@ -1,3 +1,4 @@
+// app/player/[userid]/page.tsx
 'use client';
 
 import { use, useEffect, useState } from 'react';

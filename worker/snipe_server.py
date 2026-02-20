@@ -1,5 +1,6 @@
+
+# worker/snipe_server.py
 """
-worker/snipe_server.py
 ──────────────────────
 A tiny SSE server that runs alongside the worker.
 Runs on port 3001 (configurable via SNIPE_SERVER_PORT env var).

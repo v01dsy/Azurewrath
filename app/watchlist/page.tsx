@@ -1,3 +1,4 @@
+// app/watchlist/page.tsx
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
@@ -9,6 +10,7 @@ interface WatchlistItem {
   assetId: string;
   name: string;
   imageUrl?: string | null;
+  manipulated: boolean;
   currentPrice?: number | null;
   currentRap?: number | null;
   lastUpdated?: string | null;
@@ -152,11 +154,15 @@ export default function WatchlistPage() {
           return (
             <div
               key={item.assetId}
-              className="group flex items-center gap-4 bg-gradient-to-br from-slate-800/60 to-slate-900/40 border border-neon-blue/10 hover:border-neon-blue/30 rounded-xl p-4 transition-all duration-200"
+              className={`group flex items-center gap-4 bg-gradient-to-br from-slate-800/60 to-slate-900/40 border rounded-xl p-4 transition-all duration-200 ${
+                item.manipulated
+                  ? 'border-red-500/30 hover:border-red-500/50'
+                  : 'border-neon-blue/10 hover:border-neon-blue/30'
+              }`}
             >
               {/* Thumbnail */}
               <div
-                className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border border-slate-700 cursor-pointer hover:border-neon-blue/50 transition"
+                className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border border-slate-700 cursor-pointer hover:border-neon-blue/50 transition relative"
                 onClick={() => router.push(`/item/${item.assetId}`)}
               >
                 <img
@@ -167,16 +173,32 @@ export default function WatchlistPage() {
                     (e.target as HTMLImageElement).src = '/Images/icon.png';
                   }}
                 />
+                {/* Manipulated icon overlay */}
+                {item.manipulated && (
+                  <img
+                    src="/Images/manipulated1.png"
+                    alt="Manipulated"
+                    title="This item's RAP may be manipulated"
+                    className="absolute top-0.5 left-0.5 w-5 h-5"
+                  />
+                )}
               </div>
 
-              {/* Name + deal badge */}
+              {/* Name + badges */}
               <div
                 className="flex-1 min-w-0 cursor-pointer"
                 onClick={() => router.push(`/item/${item.assetId}`)}
               >
-                <p className="font-semibold text-white truncate group-hover:text-neon-blue transition-colors">
-                  {item.name}
-                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-semibold text-white truncate group-hover:text-neon-blue transition-colors">
+                    {item.name}
+                  </p>
+                  {item.manipulated && (
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/40 whitespace-nowrap">
+                      ⚠️ Manipulated
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs text-slate-500 font-mono">#{item.assetId}</span>
                   <DealBadge price={item.currentPrice} rap={item.currentRap} />
@@ -204,13 +226,10 @@ export default function WatchlistPage() {
                   className="w-9 h-9 flex items-center justify-center rounded-lg bg-red-500/10 hover:bg-red-500/25 border border-red-500/20 hover:border-red-500/50 text-red-400 hover:text-red-300 transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {isRemoving ? (
-                    <span className="animate-spin text-sm">⚙️</span>
+                    <span className="animate-spin text-xs">⚙️</span>
                   ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                      <path d="M10 11v6M14 11v6" />
-                      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   )}
                 </button>
@@ -219,11 +238,6 @@ export default function WatchlistPage() {
           );
         })}
       </div>
-
-      {/* Mobile price info note */}
-      <p className="sm:hidden text-center text-xs text-slate-600">
-        Tap an item to see its full price details
-      </p>
     </div>
   );
 }

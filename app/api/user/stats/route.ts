@@ -1,3 +1,4 @@
+// app/api/user/stats/route.ts
 import { NextResponse } from 'next/server';
 
 export async function GET() {

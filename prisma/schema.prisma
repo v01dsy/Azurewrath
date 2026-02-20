@@ -58,6 +58,7 @@ model User {
   avatarUrl            String?
   description          String?
   role                 String              @default("user")
+  authMethod           String?             // "bio" or "oauth"
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
   discordId            String?
@@ -106,6 +107,7 @@ model Session {
   sessionToken String   @unique
   userId       BigInt
   accessToken  String?
+  authMethod   String?  // "bio" or "oauth"
   user         User     @relation(fields: [userId], references: [robloxUserId], onDelete: Cascade)
   expires      DateTime
   createdAt    DateTime @default(now())

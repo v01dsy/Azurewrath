@@ -15,7 +15,7 @@ export default function RobloxAuthSection() {
     setChecking(true);
     setStatus(null);
     try {
-      // Use proxy API route to search for user
+      // Search for user
       const res = await fetch(`/api/roblox/search-user?username=${encodeURIComponent(username)}`);
       if (!res.ok) {
         setStatus("Roblox search API error: " + res.status);
@@ -34,7 +34,8 @@ export default function RobloxAuthSection() {
         setChecking(false);
         return;
       }
-      // Use proxy API route to fetch user profile
+
+      // Fetch user profile
       const profileRes = await fetch(`/api/roblox/user-profile?userId=${encodeURIComponent(userId)}`);
       if (!profileRes.ok) {
         setStatus("Roblox profile API error: " + profileRes.status);
@@ -47,16 +48,17 @@ export default function RobloxAuthSection() {
         setChecking(false);
         return;
       }
+
       if (profileData.description.includes(code)) {
         setStatus("Authentication successful!");
-        
-        // Fetch the real avatar URL using the API route
+
+        // Fetch avatar
         const headshotRes = await fetch(`/api/roblox/headshot?userId=${userId}`);
         const headshotData = await headshotRes.json();
         const avatarUrl = headshotData.imageUrl || null;
-        
-        // Upsert user in DB
-        fetch("/api/user/upsert", {
+
+        // Create proper server session via bio callback
+        const sessionRes = await fetch("/api/auth/bio/callback", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -66,30 +68,29 @@ export default function RobloxAuthSection() {
             avatarUrl: avatarUrl,
             description: profileData.description,
           }),
-        })
-        .then(async (res) => {
-          if (!res.ok) {
-            const err = await res.json();
-            setStatus("Failed to save profile: " + (err.error || res.status));
-            setChecking(false);
-            return;
-          }
-          // Store user session client-side
-          setUserSession({
-            robloxUserId: userId,
-            username: profileData.name,
-            displayName: profileData.displayName,
-            avatarUrl: avatarUrl,
-          });
-          setTimeout(() => {
-            router.push(`/player/${userId}`);
-          }, 1200);
-        })
-        .catch((err) => {
-          setStatus("Failed to save profile: " + err.message);
-          setChecking(false);
         });
-        return;
+
+        if (!sessionRes.ok) {
+          const err = await sessionRes.json();
+          setStatus("Failed to create session: " + (err.error || sessionRes.status));
+          setChecking(false);
+          return;
+        }
+
+        const sessionData = await sessionRes.json();
+
+        // Store user session client-side
+        setUserSession({
+          robloxUserId: userId,
+          username: profileData.name,
+          displayName: profileData.displayName,
+          avatarUrl: avatarUrl,
+          authMethod: 'bio',
+        });
+
+        setTimeout(() => {
+          router.push(`/player/${userId}`);
+        }, 1200);
       } else {
         setStatus("Bio does not contain the code. Please update your Roblox bio and try again.");
       }
@@ -102,7 +103,10 @@ export default function RobloxAuthSection() {
   return (
     <div className="bg-slate-700 rounded-lg p-6 border border-purple-500/10 mb-8">
       <h3 className="text-xl font-bold text-white mb-2">Roblox Account Authentication</h3>
-      <div className="mb-2 text-purple-300">Enter your Roblox username and set your bio to <span className="font-mono bg-slate-800 px-2 py-1 rounded">{code}</span> to verify ownership.</div>
+      <div className="mb-2 text-purple-300">
+        Enter your Roblox username and set your bio to{" "}
+        <span className="font-mono bg-slate-800 px-2 py-1 rounded">{code}</span> to verify ownership.
+      </div>
       <div className="flex gap-2 mb-2">
         <input
           type="text"

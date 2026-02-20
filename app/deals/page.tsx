@@ -342,7 +342,7 @@ export default function Deals() {
               const isPriceDrop = priceDropIds.has(item.assetId);
               const isHighlighted = isNew || isPriceDrop;
               return (
-                <Link href={`/item/${item.assetId}`} key={item.assetId}>
+                <a href={`https://www.roblox.com/catalog/${item.assetId}`} key={item.assetId} target="_blank" rel="noopener noreferrer">
                   <div
                     className="rounded-lg p-4 flex flex-col hover:scale-105 cursor-pointer border-2"
                     style={{
@@ -412,7 +412,7 @@ export default function Deals() {
                       </div>
                     </div>
                   </div>
-                </Link>
+                </a>
               );
             })}
           </div>

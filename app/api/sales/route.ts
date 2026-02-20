@@ -38,6 +38,7 @@ export async function GET(request: Request) {
         i.name as "itemName",
         i."assetId",
         i."imageUrl" as "thumbnailUrl",
+        i."manipulated",
         GREATEST(0, ROUND((s."newRap" * 10) - (s."oldRap" * 9))) as "salePrice",
         (s."newRap" - s."oldRap") as "rapDifference"
       FROM "Sale" s
@@ -108,6 +109,7 @@ export async function POST(request: Request) {
         i.name as "itemName",
         i."assetId",
         i."imageUrl" as "thumbnailUrl",
+        i."manipulated",
         ROUND(s."oldRap" + ((s."newRap" - s."oldRap") * 10)) as "salePrice",
         (s."newRap" - s."oldRap") as "rapDifference"
       FROM "Sale" s

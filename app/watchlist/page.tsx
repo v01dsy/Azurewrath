@@ -97,7 +97,6 @@ export default function WatchlistPage() {
     }
   };
 
-  // ── Loading ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-12 text-center">
@@ -107,7 +106,6 @@ export default function WatchlistPage() {
     );
   }
 
-  // ── Error ────────────────────────────────────────────────────────────────
   if (error) {
     return (
       <div className="container mx-auto px-4 py-12 text-center">
@@ -116,7 +114,6 @@ export default function WatchlistPage() {
     );
   }
 
-  // ── Empty ────────────────────────────────────────────────────────────────
   if (items.length === 0) {
     return (
       <div className="container mx-auto px-4 py-20 text-center space-y-6">
@@ -134,7 +131,6 @@ export default function WatchlistPage() {
     );
   }
 
-  // ── Main ─────────────────────────────────────────────────────────────────
   return (
     <div className="container mx-auto px-4 py-12 space-y-8 max-w-5xl">
 
@@ -154,11 +150,7 @@ export default function WatchlistPage() {
           return (
             <div
               key={item.assetId}
-              className={`group flex items-center gap-4 bg-gradient-to-br from-slate-800/60 to-slate-900/40 border rounded-xl p-4 transition-all duration-200 ${
-                item.manipulated
-                  ? 'border-red-500/30 hover:border-red-500/50'
-                  : 'border-neon-blue/10 hover:border-neon-blue/30'
-              }`}
+              className="group flex items-center gap-4 bg-gradient-to-br from-slate-800/60 to-slate-900/40 border border-neon-blue/10 hover:border-neon-blue/30 rounded-xl p-4 transition-all duration-200"
             >
               {/* Thumbnail */}
               <div
@@ -173,7 +165,6 @@ export default function WatchlistPage() {
                     (e.target as HTMLImageElement).src = '/Images/icon.png';
                   }}
                 />
-                {/* Manipulated icon overlay */}
                 {item.manipulated && (
                   <img
                     src="/Images/manipulated1.png"
@@ -189,15 +180,10 @@ export default function WatchlistPage() {
                 className="flex-1 min-w-0 cursor-pointer"
                 onClick={() => router.push(`/item/${item.assetId}`)}
               >
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
                   <p className="font-semibold text-white truncate group-hover:text-neon-blue transition-colors">
                     {item.name}
                   </p>
-                  {item.manipulated && (
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/40 whitespace-nowrap">
-                      ⚠️ Manipulated
-                    </span>
-                  )}
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs text-slate-500 font-mono">#{item.assetId}</span>

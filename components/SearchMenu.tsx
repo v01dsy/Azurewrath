@@ -178,16 +178,9 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-semibold text-white truncate">
+                          <h3 className="font-semibold text-white truncate">
                           {item.name}
                         </h3>
-                        {item.manipulated && (
-                          <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/40 whitespace-nowrap">
-                            ⚠️ Manipulated
-                          </span>
-                        )}
-                      </div>
 
                       {mode === 'player' ? (
                         <>

@@ -10,10 +10,8 @@ interface UAIDPageProps {
 export default async function UAIDPage({ params }: UAIDPageProps) {
   const { uaid } = await params;
   
-  // Convert string UAID to BigInt for database query
   const uaidBigInt = BigInt(uaid);
   
-  // First, find the most recent snapshot that contains this UAID
   const mostRecentItem = await prisma.inventoryItem.findFirst({
     where: {
       userAssetId: uaidBigInt
@@ -47,7 +45,6 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
     );
   }
 
-  // Now fetch all items from that specific snapshot with this UAID
   const items = await prisma.inventoryItem.findMany({
     where: { 
       userAssetId: uaidBigInt,
@@ -71,7 +68,6 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
   const latestPrice = itemData?.priceHistory?.[0];
   const serialNumber = (current as any)?.serialNumber;
 
-  // Fetch current owner's avatar
   let currentOwnerAvatar = null;
   if (currentOwnerUserId) {
     const avatarResponse = await fetch(
@@ -81,7 +77,6 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
     currentOwnerAvatar = avatarData.data?.[0]?.imageUrl;
   }
 
-  // Fetch avatars for all users in the history
   const userIds = [...new Set(items.map(item => item.snapshot?.user?.robloxUserId).filter(Boolean))];
   let avatarMap = new Map();
   
@@ -101,8 +96,8 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
         {/* Header Card - Item Info */}
         <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
           <div className="flex items-start gap-6">
-            {/* Item Thumbnail */}
-            <div className="w-40 h-40 bg-slate-700/50 rounded-lg overflow-hidden flex-shrink-0">
+            {/* Item Thumbnail with manipulated overlay */}
+            <div className="relative w-40 h-40 bg-slate-700/50 rounded-lg overflow-hidden flex-shrink-0">
               {itemData?.imageUrl ? (
                 <img 
                   src={itemData.imageUrl} 
@@ -116,14 +111,26 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                   </svg>
                 </div>
               )}
+              {itemData?.manipulated && (
+                <div className="absolute top-1.5 left-1.5">
+                  <img
+                    src="/Images/manipulated1.png"
+                    alt="Manipulated"
+                    title="This item's RAP may be manipulated"
+                    className="w-7 h-7"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Item Details */}
             <div className="flex-1 flex justify-between items-start">
               <div>
-                <h1 className="text-2xl font-bold text-white mb-12">
-                  {itemData?.name || 'Unknown Item'}
-                </h1>
+                <div className="flex items-center gap-3 mb-3">
+                  <h1 className="text-2xl font-bold text-white">
+                    {itemData?.name || 'Unknown Item'}
+                  </h1>
+                </div>
                 <div className="flex items-center gap-3">
                   <span className="text-slate-400 text-l uppercase tracking-wider font-semibold">UAID</span>
                   <div className="font-mono text-purple-300 text-m bg-slate-700/50 px-3 py-1.5 rounded-lg border border-purple-500/20">
@@ -132,7 +139,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                 </div>
               </div>
               
-            {/* Item Stats - 2x2 GRID TO THE RIGHT */}
+              {/* Item Stats - 2x2 GRID TO THE RIGHT */}
               <div className="grid grid-cols-2 px-4 gap-x-36 py-2 gap-y-12">
                 <div>
                   <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">ASSET ID</div>

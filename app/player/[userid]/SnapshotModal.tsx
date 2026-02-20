@@ -7,6 +7,7 @@ interface SnapshotItem {
   assetId: string;
   name: string;
   imageUrl: string;
+  manipulated: boolean;
   rapThen: number;
   rapNow: number;
   count: number;
@@ -90,10 +91,21 @@ export default function SnapshotModal({ isOpen, onClose, snapshotId, snapshotDat
               {items.map((item, idx) => {
                 const itemDiff = item.rapNow - item.rapThen;
                 const itemPercent = item.rapThen > 0 ? ((itemDiff / item.rapThen) * 100).toFixed(1) : '0';
-                
+
                 return (
                   <div key={idx} className="bg-slate-700/50 rounded-lg p-3 border border-slate-600/50 hover:border-purple-500/50 transition-colors">
-                    <img src={item.imageUrl} alt={item.name} className="w-full aspect-square rounded mb-2" />
+                    {/* Image with manipulated icon */}
+                    <div className="relative">
+                      <img src={item.imageUrl} alt={item.name} className="w-full aspect-square rounded mb-2 object-cover" />
+                      {item.manipulated && (
+                        <img
+                          src="/Images/manipulated1.png"
+                          alt="Manipulated"
+                          title="This item's RAP may be manipulated"
+                          className="absolute top-1 left-1 w-5 h-5"
+                        />
+                      )}
+                    </div>
                     <h3 className="text-white text-sm font-semibold truncate mb-1">{item.name}</h3>
                     {item.count > 1 && (
                       <div className="text-blue-400 text-xs mb-1">×{item.count}</div>
@@ -101,7 +113,7 @@ export default function SnapshotModal({ isOpen, onClose, snapshotId, snapshotDat
                     <div className="text-xs space-y-1">
                       <div className="flex justify-between">
                         <span className="text-slate-400">Then:</span>
-                        <span className="text-300">{(item.rapThen * item.count).toLocaleString()} R$</span>
+                        <span className="text-slate-300">{(item.rapThen * item.count).toLocaleString()} R$</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Now:</span>

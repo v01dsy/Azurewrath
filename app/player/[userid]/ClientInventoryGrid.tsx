@@ -1,7 +1,7 @@
-// app/player/[userid]/ClientInventoryGrid.tsx
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 interface InventoryItemDisplay {
   assetId: string;
@@ -16,6 +16,7 @@ interface InventoryItemDisplay {
 }
 
 export default function ClientInventoryGrid({ items }: { items: InventoryItemDisplay[] }) {
+  const router = useRouter();
   const [sortBy, setSortBy] = useState('rap-high');
   const [showUAIDModal, setShowUAIDModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItemDisplay | null>(null);
@@ -51,12 +52,11 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
     }
   });
 
-  const handleItemClick = (item: InventoryItemDisplay) => {
-    if (item.count > 1) {
-      setSelectedItem(item);
-      setShowUAIDModal(true);
-      document.body.style.overflow = 'hidden';
-    }
+  const openModal = (item: InventoryItemDisplay, e: React.MouseEvent) => {
+    e.stopPropagation(); // prevent card click from firing
+    setSelectedItem(item);
+    setShowUAIDModal(true);
+    document.body.style.overflow = 'hidden';
   };
 
   const closeModal = () => {
@@ -93,7 +93,8 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
             return (
               <div
                 key={item.assetId}
-                className="bg-slate-700 rounded-lg p-4 border border-purple-500/10 hover:border-purple-500/30 transition-all flex flex-col"
+                className="bg-slate-700 rounded-lg p-4 border border-purple-500/10 hover:border-purple-500/30 transition-all flex flex-col cursor-pointer"
+                onClick={() => router.push(`/item/${item.assetId}`)}
               >
                 {/* Image box with overlays */}
                 <div className="aspect-square bg-slate-600 rounded mb-2 overflow-hidden relative flex items-center justify-center">
@@ -120,7 +121,7 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                 </div>
 
                 {/* Name */}
-                <p className="text-white text-sm font-semibold truncate" title={item.name}>
+                <p className="text-white text-sm font-semibold truncate hover:text-purple-400 transition-colors" title={item.name}>
                   {item.name}
                 </p>
 
@@ -141,17 +142,20 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                 <div className="flex-grow"></div>
 
                 <div className="mt-2">
+                  {/* Multi-copy: open modal */}
                   {item.count > 1 && (
                     <button
-                      onClick={() => handleItemClick(item)}
+                      onClick={(e) => openModal(item, e)}
                       className={`w-full ${hasSerials ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-500 hover:bg-blue-600'} text-white text-xs font-semibold py-1.5 px-2 rounded-lg transition-colors mb-1`}
                     >
                       Owned Copies
                     </button>
                   )}
+                  {/* Single-copy: visit UAID page */}
                   {showUAIDButton && (
                     <a
                       href={`/uaid/${uaid}`}
+                      onClick={(e) => e.stopPropagation()}
                       className="block w-full bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold py-1.5 px-2 rounded-lg transition-colors text-center mb-1"
                     >
                       Visit UAID Page

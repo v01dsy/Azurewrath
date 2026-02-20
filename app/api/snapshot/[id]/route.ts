@@ -12,9 +12,10 @@ export async function GET(
     const { id: snapshotId } = await params;
 
   const snapshotData = await prisma.$queryRaw<Array<{
-    assetId: bigint; // 👈 change from string to bigint
+    assetId: bigint;
     name: string;
     imageUrl: string | null;
+    manipulated: boolean;
     rapThen: number | null;
     rapNow: number | null;
     itemCount: number;
@@ -24,17 +25,19 @@ export async function GET(
           ii."assetId",
           i.name,
           i."imageUrl",
+          i.manipulated,
           COUNT(*) as item_count
         FROM "InventoryItem" ii
         LEFT JOIN "Item" i ON ii."assetId" = i."assetId"
         WHERE ii."snapshotId" = ${snapshotId}
-        GROUP BY ii."assetId", i.name, i."imageUrl"
+        GROUP BY ii."assetId", i.name, i."imageUrl", i.manipulated
       ),
       ItemPrices AS (
         SELECT DISTINCT ON (si."assetId")
           si."assetId",
           si.name,
           si."imageUrl",
+          si.manipulated,
           si.item_count,
           ph_then.rap as rap_then,
           ph_now.rap as rap_now
@@ -59,6 +62,7 @@ export async function GET(
         "assetId",
         COALESCE(name, 'Unknown Item') as name,
         "imageUrl",
+        COALESCE(manipulated, false) as manipulated,
         COALESCE(rap_then, 0) as "rapThen",
         COALESCE(rap_now, 0) as "rapNow",
         item_count::int as "itemCount"
@@ -71,9 +75,10 @@ export async function GET(
 
     return NextResponse.json({
       items: snapshotData.map(item => ({
-        assetId: item.assetId.toString(), // 👈 convert BigInt to string
+        assetId: item.assetId.toString(),
         name: item.name,
         imageUrl: item.imageUrl || `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=150&height=150&format=png`,
+        manipulated: item.manipulated,
         rapThen: item.rapThen || 0,
         rapNow: item.rapNow || 0,
         count: item.itemCount

@@ -17,6 +17,7 @@ interface Sale {
   thumbnailUrl: string | null;
   oldRap: number | null;
   newRap: number | null;
+  manipulated: boolean;
 }
 
 export default function SalesPage() {
@@ -49,7 +50,6 @@ export default function SalesPage() {
         
         if (newIds.size > 0) {
           setNewSaleIds(newIds);
-          // Clear new sale indicators after animation completes
           setTimeout(() => {
             setNewSaleIds(new Set());
           }, 800);
@@ -69,75 +69,56 @@ export default function SalesPage() {
     }
   };
 
-  // Initial fetch
   useEffect(() => {
     fetchSales();
   }, []);
 
-  // Auto-refresh every 5 seconds
   useEffect(() => {
     if (!isMonitoring) return;
-
     const interval = setInterval(() => {
       fetchSales();
     }, 1000);
-
     return () => clearInterval(interval);
   }, [isMonitoring]);
 
   const formatTime = (dateString: string) => {
-  const normalized = dateString.endsWith('Z') ? dateString : dateString.replace(' ', 'T') + 'Z';
-  const date = new Date(normalized);
-  return date.toLocaleTimeString(undefined, { 
-    hour: 'numeric', 
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
-  });
-};
+    const normalized = dateString.endsWith('Z') ? dateString : dateString.replace(' ', 'T') + 'Z';
+    const date = new Date(normalized);
+    return date.toLocaleTimeString(undefined, { 
+      hour: 'numeric', 
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+  };
 
-  // Determine if RAP went up or down
   const getRapChange = (sale: Sale) => {
     if (!sale.oldRap || !sale.newRap) return null;
     return sale.newRap > sale.oldRap ? 'up' : 'down';
   };
 
-  // Get discount percentage
   const getDiscount = (sale: Sale) => {
     if (!sale.oldRap) return 0;
     return ((sale.oldRap - sale.salePrice) / sale.oldRap) * 100;
   };
 
-  // Get deal color based on discount percentage (for RAP drops only)
   const getDealColor = (discount: number) => {
-    if (discount >= 75) return '#ff4f81'; // Vibrant pink
-    if (discount >= 50) return '#ffd700'; // Gold
-    if (discount >= 40) return '#a259f7'; // Soft purple
-    if (discount >= 30) return '#4fc3f7'; // Sky blue
-    if (discount >= 20) return '#43e97b'; // Mint green
-    return '#b0b8c1'; // Soft grey
+    if (discount >= 75) return '#ff4f81';
+    if (discount >= 50) return '#ffd700';
+    if (discount >= 40) return '#a259f7';
+    if (discount >= 30) return '#4fc3f7';
+    if (discount >= 20) return '#43e97b';
+    return '#b0b8c1';
   };
 
-  // Get border and background styling based on RAP change
   const getCardStyle = (sale: Sale) => {
     const rapChange = getRapChange(sale);
-    
     if (rapChange === 'up') {
-      return {
-        borderColor: 'border-l-[#43e97b]',
-        bgColor: 'bg-[#43e97b]/10'
-      };
+      return { borderColor: 'border-l-[#43e97b]', bgColor: 'bg-[#43e97b]/10' };
     } else if (rapChange === 'down') {
-      return {
-        borderColor: 'border-l-[#ef4444]',
-        bgColor: 'bg-[#ef4444]/10'
-      };
+      return { borderColor: 'border-l-[#ef4444]', bgColor: 'bg-[#ef4444]/10' };
     }
-    
-    return {
-      borderColor: 'border-l-[#b0b8c1]',
-      bgColor: 'bg-[#1a1a1a]'
-    };
+    return { borderColor: 'border-l-[#b0b8c1]', bgColor: 'bg-[#1a1a1a]' };
   };
 
   if (loading) {
@@ -172,39 +153,18 @@ export default function SalesPage() {
 
   return (
     <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white p-32 -mt-20">
-      {/* Add keyframes animation */}
       <style jsx>{`
         @keyframes slideInFromRight {
-          from {
-            opacity: 0;
-            transform: translateX(500px);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
+          from { opacity: 0; transform: translateX(500px); }
+          to { opacity: 1; transform: translateX(0); }
         }
-        
         @keyframes slideInFromLeft {
-          from {
-            opacity: 0;
-            transform: translateX(-500px);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
+          from { opacity: 0; transform: translateX(-500px); }
+          to { opacity: 1; transform: translateX(0); }
         }
-        
         @keyframes pushDown {
-          from {
-            transform: translateY(-100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
-          }
+          from { transform: translateY(-100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
       `}</style>
 
@@ -237,22 +197,20 @@ export default function SalesPage() {
               <p>No sales recorded yet</p>
             </div>
           ) : (
-            sales.map((sale, index) => {
+            sales.map((sale) => {
               const cardStyle = getCardStyle(sale);
               const rapChange = getRapChange(sale);
               const discount = getDiscount(sale);
               const dealColor = getDealColor(discount);
               const isNew = newSaleIds.has(sale.id);
-              
-              // Random direction for each card (based on sale ID for consistency)
               const direction = sale.id.charCodeAt(0) % 2 === 0 ? 'Right' : 'Left';
-              
+
               return (
                 <div
                   key={sale.id}
                   className={`${cardStyle.bgColor} border-l-4 ${cardStyle.borderColor} rounded-lg p-2 transition-all duration-700 flex items-center justify-between`}
                   style={{
-                    animation: isNew 
+                    animation: isNew
                       ? `slideInFrom${direction} 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards`
                       : 'none',
                     transition: 'all 0.5s ease-out'
@@ -279,14 +237,22 @@ export default function SalesPage() {
 
                     {/* Item Name & Time */}
                     <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-white">
-                        {sale.itemName}
-                      </h3>
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="text-lg font-semibold text-white">
+                          {sale.itemName}
+                        </h3>
+                        {sale.manipulated && (
+                          <img
+                            src="/Images/manipulated1.png"
+                            alt="Manipulated"
+                            title="This item's RAP may be manipulated"
+                            className="w-5 h-5 flex-shrink-0"
+                          />
+                        )}
+                      </div>
                       <p className="text-sm text-gray-400">
                         {formatTime(sale.saleDate)}
                       </p>
-                      
-                      {/* Deal % - only show for RAP drops */}
                       {rapChange === 'down' && discount > 0 && (
                         <p className="text-sm font-bold mt-1" style={{ color: dealColor }}>
                           {discount.toFixed(1)}% discount
@@ -326,7 +292,6 @@ export default function SalesPage() {
                         </span>
                       </div>
                     )}
-
                     {sale.oldRap && (
                       <div className="text-center">
                         <p className="text-xs text-gray-400 mb-1">Old RAP</p>
@@ -335,14 +300,13 @@ export default function SalesPage() {
                         </span>
                       </div>
                     )}
-
                     {sale.newRap && (
                       <div className="text-center">
                         <p className="text-xs text-gray-400 mb-1">New RAP</p>
-                        <span 
+                        <span
                           className={`text-lg font-semibold ${
-                            rapChange === 'up' ? 'text-green-400' : 
-                            rapChange === 'down' ? 'text-red-400' : 
+                            rapChange === 'up' ? 'text-green-400' :
+                            rapChange === 'down' ? 'text-red-400' :
                             'text-gray-300'
                           }`}
                         >

@@ -37,14 +37,21 @@ type SortKey = "deal" | "rap" | "price" | "recent";
 type SortDir = "asc" | "desc";
 
 const DEAL_PRESETS = [
-  { label: "All", min: 0 },
-  { label: "10%+", min: 10 },
-  { label: "20%+", min: 20 },
-  { label: "30%+", min: 30 },
-  { label: "40%+", min: 40 },
-  { label: "50%+", min: 50 },
-  { label: "75%+", min: 75 },
+  { label: "All",  min: 0,  color: "#b0b8c1", },
+  { label: "10%+", min: 10, color: "#43e97b", },
+  { label: "20%+", min: 20, color: "#43e97b", },
+  { label: "30%+", min: 30, color: "#4fc3f7", },
+  { label: "40%+", min: 40, color: "#a259f7", },
+  { label: "50%+", min: 50, color: "#ffd700", },
+  { label: "75%+", min: 75, color: "#ff4f81", },
 ];
+
+const SORT_COLORS: Record<SortKey, string> = {
+  deal: "#a259f7",
+  rap: "#43e97b",
+  price: "#4fc3f7",
+  recent: "#ff9f43",
+};
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -66,7 +73,6 @@ export default function Deals() {
   const prevDealsRef = useRef<Map<string, DealItem>>(new Map());
   const isInitialLoad = useRef(true);
 
-  // Filter state
   const [sortKey, setSortKey] = useState<SortKey>("deal");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [dealMin, setDealMin] = useState(10);
@@ -74,7 +80,7 @@ export default function Deals() {
   const [rapMax, setRapMax] = useState("");
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
-  const [hideManipulated, setHideManipulated] = useState(true); // default: hide manipulated
+  const [hideManipulated, setHideManipulated] = useState(true);
 
   const fetchDeals = useCallback(async () => {
     try {
@@ -175,7 +181,7 @@ export default function Deals() {
   const hasActiveFilters = dealMin !== 10 || rapMin || rapMax || priceMin || priceMax || sortKey !== "deal" || sortDir !== "desc" || !hideManipulated;
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center">
+    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white -mt-20 pt-28 pb-8 px-4">
       <div className="text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mx-auto mb-4" />
         <p className="text-slate-400">Loading deals...</p>
@@ -189,7 +195,7 @@ export default function Deals() {
 
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-          <h1 className="text-3xl font-bold">deals deals deals!</h1>
+          <h1 className="text-3xl font-bold">Roblox Limited Deals</h1>
           <div className="flex items-center gap-3">
             {lastUpdated && (
               <span className="text-slate-500 text-xs">
@@ -216,22 +222,26 @@ export default function Deals() {
           {/* Row 1: Sort buttons */}
           <div className="flex flex-wrap gap-2 items-center">
             <span className="text-slate-400 text-xs uppercase tracking-wider mr-1">Sort</span>
-            {(["deal", "rap", "price", "recent"] as SortKey[]).map(key => (
-              <button
-                key={key}
-                onClick={() => handleSort(key)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150 flex items-center gap-1 ${
-                  sortKey === key
-                    ? "bg-purple-600 text-white"
-                    : "bg-white/5 text-slate-300 hover:bg-white/10"
-                }`}
-              >
-                {key === "deal" ? "Deal %" : key === "rap" ? "RAP" : key === "price" ? "Price" : "Recent"}
-                {sortKey === key && (
-                  <span className="text-xs">{sortDir === "desc" ? "↓" : "↑"}</span>
-                )}
-              </button>
-            ))}
+            {(["deal", "rap", "price", "recent"] as SortKey[]).map(key => {
+              const color = SORT_COLORS[key];
+              return (
+                <button
+                  key={key}
+                  onClick={() => handleSort(key)}
+                  className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150 flex items-center gap-1 border"
+                  style={
+                    sortKey === key
+                      ? { backgroundColor: color + '33', color: color, borderColor: color }
+                      : { backgroundColor: 'rgba(255,255,255,0.05)', color: '#94a3b8', borderColor: 'transparent' }
+                  }
+                >
+                  {key === "deal" ? "Deal %" : key === "rap" ? "RAP" : key === "price" ? "Price" : "Recent"}
+                  {sortKey === key && (
+                    <span className="text-xs">{sortDir === "desc" ? "↓" : "↑"}</span>
+                  )}
+                </button>
+              );
+            })}
 
             {hasActiveFilters && (
               <button
@@ -250,11 +260,12 @@ export default function Deals() {
               <button
                 key={preset.min}
                 onClick={() => setDealMin(preset.min)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150 ${
+                className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150 border"
+                style={
                   dealMin === preset.min
-                    ? "bg-pink-600 text-white"
-                    : "bg-white/5 text-slate-300 hover:bg-white/10"
-                }`}
+                    ? { backgroundColor: preset.color + '33', color: preset.color, borderColor: preset.color }
+                    : { backgroundColor: 'rgba(255,255,255,0.05)', color: '#94a3b8', borderColor: 'transparent' }
+                }
               >
                 {preset.label}
               </button>

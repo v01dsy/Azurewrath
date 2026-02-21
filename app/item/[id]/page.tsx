@@ -290,7 +290,7 @@ export default function ItemPage() {
           <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
             <div className="text-slate-400 text-xs uppercase tracking-wider mb-2">Best Price</div>
             <div className="text-blue-400 text-3xl font-bold">
-              {item.currentPrice != null ? fmt(item.currentPrice) : 'N/A'} R$
+              {item.currentPrice === -1 ? 'No Sellers' : item.currentPrice != null ? fmt(item.currentPrice) + ' R$' : 'N/A'}
             </div>
           </div>
           <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">

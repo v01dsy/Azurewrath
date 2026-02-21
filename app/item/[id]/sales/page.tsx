@@ -138,7 +138,7 @@ export default function SalesHistoryPage() {
           <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
             <div className="text-slate-400 text-xs uppercase tracking-wider mb-2">Best Price</div>
             <div className="text-blue-400 text-3xl font-bold">
-              {bestPrice ? bestPrice.toLocaleString() : 'N/A'} R$
+              {bestPrice === -1 ? 'No Sellers' : bestPrice ? bestPrice.toLocaleString() + ' R$' : 'N/A'}
             </div>
           </div>
           <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">

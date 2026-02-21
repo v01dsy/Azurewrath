@@ -194,7 +194,9 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
                           <p className="text-xs text-slate-400">Asset ID: {item.assetId}</p>
                           {item.priceHistory?.[0] && (
                             <p className="text-sm text-neon-blue mt-1">
-                              Price: {(item.priceHistory[0].lowestResale ?? item.priceHistory[0].price).toLocaleString()} Robux
+                              {(item.priceHistory[0].lowestResale ?? item.priceHistory[0].price) === -1 
+                                ? 'No Sellers' 
+                                : `Price: ${(item.priceHistory[0].lowestResale ?? item.priceHistory[0].price).toLocaleString()} Robux`}
                               {item.priceHistory[0].rap && (
                                 <span className="text-slate-400 ml-2">
                                   (RAP: {item.priceHistory[0].rap.toLocaleString()})

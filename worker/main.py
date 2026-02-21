@@ -209,14 +209,14 @@ def process_items_batch(items_batch, rolimons_data, previous_raps, previous_pric
             stats['skipped_no_data'] += 1
             continue
 
-        best_price = item_data[1] if len(item_data) > 1 and item_data[1] else None
+        best_price = item_data[1] if len(item_data) > 1 and item_data[1] else -1
         current_rap = item_data[2] if len(item_data) > 2 and item_data[2] else None
 
         if current_rap is None:
             stats['skipped_no_rap'] += 1
             continue
 
-        if best_price:
+        if best_price and best_price > 0:
             stats['with_price'] += 1
 
         previous_rap = previous_raps.get(asset_id)

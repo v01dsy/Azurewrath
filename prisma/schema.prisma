@@ -8,19 +8,20 @@ datasource db {
 }
 
 model Item {
-  assetId        BigInt          @id
-  name           String
-  imageUrl       String?
-  description    String?
-  manipulated    Boolean         @default(false)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  inventoryItems InventoryItem[]
-  priceHistory   PriceHistory[]
-  sales          Sale[]
-  watchlist      Watchlist[]
-  notifications  Notification[]
-  snipeConfigs   SnipeConfig[]
+  assetId          BigInt          @id
+  name             String
+  imageUrl         String?
+  description      String?
+  manipulated      Boolean         @default(false)
+  isLimitedUnique  Boolean?        // true = Limited U, false = Limited, null = unknown
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  inventoryItems   InventoryItem[]
+  priceHistory     PriceHistory[]
+  sales            Sale[]
+  watchlist        Watchlist[]
+  notifications    Notification[]
+  snipeConfigs     SnipeConfig[]
 
   @@index([assetId])
 }

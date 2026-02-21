@@ -97,15 +97,15 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
     console.log('🔍 [DEBUG] No previous snapshot found');
   }
 
-  // Fetch ONLY the lightweight UAID list from Roblox
-  console.log('🔍 [DEBUG] Calling scanInventoryUAIDs...');
-  const currentUAIDList = await scanInventoryUAIDs(robloxUserIdString);
+  // Scan once and reuse for both UAID comparison and first-scan details
+  console.log('🔍 [DEBUG] Fetching inventory from Roblox...');
+  const fullInventory = await scanFullInventory(robloxUserIdString);
+  const currentUAIDList = fullInventory.map((item: any) => item.userAssetId.toString());
   console.log(`📦 Fetched ${currentUAIDList.length} UAIDs from Roblox`);
 
   if (!latestSnapshot) {
-    // FIRST SCAN EVER - need full details
-    console.log('💾 FIRST EVER scan - fetching full inventory...');
-    const fullInventory = await scanFullInventory(robloxUserIdString);
+    // FIRST SCAN EVER - reuse already fetched inventory
+    console.log('💾 FIRST EVER scan - using already fetched inventory...');
 
     // Ensure asset IDs exist in database
     const uniqueAssetIds = [...new Set(fullInventory.map((item: any) => BigInt(item.assetId.toString())))];

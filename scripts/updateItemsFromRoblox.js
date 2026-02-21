@@ -16,19 +16,19 @@ async function updateItemsFromRoblox() {
       console.log(`📥 Fetching data for ${item.name} (${item.assetId})...`);
 
       // Fetch from Roblox API
-      const robloxData = await fetchRobloxItemData(item.assetId);
-      if (robloxData) {
-        // Update item
-        await prisma.item.update({
-          where: { assetId: item.assetId },
-          data: {
-            name: robloxData.name || item.name,
-            description: robloxData.description || item.description,
-            imageUrl: robloxData.imageUrl || item.imageUrl,
-          },
-        });
-        console.log(`✅ Updated ${robloxData.name}`);
-      }
+      await prisma.item.update({
+        where: { assetId: item.assetId },
+        data: {
+          name: robloxData.name || item.name,
+          description: robloxData.description || item.description,
+          imageUrl: robloxData.imageUrl || item.imageUrl,
+          // Only write if we got a real value back — don't overwrite with undefined
+          ...(robloxData.isLimitedUnique !== undefined && {
+            isLimitedUnique: robloxData.isLimitedUnique,
+          }),
+        },
+      });
+      console.log(`✅ Updated ${robloxData.name} (isLimitedUnique: ${robloxData.isLimitedUnique ?? 'unknown'})`);
 
       // Fetch price data
       const priceData = await fetchPriceData(item.assetId);

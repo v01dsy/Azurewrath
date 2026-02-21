@@ -79,13 +79,15 @@ export default function InventoryGraph({ data, onPointClick }: InventoryGraphPro
   // Left axis ticks (always exactly 5 ticks = 4 segments)
   const rapTicks = (() => {
     const dataMax = data.length ? Math.max(...data.map(d => d.rap)) : 0;
+    if (dataMax === 0) return [0, 1, 2, 3, 4];
     const max = getAxisMax(dataMax);
-    const increment = max / 4; // Divide by 4 to get exactly 4 segments
+    const increment = max / 4;
     const ticks = [];
     for (let i = 0; i <= 4; i++) {
       ticks.push(i * increment);
     }
-    return ticks;
+    // Deduplicate in case of rounding collisions
+    return [...new Set(ticks)];
   })();
 
   // Right axis: same number of ticks as left, evenly spaced across visible data max

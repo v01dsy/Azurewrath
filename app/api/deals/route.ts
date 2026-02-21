@@ -33,6 +33,7 @@ export async function GET() {
       ) ph ON true
       WHERE ph.rap > 0
         AND ph.price IS NOT NULL
+        AND ph.price > 0
         AND ph.price < ph.rap
         AND ((ph.rap - ph.price) / ph.rap * 100) > 0
       ORDER BY ((ph.rap - ph.price) / ph.rap * 100) DESC

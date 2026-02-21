@@ -222,6 +222,7 @@ export interface RobloxItemData {
   description: string;
   imageUrl: string;
   price?: number;
+  isLimitedUnique?: boolean; // true = Limited U, false = Limited
 }
 
 /**
@@ -234,6 +235,19 @@ export async function fetchRobloxItemData(assetId: string): Promise<RobloxItemDa
     );
 
     const catalogData = catalogRes.data;
+
+    // Fetch IsLimitedUnique from economy API (same endpoint used by fetchPriceData)
+    let isLimitedUnique: boolean | undefined = undefined;
+    try {
+      const economyRes = await axios.get(
+        `https://economy.roblox.com/v2/assets/${assetId}/details`
+      );
+      if (typeof economyRes.data?.IsLimitedUnique === 'boolean') {
+        isLimitedUnique = economyRes.data.IsLimitedUnique;
+      }
+    } catch (err) {
+      console.warn(`Economy details fetch failed for asset ${assetId}:`, err);
+    }
 
     let imageUrl = '';
     try {
@@ -252,6 +266,7 @@ export async function fetchRobloxItemData(assetId: string): Promise<RobloxItemDa
       description: catalogData.Description || '',
       imageUrl: imageUrl || `https://www.roblox.com/asset/?id=${assetId}`,
       price: catalogData.PriceInRobux || undefined,
+      isLimitedUnique,
     };
   } catch (error) {
     console.error(`Failed to fetch Roblox data for asset ${assetId}:`, error);

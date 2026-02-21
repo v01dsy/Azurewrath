@@ -16,14 +16,16 @@ async function canViewInventory(robloxUserId: string): Promise<boolean> {
     );
     
     if (!response.ok) {
-      return false;
+      console.warn(`canViewInventory returned ${response.status} for ${robloxUserId} — assuming public`);
+      return true; // ✅ Don't punish users for Roblox API errors
     }
     
     const data = await response.json();
-    return data.canView === true;
+    // Only return false if Roblox explicitly says canView is false
+    return data.canView !== false;
   } catch (error) {
-    console.error('Error checking inventory visibility:', error);
-    return false;
+    console.error('Error checking inventory visibility — assuming public:', error);
+    return true; // ✅ Default to public on network errors
   }
 }
 

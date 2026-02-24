@@ -7,59 +7,37 @@ interface UAIDPageProps {
   params: Promise<{ uaid: string }>;
 }
 
-type RealOwnerResult =
-  | { found: true; userId: string; username: string }
-  | { found: false; error?: string };
-
 /**
- * Finds the real current owner of a specific UAID by paging through
- * inventory.roblox.com/v2/assets/{assetId}/owners until we find the
- * matching userAssetId. Works even for untracked users.
+ * Checks if a specific user still has a UAID in their Roblox inventory.
+ * Pages through all collectibles until found or exhausted.
+ * Returns false if inventory is private or UAID not found.
  */
-async function findRealOwnerByUAID(assetId: string, userAssetId: string): Promise<RealOwnerResult> {
-  try {
-    let cursor: string | null = null;
-    let pageCount = 0;
-    const MAX_PAGES = 50;
+async function checkUserStillOwnsUAID(userId: string, userAssetId: string): Promise<boolean> {
+  let cursor: string | null = null;
 
-    let url = "";
-    let res: Response;
-    let data: any;
+  do {
+    const url = cursor
+      ? `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Asc&limit=100&cursor=${cursor}`
+      : `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Asc&limit=100`;
 
-    do {
-      url = cursor
-        ? `https://inventory.roblox.com/v2/assets/${assetId}/owners?sortOrder=Asc&limit=100&cursor=${cursor}`
-        : `https://inventory.roblox.com/v2/assets/${assetId}/owners?sortOrder=Asc&limit=100`;
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      cache: "no-store",
+    });
 
-      res = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0" },
-        cache: "no-store",
-      });
+    if (!res.ok) return false;
 
-      if (!res.ok) {
-        return { found: false, error: `API returned ${res.status}` };
-      }
+    const data = await res.json();
+    const items: any[] = data.data ?? [];
 
-      data = await res.json();
-      const owners: any[] = data.data ?? [];
+    if (items.some((item: any) => item.userAssetId?.toString() === userAssetId)) {
+      return true;
+    }
 
-      const match = owners.find((o: any) => o.userAssetId?.toString() === userAssetId);
-      if (match) {
-        return {
-          found: true,
-          userId: match.id?.toString(),
-          username: match.name,
-        };
-      }
+    cursor = data.nextPageCursor ?? null;
+  } while (cursor);
 
-      cursor = data.nextPageCursor ?? null;
-      pageCount++;
-    } while (cursor && pageCount < MAX_PAGES);
-
-    return { found: false, error: "UAID not found in owner list" };
-  } catch (e: any) {
-    return { found: false, error: e?.message ?? "Unknown error" };
-  }
+  return false;
 }
 
 export default async function UAIDPage({ params }: UAIDPageProps) {
@@ -127,27 +105,25 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
   const itemData = mostRecentItem.item;
   const latestPrice = itemData?.priceHistory?.[0];
   const serialNumber = mostRecentItem?.serialNumber;
-  const assetId = mostRecentItem.assetId.toString();
 
-  // Live owner lookup via Roblox API — works even for untracked users
-  const ownerResult = await findRealOwnerByUAID(assetId, uaid);
+  // Directly check if last known owner still has this UAID — no pre-check
+  let ownerStillHasIt = false;
+  if (lastKnownOwnerId) {
+    ownerStillHasIt = await checkUserStillOwnsUAID(lastKnownOwnerId, uaid);
+  }
 
-  const currentOwner = ownerResult.found ? ownerResult.username : null;
-  const currentOwnerUserId = ownerResult.found ? ownerResult.userId : null;
+  const itemTraded = !ownerStillHasIt && lastKnownOwnerId !== null;
 
-  const isNewUntracked = ownerResult.found && ownerResult.userId !== lastKnownOwnerId;
-  const ownerCheckFailed =
-    !ownerResult.found &&
-    !!ownerResult.error &&
-    ownerResult.error !== "UAID not found in owner list";
-  const itemTraded = !ownerResult.found && !ownerCheckFailed && lastKnownOwnerId !== null;
+  const currentOwner = ownerStillHasIt ? lastKnownOwnerUsername : null;
+  const currentOwnerUserId = ownerStillHasIt ? lastKnownOwnerId : null;
 
   // Avatars
   let currentOwnerAvatar: string | null = null;
-  if (currentOwnerUserId) {
+  const avatarUserId = currentOwnerUserId ?? lastKnownOwnerId;
+  if (avatarUserId) {
     try {
       const avatarResponse = await fetch(
-        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${currentOwnerUserId}&size=420x420&format=Png&isCircular=false`,
+        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${avatarUserId}&size=420x420&format=Png&isCircular=false`,
         { cache: "no-store" }
       );
       const avatarData = await avatarResponse.json();
@@ -260,7 +236,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
           <div className="flex items-top justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-3">
-                {currentOwner ? (
+                {ownerStillHasIt ? (
                   <div className="w-2 h-3 bg-green-400 rounded-full animate-pulse"></div>
                 ) : itemTraded ? (
                   <div className="w-2 h-3 bg-yellow-400 rounded-full"></div>
@@ -270,26 +246,14 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                 <h2 className="text-sm uppercase tracking-wider text-slate-400 font-bold">Current Owner</h2>
               </div>
 
-              {currentOwner ? (
+              {ownerStillHasIt ? (
                 <>
                   <a
-                    href={currentOwnerUserId ? `/player/${currentOwnerUserId}` : "#"}
+                    href={`/player/${currentOwnerUserId}`}
                     className="text-4xl font-bold text-white hover:text-purple-300 transition-colors"
                   >
                     {currentOwner}
                   </a>
-                  {isNewUntracked && (
-                    <div className="mt-2 inline-flex items-center gap-1.5 bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-xs px-3 py-1.5 rounded-lg">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z" />
-                      </svg>
-                      Not yet tracked —{" "}
-                      <a href={`/player/${currentOwnerUserId}`} className="underline hover:text-yellow-300">
-                        scan their profile
-                      </a>{" "}
-                      to add them
-                    </div>
-                  )}
                   <div className="inline-block bg-slate-700/30 px-4 py-2 rounded-lg mt-4">
                     <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">DAYS OWNED</div>
                     <div className="text-white text-lg font-semibold">
@@ -315,15 +279,6 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                     <div className="text-white text-base font-semibold">{lastKnownOwnerUsername}</div>
                   </div>
                 </div>
-              ) : ownerCheckFailed ? (
-                <div>
-                  <div className="text-2xl font-bold text-slate-400 mb-2">
-                    {lastKnownOwnerUsername ?? "Unknown"}
-                  </div>
-                  <div className="text-slate-500 text-sm">
-                    Could not verify current ownership (API error).
-                  </div>
-                </div>
               ) : (
                 <span className="text-xl text-red-400 font-semibold">No owner found</span>
               )}
@@ -333,7 +288,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
               <div className="w-40 h-40 bg-slate-700/50 rounded-lg overflow-hidden flex items-center justify-center">
                 <img
                   src={currentOwnerAvatar}
-                  alt={`${currentOwner}'s avatar`}
+                  alt={`${currentOwner ?? lastKnownOwnerUsername}'s avatar`}
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -367,7 +322,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                     const userId = entry.snapshot?.user?.robloxUserId?.toString();
                     const username = entry.snapshot?.user?.username;
                     const avatarUrl = userId ? avatarMap.get(userId) : null;
-                    const isCurrentTracked = i === 0 && ownerResult.found && !isNewUntracked;
+                    const isCurrentTracked = i === 0 && ownerStillHasIt;
 
                     return (
                       <tr key={`${entry.snapshotId}-${i}`} className="hover:bg-slate-700/20 transition-colors">

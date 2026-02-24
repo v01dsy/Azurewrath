@@ -14,20 +14,23 @@ interface UAIDPageProps {
  */
 async function checkUserStillOwnsUAID(userId: string, userAssetId: string): Promise<boolean> {
   let cursor: string | null = null;
+  let url = "";
+  let res: Response;
+  let data: any;
 
   do {
-    const url = cursor
+    url = cursor
       ? `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Asc&limit=100&cursor=${cursor}`
       : `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles?sortOrder=Asc&limit=100`;
 
-    const res = await fetch(url, {
+    res = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
       cache: "no-store",
     });
 
     if (!res.ok) return false;
 
-    const data = await res.json();
+    data = await res.json();
     const items: any[] = data.data ?? [];
 
     if (items.some((item: any) => item.userAssetId?.toString() === userAssetId)) {

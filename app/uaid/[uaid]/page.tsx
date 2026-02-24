@@ -20,26 +20,29 @@ async function findRealOwnerByUAID(assetId: string, userAssetId: string): Promis
   try {
     let cursor: string | null = null;
     let pageCount = 0;
-    const MAX_PAGES = 50; // Safety cap to avoid infinite loops on huge items
+    const MAX_PAGES = 50;
+
+    let url = "";
+    let res: Response;
+    let data: any;
 
     do {
-      const url = cursor
+      url = cursor
         ? `https://inventory.roblox.com/v2/assets/${assetId}/owners?sortOrder=Asc&limit=100&cursor=${cursor}`
         : `https://inventory.roblox.com/v2/assets/${assetId}/owners?sortOrder=Asc&limit=100`;
 
-      const res = await fetch(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0' },
-        cache: 'no-store',
+      res = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0" },
+        cache: "no-store",
       });
 
       if (!res.ok) {
         return { found: false, error: `API returned ${res.status}` };
       }
 
-      const data = await res.json();
+      data = await res.json();
       const owners: any[] = data.data ?? [];
 
-      // Each entry has: id (userId), name (username), userAssetId, serialNumber, etc.
       const match = owners.find((o: any) => o.userAssetId?.toString() === userAssetId);
       if (match) {
         return {
@@ -53,31 +56,30 @@ async function findRealOwnerByUAID(assetId: string, userAssetId: string): Promis
       pageCount++;
     } while (cursor && pageCount < MAX_PAGES);
 
-    return { found: false, error: 'UAID not found in owner list' };
+    return { found: false, error: "UAID not found in owner list" };
   } catch (e: any) {
-    return { found: false, error: e?.message ?? 'Unknown error' };
+    return { found: false, error: e?.message ?? "Unknown error" };
   }
 }
 
 export default async function UAIDPage({ params }: UAIDPageProps) {
   const { uaid } = await params;
-  
+
   const uaidBigInt = BigInt(uaid);
-  
-  // Get item metadata from most recent record
+
   const mostRecentItem = await prisma.inventoryItem.findFirst({
-    where: { userAssetId: uaidBigInt },  
+    where: { userAssetId: uaidBigInt },
     orderBy: { scannedAt: "desc" },
     include: {
       snapshot: { include: { user: true } },
       item: {
         include: {
           priceHistory: {
-            orderBy: { timestamp: 'desc' },
-            take: 1
-          }
-        }
-      }
+            orderBy: { timestamp: "desc" },
+            take: 1,
+          },
+        },
+      },
     },
   });
 
@@ -87,28 +89,33 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
         <div className="max-w-2xl w-full">
           <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8">
             <h1 className="text-3xl font-bold text-white mb-4">UAID Not Found</h1>
-            <p className="text-slate-400">No items found for UAID: <span className="text-purple-300 font-mono">{uaid}</span></p>
+            <p className="text-slate-400">
+              No items found for UAID:{" "}
+              <span className="text-purple-300 font-mono">{uaid}</span>
+            </p>
           </div>
         </div>
       </div>
     );
   }
 
-  // ── Ownership History: ALL distinct snapshots that contained this UAID ──
+  // All distinct snapshots that ever contained this UAID
   const allOwnerships = await prisma.inventoryItem.findMany({
     where: { userAssetId: uaidBigInt },
     orderBy: { scannedAt: "desc" },
-    distinct: ['snapshotId'],
+    distinct: ["snapshotId"],
     include: {
       snapshot: { include: { user: true } },
     },
   });
 
-  // Deduplicate consecutive same-owner entries for display
+  // Deduplicate consecutive same-owner entries
   const dedupedHistory: typeof allOwnerships = [];
   for (const entry of allOwnerships) {
     const lastEntry = dedupedHistory[dedupedHistory.length - 1];
-    const sameOwner = lastEntry?.snapshot?.user?.robloxUserId?.toString() === entry.snapshot?.user?.robloxUserId?.toString();
+    const sameOwner =
+      lastEntry?.snapshot?.user?.robloxUserId?.toString() ===
+      entry.snapshot?.user?.robloxUserId?.toString();
     if (!sameOwner) {
       dedupedHistory.push(entry);
     }
@@ -122,38 +129,46 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
   const serialNumber = mostRecentItem?.serialNumber;
   const assetId = mostRecentItem.assetId.toString();
 
-  // ── Live owner lookup via Roblox API — works even for untracked users ──
+  // Live owner lookup via Roblox API — works even for untracked users
   const ownerResult = await findRealOwnerByUAID(assetId, uaid);
 
   const currentOwner = ownerResult.found ? ownerResult.username : null;
   const currentOwnerUserId = ownerResult.found ? ownerResult.userId : null;
 
-  // Is the real owner someone we haven't tracked yet?
   const isNewUntracked = ownerResult.found && ownerResult.userId !== lastKnownOwnerId;
-  const ownerCheckFailed = !ownerResult.found && !!ownerResult.error && ownerResult.error !== 'UAID not found in owner list';
+  const ownerCheckFailed =
+    !ownerResult.found &&
+    !!ownerResult.error &&
+    ownerResult.error !== "UAID not found in owner list";
   const itemTraded = !ownerResult.found && !ownerCheckFailed && lastKnownOwnerId !== null;
 
-  // ── Avatars ──
+  // Avatars
   let currentOwnerAvatar: string | null = null;
   if (currentOwnerUserId) {
     try {
       const avatarResponse = await fetch(
         `https://thumbnails.roblox.com/v1/users/avatar?userIds=${currentOwnerUserId}&size=420x420&format=Png&isCircular=false`,
-        { next: { revalidate: 60 } }
+        { cache: "no-store" }
       );
       const avatarData = await avatarResponse.json();
       currentOwnerAvatar = avatarData.data?.[0]?.imageUrl ?? null;
     } catch {}
   }
 
-  const historyUserIds = [...new Set(dedupedHistory.map(i => i.snapshot?.user?.robloxUserId?.toString()).filter(Boolean))];
+  const historyUserIds = [
+    ...new Set(
+      dedupedHistory
+        .map((i) => i.snapshot?.user?.robloxUserId?.toString())
+        .filter(Boolean)
+    ),
+  ];
   const avatarMap = new Map<string, string>();
 
   if (historyUserIds.length > 0) {
     try {
       const avatarResponse = await fetch(
-        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${historyUserIds.join(',')}&size=150x150&format=Png&isCircular=false`,
-        { next: { revalidate: 300 } }
+        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${historyUserIds.join(",")}&size=150x150&format=Png&isCircular=false`,
+        { cache: "no-store" }
       );
       const avatarData = await avatarResponse.json();
       avatarData.data?.forEach((avatar: any) => {
@@ -166,15 +181,14 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
     <div className="min-h-screen bg-slate-900 p-4">
       <div className="max-w-4xl mx-auto space-y-6">
 
-        {/* Header Card - Item Info */}
+        {/* Header Card */}
         <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
           <div className="flex items-start gap-6">
-            {/* Item Thumbnail */}
             <div className="relative w-40 h-40 bg-slate-700/50 rounded-lg overflow-hidden flex-shrink-0">
               {itemData?.imageUrl ? (
-                <img 
-                  src={itemData.imageUrl} 
-                  alt={itemData.name || 'Item'}
+                <img
+                  src={itemData.imageUrl}
+                  alt={itemData.name || "Item"}
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -196,12 +210,11 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
               )}
             </div>
 
-            {/* Item Details */}
             <div className="flex-1 flex justify-between items-start">
               <div>
                 <div className="flex items-center gap-3 mb-3">
                   <h1 className="text-2xl font-bold text-white">
-                    {itemData?.name || 'Unknown Item'}
+                    {itemData?.name || "Unknown Item"}
                   </h1>
                 </div>
                 <div className="flex items-center gap-3">
@@ -211,26 +224,31 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                   </div>
                 </div>
               </div>
-              
-              {/* Item Stats Grid */}
+
               <div className="grid grid-cols-2 px-4 gap-x-36 py-2 gap-y-12">
                 <div>
                   <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">ASSET ID</div>
-                  <div className="font-mono text-white text-xl font-semibold">{mostRecentItem?.assetId?.toString() || 'N/A'}</div>
+                  <div className="font-mono text-white text-xl font-semibold">
+                    {mostRecentItem?.assetId?.toString() || "N/A"}
+                  </div>
                 </div>
                 <div>
                   <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">SERIAL</div>
-                  <div className={`font-semibold ${serialNumber ? 'text-orange-400 text-xl' : 'text-slate-500'}`}>
-                    {serialNumber ? `#${serialNumber.toLocaleString()}` : 'N/A'}
+                  <div className={`font-semibold ${serialNumber ? "text-orange-400 text-xl" : "text-slate-500"}`}>
+                    {serialNumber ? `#${serialNumber.toLocaleString()}` : "N/A"}
                   </div>
                 </div>
                 <div>
                   <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">RAP</div>
-                  <div className="text-green-400 text-xl font-semibold">{latestPrice?.rap?.toLocaleString() || 'N/A'} R$</div>
+                  <div className="text-green-400 text-xl font-semibold">
+                    {latestPrice?.rap?.toLocaleString() || "N/A"} R$
+                  </div>
                 </div>
                 <div>
                   <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">BEST PRICE</div>
-                  <div className="text-blue-400 text-xl font-semibold">{latestPrice?.price?.toLocaleString() || 'N/A'} R$</div>
+                  <div className="text-blue-400 text-xl font-semibold">
+                    {latestPrice?.price?.toLocaleString() || "N/A"} R$
+                  </div>
                 </div>
               </div>
             </div>
@@ -255,7 +273,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
               {currentOwner ? (
                 <>
                   <a
-                    href={currentOwnerUserId ? `/player/${currentOwnerUserId}` : '#'}
+                    href={currentOwnerUserId ? `/player/${currentOwnerUserId}` : "#"}
                     className="text-4xl font-bold text-white hover:text-purple-300 transition-colors"
                   >
                     {currentOwner}
@@ -265,13 +283,20 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z" />
                       </svg>
-                      Not yet tracked — <a href={`/player/${currentOwnerUserId}`} className="underline hover:text-yellow-300">scan their profile</a> to add them
+                      Not yet tracked —{" "}
+                      <a href={`/player/${currentOwnerUserId}`} className="underline hover:text-yellow-300">
+                        scan their profile
+                      </a>{" "}
+                      to add them
                     </div>
                   )}
                   <div className="inline-block bg-slate-700/30 px-4 py-2 rounded-lg mt-4">
                     <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">DAYS OWNED</div>
                     <div className="text-white text-lg font-semibold">
-                      {Math.floor((new Date().getTime() - new Date(allOwnerships[0].scannedAt).getTime()) / (1000 * 60 * 60 * 24))}
+                      {Math.floor(
+                        (new Date().getTime() - new Date(allOwnerships[0].scannedAt).getTime()) /
+                          (1000 * 60 * 60 * 24)
+                      )}
                     </div>
                   </div>
                 </>
@@ -279,7 +304,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                 <div>
                   <div className="text-2xl font-bold text-yellow-400 mb-2">Unknown Owner</div>
                   <div className="text-slate-400 text-sm max-w-sm">
-                    This item is no longer in{' '}
+                    This item is no longer in{" "}
                     <a href={`/player/${lastKnownOwnerId}`} className="text-purple-300 hover:underline">
                       {lastKnownOwnerUsername}
                     </a>
@@ -292,8 +317,12 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                 </div>
               ) : ownerCheckFailed ? (
                 <div>
-                  <div className="text-2xl font-bold text-slate-400 mb-2">{lastKnownOwnerUsername ?? 'Unknown'}</div>
-                  <div className="text-slate-500 text-sm">Could not verify current ownership (inventory may be private).</div>
+                  <div className="text-2xl font-bold text-slate-400 mb-2">
+                    {lastKnownOwnerUsername ?? "Unknown"}
+                  </div>
+                  <div className="text-slate-500 text-sm">
+                    Could not verify current ownership (API error).
+                  </div>
                 </div>
               ) : (
                 <span className="text-xl text-red-400 font-semibold">No owner found</span>
@@ -302,7 +331,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
 
             {currentOwnerAvatar && (
               <div className="w-40 h-40 bg-slate-700/50 rounded-lg overflow-hidden flex items-center justify-center">
-                <img 
+                <img
                   src={currentOwnerAvatar}
                   alt={`${currentOwner}'s avatar`}
                   className="w-full h-full object-cover"
@@ -323,7 +352,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
             </h2>
             <p className="text-slate-400 text-sm mt-1">All tracked owners — most recent first</p>
           </div>
-          
+
           {dedupedHistory.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -339,15 +368,15 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                     const username = entry.snapshot?.user?.username;
                     const avatarUrl = userId ? avatarMap.get(userId) : null;
                     const isCurrentTracked = i === 0 && ownerResult.found && !isNewUntracked;
-                    
+
                     return (
                       <tr key={`${entry.snapshotId}-${i}`} className="hover:bg-slate-700/20 transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             {avatarUrl ? (
                               <div className="w-12 h-12 bg-slate-700/50 rounded-lg overflow-hidden flex-shrink-0">
-                                <img 
-                                  src={avatarUrl} 
+                                <img
+                                  src={avatarUrl}
                                   alt={`${username}'s avatar`}
                                   className="w-full h-full object-cover"
                                 />

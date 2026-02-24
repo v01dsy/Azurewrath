@@ -7,18 +7,69 @@ interface UAIDPageProps {
   params: Promise<{ uaid: string }>;
 }
 
+type RealOwnerResult =
+  | { found: true; userId: string; username: string }
+  | { found: false; error?: string };
+
+/**
+ * Finds the real current owner of a specific UAID by paging through
+ * inventory.roblox.com/v2/assets/{assetId}/owners until we find the
+ * matching userAssetId. Works even for untracked users.
+ */
+async function findRealOwnerByUAID(assetId: string, userAssetId: string): Promise<RealOwnerResult> {
+  try {
+    let cursor: string | null = null;
+    let pageCount = 0;
+    const MAX_PAGES = 50; // Safety cap to avoid infinite loops on huge items
+
+    do {
+      const url = cursor
+        ? `https://inventory.roblox.com/v2/assets/${assetId}/owners?sortOrder=Asc&limit=100&cursor=${cursor}`
+        : `https://inventory.roblox.com/v2/assets/${assetId}/owners?sortOrder=Asc&limit=100`;
+
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        cache: 'no-store',
+      });
+
+      if (!res.ok) {
+        return { found: false, error: `API returned ${res.status}` };
+      }
+
+      const data = await res.json();
+      const owners: any[] = data.data ?? [];
+
+      // Each entry has: id (userId), name (username), userAssetId, serialNumber, etc.
+      const match = owners.find((o: any) => o.userAssetId?.toString() === userAssetId);
+      if (match) {
+        return {
+          found: true,
+          userId: match.id?.toString(),
+          username: match.name,
+        };
+      }
+
+      cursor = data.nextPageCursor ?? null;
+      pageCount++;
+    } while (cursor && pageCount < MAX_PAGES);
+
+    return { found: false, error: 'UAID not found in owner list' };
+  } catch (e: any) {
+    return { found: false, error: e?.message ?? 'Unknown error' };
+  }
+}
+
 export default async function UAIDPage({ params }: UAIDPageProps) {
   const { uaid } = await params;
   
   const uaidBigInt = BigInt(uaid);
   
+  // Get item metadata from most recent record
   const mostRecentItem = await prisma.inventoryItem.findFirst({
-    where: {
-      userAssetId: uaidBigInt
-    },  
+    where: { userAssetId: uaidBigInt },  
     orderBy: { scannedAt: "desc" },
     include: {
-      snapshot: true,
+      snapshot: { include: { user: true } },
       item: {
         include: {
           priceHistory: {
@@ -35,9 +86,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-8">
         <div className="max-w-2xl w-full">
           <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8">
-            <h1 className="text-3xl font-bold text-white mb-4">
-              UAID Not Found
-            </h1>
+            <h1 className="text-3xl font-bold text-white mb-4">UAID Not Found</h1>
             <p className="text-slate-400">No items found for UAID: <span className="text-purple-300 font-mono">{uaid}</span></p>
           </div>
         </div>
@@ -45,58 +94,82 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
     );
   }
 
-  const items = await prisma.inventoryItem.findMany({
-    where: { 
-      userAssetId: uaidBigInt,
-      snapshotId: mostRecentItem.snapshotId,
-    },
+  // ── Ownership History: ALL distinct snapshots that contained this UAID ──
+  const allOwnerships = await prisma.inventoryItem.findMany({
+    where: { userAssetId: uaidBigInt },
     orderBy: { scannedAt: "desc" },
+    distinct: ['snapshotId'],
     include: {
-      snapshot: {
-        include: {
-          user: true,
-        },
-      },
-      item: true,
+      snapshot: { include: { user: true } },
     },
   });
 
-  const current = items[0];
-  const currentOwner = current?.snapshot?.user?.username || null;
-  const currentOwnerUserId = current?.snapshot?.user?.robloxUserId || null;
-  const itemData = mostRecentItem.item;
-  const latestPrice = itemData?.priceHistory?.[0];
-  const serialNumber = (current as any)?.serialNumber;
-
-  let currentOwnerAvatar = null;
-  if (currentOwnerUserId) {
-    const avatarResponse = await fetch(
-      `https://thumbnails.roblox.com/v1/users/avatar?userIds=${currentOwnerUserId}&size=420x420&format=Png&isCircular=false`
-    );
-    const avatarData = await avatarResponse.json();
-    currentOwnerAvatar = avatarData.data?.[0]?.imageUrl;
+  // Deduplicate consecutive same-owner entries for display
+  const dedupedHistory: typeof allOwnerships = [];
+  for (const entry of allOwnerships) {
+    const lastEntry = dedupedHistory[dedupedHistory.length - 1];
+    const sameOwner = lastEntry?.snapshot?.user?.robloxUserId?.toString() === entry.snapshot?.user?.robloxUserId?.toString();
+    if (!sameOwner) {
+      dedupedHistory.push(entry);
+    }
   }
 
-  const userIds = [...new Set(items.map(item => item.snapshot?.user?.robloxUserId).filter(Boolean))];
-  let avatarMap = new Map();
-  
-  if (userIds.length > 0) {
-    const avatarResponse = await fetch(
-      `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userIds.join(',')}&size=150x150&format=Png&isCircular=false`
-    );
-    const avatarData = await avatarResponse.json();
-    avatarData.data?.forEach((avatar: any) => {
-      avatarMap.set(avatar.targetId.toString(), avatar.imageUrl);
-    });
+  const lastKnownOwner = allOwnerships[0]?.snapshot?.user;
+  const lastKnownOwnerId = lastKnownOwner?.robloxUserId?.toString() ?? null;
+  const lastKnownOwnerUsername = lastKnownOwner?.username ?? null;
+  const itemData = mostRecentItem.item;
+  const latestPrice = itemData?.priceHistory?.[0];
+  const serialNumber = mostRecentItem?.serialNumber;
+  const assetId = mostRecentItem.assetId.toString();
+
+  // ── Live owner lookup via Roblox API — works even for untracked users ──
+  const ownerResult = await findRealOwnerByUAID(assetId, uaid);
+
+  const currentOwner = ownerResult.found ? ownerResult.username : null;
+  const currentOwnerUserId = ownerResult.found ? ownerResult.userId : null;
+
+  // Is the real owner someone we haven't tracked yet?
+  const isNewUntracked = ownerResult.found && ownerResult.userId !== lastKnownOwnerId;
+  const ownerCheckFailed = !ownerResult.found && !!ownerResult.error && ownerResult.error !== 'UAID not found in owner list';
+  const itemTraded = !ownerResult.found && !ownerCheckFailed && lastKnownOwnerId !== null;
+
+  // ── Avatars ──
+  let currentOwnerAvatar: string | null = null;
+  if (currentOwnerUserId) {
+    try {
+      const avatarResponse = await fetch(
+        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${currentOwnerUserId}&size=420x420&format=Png&isCircular=false`,
+        { next: { revalidate: 60 } }
+      );
+      const avatarData = await avatarResponse.json();
+      currentOwnerAvatar = avatarData.data?.[0]?.imageUrl ?? null;
+    } catch {}
+  }
+
+  const historyUserIds = [...new Set(dedupedHistory.map(i => i.snapshot?.user?.robloxUserId?.toString()).filter(Boolean))];
+  const avatarMap = new Map<string, string>();
+
+  if (historyUserIds.length > 0) {
+    try {
+      const avatarResponse = await fetch(
+        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${historyUserIds.join(',')}&size=150x150&format=Png&isCircular=false`,
+        { next: { revalidate: 300 } }
+      );
+      const avatarData = await avatarResponse.json();
+      avatarData.data?.forEach((avatar: any) => {
+        avatarMap.set(avatar.targetId.toString(), avatar.imageUrl);
+      });
+    } catch {}
   }
 
   return (
     <div className="min-h-screen bg-slate-900 p-4">
       <div className="max-w-4xl mx-auto space-y-6">
+
         {/* Header Card - Item Info */}
         <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
           <div className="flex items-start gap-6">
-            {/* Item Thumbnail with manipulated overlay */}
+            {/* Item Thumbnail */}
             <div className="relative w-40 h-40 bg-slate-700/50 rounded-lg overflow-hidden flex-shrink-0">
               {itemData?.imageUrl ? (
                 <img 
@@ -139,11 +212,11 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                 </div>
               </div>
               
-              {/* Item Stats - 2x2 GRID TO THE RIGHT */}
+              {/* Item Stats Grid */}
               <div className="grid grid-cols-2 px-4 gap-x-36 py-2 gap-y-12">
                 <div>
                   <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">ASSET ID</div>
-                  <div className="font-mono text-white text-xl font-semibold">{current?.assetId || 'N/A'}</div>
+                  <div className="font-mono text-white text-xl font-semibold">{mostRecentItem?.assetId?.toString() || 'N/A'}</div>
                 </div>
                 <div>
                   <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">SERIAL</div>
@@ -169,25 +242,64 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
           <div className="flex items-top justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-3">
-                <div className="w-2 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                {currentOwner ? (
+                  <div className="w-2 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                ) : itemTraded ? (
+                  <div className="w-2 h-3 bg-yellow-400 rounded-full"></div>
+                ) : (
+                  <div className="w-2 h-3 bg-slate-500 rounded-full"></div>
+                )}
                 <h2 className="text-sm uppercase tracking-wider text-slate-400 font-bold">Current Owner</h2>
               </div>
+
               {currentOwner ? (
                 <>
-                  <div className="text-4xl font-bold text-white mb-4">
+                  <a
+                    href={currentOwnerUserId ? `/player/${currentOwnerUserId}` : '#'}
+                    className="text-4xl font-bold text-white hover:text-purple-300 transition-colors"
+                  >
                     {currentOwner}
-                  </div>
-                  <div className="inline-block bg-slate-700/30 px-4 py-2 rounded-lg">
+                  </a>
+                  {isNewUntracked && (
+                    <div className="mt-2 inline-flex items-center gap-1.5 bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-xs px-3 py-1.5 rounded-lg">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z" />
+                      </svg>
+                      Not yet tracked — <a href={`/player/${currentOwnerUserId}`} className="underline hover:text-yellow-300">scan their profile</a> to add them
+                    </div>
+                  )}
+                  <div className="inline-block bg-slate-700/30 px-4 py-2 rounded-lg mt-4">
                     <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">DAYS OWNED</div>
                     <div className="text-white text-lg font-semibold">
-                      {Math.floor((new Date().getTime() - new Date(current.scannedAt).getTime()) / (1000 * 60 * 60 * 24))}
+                      {Math.floor((new Date().getTime() - new Date(allOwnerships[0].scannedAt).getTime()) / (1000 * 60 * 60 * 24))}
                     </div>
                   </div>
                 </>
+              ) : itemTraded ? (
+                <div>
+                  <div className="text-2xl font-bold text-yellow-400 mb-2">Unknown Owner</div>
+                  <div className="text-slate-400 text-sm max-w-sm">
+                    This item is no longer in{' '}
+                    <a href={`/player/${lastKnownOwnerId}`} className="text-purple-300 hover:underline">
+                      {lastKnownOwnerUsername}
+                    </a>
+                    's inventory. It was likely traded or sold to someone not yet tracked.
+                  </div>
+                  <div className="mt-3 inline-block bg-slate-700/30 px-4 py-2 rounded-lg">
+                    <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">LAST SEEN WITH</div>
+                    <div className="text-white text-base font-semibold">{lastKnownOwnerUsername}</div>
+                  </div>
+                </div>
+              ) : ownerCheckFailed ? (
+                <div>
+                  <div className="text-2xl font-bold text-slate-400 mb-2">{lastKnownOwnerUsername ?? 'Unknown'}</div>
+                  <div className="text-slate-500 text-sm">Could not verify current ownership (inventory may be private).</div>
+                </div>
               ) : (
                 <span className="text-xl text-red-400 font-semibold">No owner found</span>
               )}
             </div>
+
             {currentOwnerAvatar && (
               <div className="w-40 h-40 bg-slate-700/50 rounded-lg overflow-hidden flex items-center justify-center">
                 <img 
@@ -209,55 +321,61 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
               </svg>
               Ownership History
             </h2>
-            <p className="text-slate-400 text-sm mt-1">From most recent snapshot</p>
+            <p className="text-slate-400 text-sm mt-1">All tracked owners — most recent first</p>
           </div>
           
-          {items.length > 0 ? (
+          {dedupedHistory.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-slate-700/30">
                   <tr className="border-b border-slate-700">
-                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">
-                      Owner
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">
-                      Scanned At
-                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">Owner</th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">First Seen</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-700">
-                  {items.map((item) => {
-                    const userId = item.snapshot?.user?.robloxUserId;
-                    const avatarUrl = userId ? avatarMap.get(userId.toString()) : null;
+                  {dedupedHistory.map((entry, i) => {
+                    const userId = entry.snapshot?.user?.robloxUserId?.toString();
+                    const username = entry.snapshot?.user?.username;
+                    const avatarUrl = userId ? avatarMap.get(userId) : null;
+                    const isCurrentTracked = i === 0 && ownerResult.found && !isNewUntracked;
                     
                     return (
-                      <tr 
-                        key={item.assetId} 
-                        className="hover:bg-slate-700/20 transition-colors"
-                      >
+                      <tr key={`${entry.snapshotId}-${i}`} className="hover:bg-slate-700/20 transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             {avatarUrl ? (
                               <div className="w-12 h-12 bg-slate-700/50 rounded-lg overflow-hidden flex-shrink-0">
                                 <img 
                                   src={avatarUrl} 
-                                  alt={`${item.snapshot?.user?.username}'s avatar`}
+                                  alt={`${username}'s avatar`}
                                   className="w-full h-full object-cover"
                                 />
                               </div>
                             ) : (
                               <div className="w-12 h-12 rounded-lg bg-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0">
-                                {(item.snapshot?.user?.username || "?")[0].toUpperCase()}
+                                {(username || "?")[0].toUpperCase()}
                               </div>
                             )}
-                            <span className="font-semibold text-white">
-                              {item.snapshot?.user?.username || "Unknown"}
-                            </span>
+                            <div>
+                              <a
+                                href={`/player/${userId}`}
+                                className="font-semibold text-white hover:text-purple-300 transition-colors"
+                              >
+                                {username || "Unknown"}
+                              </a>
+                              {isCurrentTracked && (
+                                <div className="text-xs text-green-400 mt-0.5">✓ Confirmed current owner</div>
+                              )}
+                              {i === 0 && itemTraded && (
+                                <div className="text-xs text-yellow-400 mt-0.5">Last known owner</div>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-slate-400 text-sm">
-                            <LocalTime date={item.scannedAt.toISOString()} />
+                            <LocalTime date={entry.scannedAt.toISOString()} />
                           </div>
                         </td>
                       </tr>
@@ -277,6 +395,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
             </div>
           )}
         </div>
+
       </div>
     </div>
   );

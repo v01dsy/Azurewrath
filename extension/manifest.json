@@ -5,9 +5,7 @@
   "version": "1.0.0",
   "description": "Auto-buys Roblox limiteds when a deal is detected. Part of the Azurewrath suite.",
   "permissions": [
-    "cookies",
-    "scripting",
-    "tabs"
+    "scripting"
   ],
   "host_permissions": [
     "https://azurewrath.lol/*",

@@ -20,6 +20,7 @@ interface DealItem {
   assetId: string;
   name: string;
   imageUrl?: string;
+  manipulated: boolean;
   percent: number;
   rap: number;
   bestPrice: number;
@@ -32,6 +33,7 @@ interface FiredDeal {
   price: number;
   rap: number;
   deal: number;
+  manipulated: boolean;
   firedAt: number;
 }
 
@@ -142,21 +144,22 @@ export default function SnipePage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [hideManipulated, setHideManipulated] = useState(true);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const snipingRef = useRef(false);
   const prevDealsRef = useRef<Set<string>>(new Set());
   const configsRef = useRef<SnipeConfig[]>([]);
   const isFirstPollRef = useRef(true);
   const tickRef = useRef<NodeJS.Timeout | null>(null);
+  const hideManipulatedRef = useRef(true);
   const [, forceRender] = useState(0);
 
   const emptyForm = { assetId: '', minDeal: '10', minPrice: '', maxPrice: '' };
   const [form, setForm] = useState(emptyForm);
 
-  // Keep configsRef in sync so the poll loop always has latest configs
-  useEffect(() => {
-    configsRef.current = configs;
-  }, [configs]);
+  // Keep refs in sync
+  useEffect(() => { configsRef.current = configs; }, [configs]);
+  useEffect(() => { hideManipulatedRef.current = hideManipulated; }, [hideManipulated]);
 
   // ── auth guard ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -167,8 +170,6 @@ export default function SnipePage() {
     }
     setUserId(session.robloxUserId);
   }, [router]);
-
-
 
   // ── load configs ────────────────────────────────────────────────────────
   const loadConfigs = useCallback(async (uid: string) => {
@@ -199,9 +200,10 @@ export default function SnipePage() {
       const enabledConfigs = configsRef.current.filter(c => c.enabled);
 
       for (const deal of deals) {
-        // On first poll, fire everything that matches configs (deals already on the board)
-        // On subsequent polls, only fire deals that are NEW (not seen before)
         if (!isFirstPollRef.current && prevDealsRef.current.has(deal.assetId)) continue;
+
+        // Skip manipulated if filter is on
+        if (hideManipulatedRef.current && deal.manipulated) continue;
 
         // Check against user's snipe configs
         for (const cfg of enabledConfigs) {
@@ -210,7 +212,6 @@ export default function SnipePage() {
           if (cfg.minPrice !== null && deal.bestPrice < cfg.minPrice) continue;
           if (cfg.maxPrice !== null && deal.bestPrice > cfg.maxPrice) continue;
 
-          // Deal matches! Fire it.
           const firedDeal: FiredDeal = {
             assetId: deal.assetId,
             name: deal.name,
@@ -218,12 +219,12 @@ export default function SnipePage() {
             price: deal.bestPrice,
             rap: deal.rap,
             deal: deal.percent,
+            manipulated: deal.manipulated,
             firedAt: Date.now(),
           };
 
           setFiredDeals(prev => [firedDeal, ...prev].slice(0, 20));
 
-          // 🔥 Tell Azuresniper extension to auto-buy
           window.dispatchEvent(new CustomEvent('SNIPE_DEAL', { detail: {
             assetId: deal.assetId,
             name: deal.name,
@@ -237,10 +238,7 @@ export default function SnipePage() {
         }
       }
 
-      // After first poll, mark as no longer first
       isFirstPollRef.current = false;
-
-      // Update seen deals
       prevDealsRef.current = currentIds;
 
     } catch (err) {
@@ -253,10 +251,10 @@ export default function SnipePage() {
     setSniping(true);
     snipingRef.current = true;
     setStatus('live');
-    prevDealsRef.current = new Set(); // Reset seen deals on start
-    isFirstPollRef.current = true; // Reset first poll flag
+    prevDealsRef.current = new Set();
+    isFirstPollRef.current = true;
     intervalRef.current = setInterval(poll, 1_000);
-    poll(); // Fire immediately
+    poll();
   }, [userId, poll]);
 
   const stopSniping = useCallback(() => {
@@ -355,6 +353,19 @@ export default function SnipePage() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Manipulated toggle */}
+          <button
+            onClick={() => setHideManipulated(v => !v)}
+            title={hideManipulated ? 'Manipulated items are hidden' : 'Manipulated items are shown'}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition ring-1 ${
+              hideManipulated
+                ? 'bg-red-950/60 ring-red-500/40 text-red-300'
+                : 'bg-zinc-900 ring-zinc-700 text-zinc-400 hover:ring-zinc-500'
+            }`}
+          >
+            <img src="/Images/manipulated1.png" alt="" className="w-4 h-4" />
+            {hideManipulated ? 'Hiding manipulated' : 'Showing manipulated'}
+          </button>
 
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 ring-1 ${statusConfig.ring}`}>
             <span className={`w-2 h-2 rounded-full ${statusConfig.dot}`} />
@@ -507,7 +518,12 @@ export default function SnipePage() {
                   <img src={d.imageUrl} alt={d.name} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-zinc-100 truncate group-hover:text-white">{d.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-zinc-100 truncate group-hover:text-white">{d.name}</p>
+                    {d.manipulated && (
+                      <img src="/Images/manipulated1.png" alt="Manipulated" title="RAP may be manipulated" className="w-4 h-4 flex-shrink-0" />
+                    )}
+                  </div>
                   <p className="text-xs text-zinc-500">{ago(d.firedAt)}</p>
                 </div>
                 <div className="text-right flex-shrink-0 space-y-0.5">

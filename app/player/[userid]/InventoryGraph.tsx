@@ -115,13 +115,13 @@ export default function InventoryGraph({ data, onPointClick }: InventoryGraphPro
 
   const renderLeftTick = ({ x, y, payload, index }: any) => {
     if (index === rapTicks.length - 1) return <g />;
-    return <text x={x} y={y} fill="#94a3b8" fontSize={12} textAnchor="end" dy={4}>{payload.value.toLocaleString()}</text>;
+    return <text x={x} y={y} fill="#94a3b8" fontSize={12} fontWeight={700} textAnchor="end" dy={4}>{payload.value.toLocaleString()}</text>;
   };
 
   const renderRightTick = ({ x, y, payload, index }: any) => {
-    if (index === itemTicks.length - 1) return <g />;
-    return <text x={x} y={y} fill="#94a3b8" fontSize={12} textAnchor="start" dy={4}>{payload.value}</text>;
-  };
+  if (index === itemTicks.length - 1) return <g />;
+  return <text x={x} y={y} fill="#94a3b8" fontSize={12} fontWeight={700} textAnchor="start" dy={4}>{payload.value.toLocaleString()}</text>;
+};
 
   return (
     <div className="w-full h-full flex flex-col">
@@ -170,6 +170,14 @@ export default function InventoryGraph({ data, onPointClick }: InventoryGraphPro
                 borderRadius: '8px',
                 color: '#fff'
               }}
+              formatter={(value: number, name: string) => [
+                <span style={{ fontWeight: 700 }}>
+                  {name === 'Total RAP'
+                    ? `${value.toLocaleString()} R$`
+                    : value.toLocaleString()}
+                </span>,
+                name
+              ]}
             />
             {!hiddenLines.has('rap') && (
               <Line

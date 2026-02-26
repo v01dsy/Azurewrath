@@ -2,7 +2,7 @@
 import prisma from "@/lib/prisma";
 import React from "react";
 import { LocalTime } from "@/components/LocalTime";
-import { getSerialTier, getCardGlowClass } from '@/lib/specialSerial';
+import { getSerialTier, getGhostTier, getCardGlowClass } from '@/lib/specialSerial';
 import { SpecialSerialText } from '@/components/specialSerialText';
 
 interface UAIDPageProps {
@@ -111,6 +111,9 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
   const latestPrice = itemData?.priceHistory?.[0];
   const serialNumber = mostRecentItem?.serialNumber;
 
+  // Resolve serial tier — ghost takes priority for LimitedU with no serial
+  const serialTier = getGhostTier(itemData?.isLimitedUnique, serialNumber) ?? getSerialTier(serialNumber);
+
   // Directly check if last known owner still has this UAID — no pre-check
   let ownerStillHasIt = false;
   if (lastKnownOwnerId) {
@@ -163,7 +166,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
       <div className="max-w-4xl mx-auto space-y-6">
 
         {/* Header Card */}
-        <div className={`bg-slate-800 rounded-2xl border p-6 ${serialNumber ? getCardGlowClass(getSerialTier(serialNumber)) : 'border-purple-500/20'}`}>
+        <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
           <div className="flex items-start gap-6">
             <div className="relative w-40 h-40 bg-slate-700/50 rounded-lg overflow-hidden flex-shrink-0">
               {itemData?.imageUrl ? (
@@ -213,20 +216,32 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                     {mostRecentItem?.assetId?.toString() || "N/A"}
                   </div>
                 </div>
+
                 <div>
                   <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">SERIAL</div>
                   <div className="font-semibold text-xl">
-                    {serialNumber
-                      ? (() => {
-                          const tier = getSerialTier(serialNumber);
-                          return tier
-                            ? <SpecialSerialText serial={serialNumber} tier={tier} variant="stat" />
-                            : <span className="text-orange-400">#{serialNumber.toLocaleString()}</span>;
-                        })()
-                      : <span className="text-slate-500">N/A</span>
-                    }
+                    {(() => {
+                      if (serialTier) {
+                        return (
+                          <SpecialSerialText
+                            serial={serialNumber}
+                            tier={serialTier}
+                            variant="stat"
+                          />
+                        );
+                      }
+                      if (serialNumber != null) {
+                        return (
+                          <span className="text-orange-400">
+                            #{serialNumber.toLocaleString()}
+                          </span>
+                        );
+                      }
+                      return <span className="text-slate-500">N/A</span>;
+                    })()}
                   </div>
                 </div>
+
                 <div>
                   <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">RAP</div>
                   <div className="text-green-400 text-xl font-semibold">

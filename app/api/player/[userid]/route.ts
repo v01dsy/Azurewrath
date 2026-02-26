@@ -17,15 +17,14 @@ async function canViewInventory(robloxUserId: string): Promise<boolean> {
     
     if (!response.ok) {
       console.warn(`canViewInventory returned ${response.status} for ${robloxUserId} — assuming public`);
-      return true; // ✅ Don't punish users for Roblox API errors
+      return true;
     }
     
     const data = await response.json();
-    // Only return false if Roblox explicitly says canView is false
     return data.canView !== false;
   } catch (error) {
     console.error('Error checking inventory visibility — assuming public:', error);
-    return true; // ✅ Default to public on network errors
+    return true;
   }
 }
 
@@ -143,6 +142,7 @@ export async function GET(
       name: string;
       imageUrl: string | null;
       manipulated: boolean;
+      isLimitedUnique: boolean | null;
       rap: number | null;
       itemCount: number;
       serialNumbers: (number | null)[];
@@ -165,6 +165,7 @@ export async function GET(
           i.name,
           i."imageUrl",
           i.manipulated,
+          i."isLimitedUnique",
           ph.rap,
           ARRAY_AGG(ii."userAssetId") OVER (PARTITION BY ii."assetId") as user_asset_ids,
           ARRAY_AGG(ii."serialNumber") OVER (PARTITION BY ii."assetId") as serial_numbers,
@@ -187,6 +188,7 @@ export async function GET(
         COALESCE(name, 'Unknown Item') as name,
         "imageUrl",
         COALESCE(manipulated, false) as manipulated,
+        "isLimitedUnique",
         COALESCE(rap, 0) as rap,
         item_count::int as "itemCount",
         serial_numbers as "serialNumbers",
@@ -257,6 +259,7 @@ export async function GET(
         name: item.name,
         imageUrl: item.imageUrl,
         manipulated: item.manipulated ?? false,
+        isLimitedUnique: item.isLimitedUnique ?? null,
         rap: item.rap || 0,
         count: item.itemCount,
         userAssetIds: item.userAssetIds.map(id => id.toString()),

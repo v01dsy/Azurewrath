@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getSerialTier, getCardGlowClass } from '@/lib/specialSerial';
+import { getSerialTier, getGhostTier, getCardGlowClass } from '@/lib/specialSerial';
 import { SpecialSerialText } from '@/components/specialSerialText';
 
 interface InventoryItemDisplay {
@@ -12,6 +12,7 @@ interface InventoryItemDisplay {
   rap: number;
   count: number;
   manipulated: boolean;
+  isLimitedUnique?: boolean | null;
   serialNumbers?: (number | null)[];
   userAssetIds?: string[];
   scannedAt: Date;
@@ -94,14 +95,18 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
             const uaid = showUAIDButton ? item.userAssetIds[0] : null;
 
             const bestSerial: number | null = validSerials[0] ?? null;
-            const tier = getSerialTier(bestSerial);
+
+            // Ghost tier takes priority: LimitedU with no serial at all
+            const hasNoSerialAtAll = !item.serialNumbers || item.serialNumbers.every((s: number | null) => s === null);
+            const tier = getGhostTier(item.isLimitedUnique, hasNoSerialAtAll ? null : bestSerial)
+                      ?? getSerialTier(bestSerial);
             const isSpecial = tier !== null;
-            const cardGlow = getCardGlowClass(tier);
+            const isGhost = tier === 'ghost';
 
             return (
               <div
                 key={item.assetId}
-                className={`bg-slate-700 rounded-lg p-4 border transition-all flex flex-col cursor-pointer ${cardGlow}`}
+                className="bg-slate-700 rounded-lg p-4 border border-purple-500/10 hover:border-purple-500/30 transition-all flex flex-col cursor-pointer"
                 onClick={() => router.push(`/item/${item.assetId}`)}
               >
                 {/* Image box with overlays */}
@@ -121,10 +126,10 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                     />
                   )}
                   {/* Serial badge — top right */}
-                  {hasSerials && (
+                  {(hasSerials || isGhost) && (
                     <div className="absolute top-1 right-1 bg-slate-900/80 backdrop-blur-sm px-2 py-0.5 rounded shadow-lg">
                       {isSpecial
-                        ? <SpecialSerialText serial={bestSerial!} tier={tier} variant="badge" />
+                        ? <SpecialSerialText serial={bestSerial} tier={tier} variant="badge" />
                         : <span className="text-orange-400 text-xs font-bold">
                             #{validSerials[0]}{validSerials.length > 1 && ` +${validSerials.length - 1}`}
                           </span>
@@ -243,7 +248,8 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                 });
 
                 return sortedUaidData.map(({ uaid, serial }) => {
-                  const btnTier = getSerialTier(serial ?? null);
+                  const btnTier = getGhostTier(selectedItem.isLimitedUnique, serial ?? null)
+                               ?? getSerialTier(serial ?? null);
                   const isSpecialBtn = btnTier !== null;
 
                   return (
@@ -255,11 +261,13 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                         ${isSpecialBtn ? getCardGlowClass(btnTier) : (serial ? 'border-orange-500/40' : 'border-slate-600')}`}
                       title={`UAID: ${uaid}${serial ? ` • Serial: #${serial}` : ''}`}
                     >
-                      {serial
+                      {serial != null
                         ? isSpecialBtn
                           ? <SpecialSerialText serial={serial} tier={btnTier} variant="button" />
                           : <span className="text-orange-400 text-xs font-bold">#{serial}</span>
-                        : <span className="text-blue-400 text-xs font-bold">{uaid}</span>
+                        : btnTier === 'ghost'
+                          ? <SpecialSerialText serial={null} tier="ghost" variant="button" />
+                          : <span className="text-blue-400 text-xs font-bold">{uaid}</span>
                       }
                     </a>
                   );

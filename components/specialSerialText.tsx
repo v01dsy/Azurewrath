@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { getSerialTier, SPECIAL_SERIAL_CSS, type SerialTier } from '@/lib/specialSerial';
+import { useEffect, useState } from 'react';
+import { SPECIAL_SERIAL_CSS, type SerialTier } from '@/lib/specialSerial';
 
-const LEET_CHARS = ['#', '$', '%', '&', '!', '@', '0', '1', '/', '\\', '|'];
 const LEET_MAP: Record<string, string[]> = {
   '1': ['1', '|', '!', 'i'],
   '3': ['3', 'E', '€', '£'],
@@ -12,16 +11,18 @@ const LEET_MAP: Record<string, string[]> = {
 
 function GlitchChar({ char }: { char: string }) {
   const [display, setDisplay] = useState(char);
-  const variants = LEET_MAP[char] ?? [char];
+  const variants = LEET_MAP[char] ?? null;
 
   useEffect(() => {
-    // Random glitch interval per character so they don't all fire together
+    // If this character has no map variants, don't animate it
+    if (!variants) return;
+
     const delay = Math.random() * 3000;
     const timeout = setTimeout(() => {
       const interval = setInterval(() => {
-        // Quick 3-frame glitch then snap back
+        // Only cycle through this character's own leet variants, then snap back
         const frames = [
-          LEET_CHARS[Math.floor(Math.random() * LEET_CHARS.length)],
+          variants[Math.floor(Math.random() * variants.length)],
           variants[Math.floor(Math.random() * variants.length)],
           char,
         ];
@@ -34,7 +35,6 @@ function GlitchChar({ char }: { char: string }) {
       }, 1800 + Math.random() * 2000);
       return () => clearInterval(interval);
     }, delay);
-
     return () => clearTimeout(timeout);
   }, [char]);
 
@@ -53,12 +53,11 @@ function LeetSerial({ serial }: { serial: number }) {
         animation: 'leetFlicker 4s infinite',
         letterSpacing: '0.05em',
       }}
+      title="Special: lol hax for dayz"
     >
-      {chars.map((c, i) => (
-        LEET_MAP[c]
-          ? <GlitchChar key={i} char={c} />
-          : <span key={i}>{c}</span>
-      ))}
+      {chars.map((c, i) =>
+        LEET_MAP[c] ? <GlitchChar key={i} char={c} /> : <span key={i}>{c}</span>
+      )}
     </span>
   );
 }
@@ -115,8 +114,64 @@ function SpecialSerial({ serial }: { serial: number }) {
   );
 }
 
+/**
+ * GhostSerial — LimitedU item with no serial (null).
+ * Displays "#???" with a haunting fade/drift animation.
+ */
+function GhostSerial() {
+  const chars = '#???'.split('');
+  return (
+    <span
+      style={{
+        fontFamily: 'Papyrus, fantasy',
+        fontWeight: 900,
+        letterSpacing: '0.15em',
+        display: 'inline-flex',
+        gap: '0',
+        animation: 'ghostFlicker 4s ease-in-out infinite',
+        fontSize: '1.2em',
+      }}
+      title="Special Serial: No serial number when normally expected."
+    >
+      {chars.map((c, i) => (
+        <span
+          key={i}
+          style={{
+            color: '#c4b5fd',
+            display: 'inline-block',
+            animation: `ghostWave 3s ease-in-out infinite`,
+            animationDelay: `${i * 0.18}s`,
+          }}
+        >
+          {c}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * RobloxSerial — serial is 0, meaning Roblox Corp owns this copy.
+ * Displays "#0" with a red Roblox-branded glow.
+ */
+function RobloxSerial() {
+  return (
+    <span
+      style={{
+        color: '#f87171',
+        fontWeight: 900,
+        animation: 'robloxPulse 2.5s ease-in-out infinite',
+        letterSpacing: '0.05em',
+      }}
+      title="Owned by Roblox"
+    >
+      #0
+    </span>
+  );
+}
+
 interface SpecialSerialTextProps {
-  serial: number;
+  serial: number | null | undefined;
   tier: SerialTier;
   /** 'badge' = compact inventory card badge, 'stat' = large UAID page display, 'button' = modal button */
   variant?: 'badge' | 'stat' | 'button';
@@ -132,10 +187,12 @@ export function SpecialSerialText({ serial, tier, variant = 'badge' }: SpecialSe
     <>
       <style>{SPECIAL_SERIAL_CSS}</style>
       <span className={`${sizeClass} font-black`}>
-        {tier === 'crown'   && <CrownSerial   serial={serial} />}
-        {tier === 'elite'   && <EliteSerial   serial={serial} />}
-        {tier === 'special' && <SpecialSerial serial={serial} />}
-        {tier === 'leet'    && <LeetSerial    serial={serial} />}
+        {tier === 'crown'   && serial != null && <CrownSerial   serial={serial} />}
+        {tier === 'elite'   && serial != null && <EliteSerial   serial={serial} />}
+        {tier === 'special' && serial != null && <SpecialSerial serial={serial} />}
+        {tier === 'leet'    && serial != null && <LeetSerial    serial={serial} />}
+        {tier === 'ghost'   && serial == null && <GhostSerial />}
+        {tier === 'roblox'  && serial === 0 && <RobloxSerial />}
       </span>
     </>
   );

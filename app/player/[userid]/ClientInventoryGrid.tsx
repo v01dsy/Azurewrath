@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getSerialTier, getCardGlowClass } from '@/lib/specialSerial';
+import { SpecialSerialText } from '@/components/specialSerialText';
 
 interface InventoryItemDisplay {
   assetId: string;
@@ -53,7 +55,7 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
   });
 
   const openModal = (item: InventoryItemDisplay, e: React.MouseEvent) => {
-    e.stopPropagation(); // prevent card click from firing
+    e.stopPropagation();
     setSelectedItem(item);
     setShowUAIDModal(true);
     document.body.style.overflow = 'hidden';
@@ -83,6 +85,7 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
             <option value="serial-low">Serial Number: Low to High</option>
           </select>
         </div>
+
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4">
           {sortedItems.map((item: any) => {
             const validSerials = item.serialNumbers?.filter((s: number | null) => s !== null).sort((a: number, b: number) => a - b) || [];
@@ -90,10 +93,15 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
             const showUAIDButton = item.count === 1 && item.userAssetIds && item.userAssetIds.length === 1;
             const uaid = showUAIDButton ? item.userAssetIds[0] : null;
 
+            const bestSerial: number | null = validSerials[0] ?? null;
+            const tier = getSerialTier(bestSerial);
+            const isSpecial = tier !== null;
+            const cardGlow = getCardGlowClass(tier);
+
             return (
               <div
                 key={item.assetId}
-                className="bg-slate-700 rounded-lg p-4 border border-purple-500/10 hover:border-purple-500/30 transition-all flex flex-col cursor-pointer"
+                className={`bg-slate-700 rounded-lg p-4 border transition-all flex flex-col cursor-pointer ${cardGlow}`}
                 onClick={() => router.push(`/item/${item.assetId}`)}
               >
                 {/* Image box with overlays */}
@@ -114,8 +122,13 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                   )}
                   {/* Serial badge — top right */}
                   {hasSerials && (
-                    <div className="absolute top-1 right-1 bg-orange-500/90 text-white text-xs font-bold px-2 py-1 rounded shadow-lg">
-                      #{validSerials[0]}{validSerials.length > 1 && ` +${validSerials.length - 1}`}
+                    <div className="absolute top-1 right-1 bg-slate-900/80 backdrop-blur-sm px-2 py-0.5 rounded shadow-lg">
+                      {isSpecial
+                        ? <SpecialSerialText serial={bestSerial!} tier={tier} variant="badge" />
+                        : <span className="text-orange-400 text-xs font-bold">
+                            #{validSerials[0]}{validSerials.length > 1 && ` +${validSerials.length - 1}`}
+                          </span>
+                      }
                     </div>
                   )}
                 </div>
@@ -139,10 +152,9 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                   </p>
                 )}
 
-                <div className="flex-grow"></div>
+                <div className="flex-grow" />
 
                 <div className="mt-2">
-                  {/* Multi-copy: open modal */}
                   {item.count > 1 && (
                     <button
                       onClick={(e) => openModal(item, e)}
@@ -151,7 +163,6 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                       Owned Copies
                     </button>
                   )}
-                  {/* Single-copy: visit UAID page */}
                   {showUAIDButton && (
                     <a
                       href={`/uaid/${uaid}`}
@@ -215,7 +226,7 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                 const uaidData = selectedItem?.userAssetIds?.map((uaid, index) => ({
                   uaid,
                   index,
-                  serial: selectedItem?.serialNumbers?.[index]
+                  serial: selectedItem?.serialNumbers?.[index],
                 })) || [];
 
                 const sortedUaidData = [...uaidData].sort((a, b) => {
@@ -231,16 +242,28 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                   }
                 });
 
-                return sortedUaidData.map(({ uaid, serial }) => (
-                  <a
-                    key={uaid}
-                    href={`/uaid/${uaid}`}
-                    className={`${serial ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-500 hover:bg-blue-600'} text-white text-xs font-bold py-2 rounded-lg text-center transition-colors truncate block`}
-                    title={`UAID: ${uaid}${serial ? ` • Serial: #${serial}` : ''}`}
-                  >
-                    {serial ? `#${serial}` : uaid}
-                  </a>
-                ));
+                return sortedUaidData.map(({ uaid, serial }) => {
+                  const btnTier = getSerialTier(serial ?? null);
+                  const isSpecialBtn = btnTier !== null;
+
+                  return (
+                    <a
+                      key={uaid}
+                      href={`/uaid/${uaid}`}
+                      className={`py-2 rounded-lg text-center transition-colors truncate block
+                        bg-slate-700 hover:bg-slate-600 border
+                        ${isSpecialBtn ? getCardGlowClass(btnTier) : (serial ? 'border-orange-500/40' : 'border-slate-600')}`}
+                      title={`UAID: ${uaid}${serial ? ` • Serial: #${serial}` : ''}`}
+                    >
+                      {serial
+                        ? isSpecialBtn
+                          ? <SpecialSerialText serial={serial} tier={btnTier} variant="button" />
+                          : <span className="text-orange-400 text-xs font-bold">#{serial}</span>
+                        : <span className="text-blue-400 text-xs font-bold">{uaid}</span>
+                      }
+                    </a>
+                  );
+                });
               })()}
             </div>
           </div>

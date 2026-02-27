@@ -127,20 +127,20 @@ function GhostSerial() {
         fontWeight: 900,
         letterSpacing: '0.15em',
         display: 'inline-flex',
-        gap: '0',
         animation: 'ghostFlicker 4s ease-in-out infinite',
-        fontSize: '1.2em',
+        filter: 'drop-shadow(0 0 3px #3d3a47)',
+        fontSize: '1.4em',
       }}
-      title="Special Serial: No serial number when normally expected."
+      title="Limited U item — no serial number"
     >
       {chars.map((c, i) => (
         <span
           key={i}
           style={{
-            color: '#c4b5fd',
+            color: '#6b6875',  // dark grey with barely-there purple undertone
             display: 'inline-block',
-            animation: `ghostWave 3s ease-in-out infinite`,
-            animationDelay: `${i * 0.18}s`,
+            animation: 'ghostWave 2.5s ease-in-out infinite, ghostFade 3s ease-in-out infinite, ghostDrift 4s ease-in-out infinite',
+            animationDelay: `${i * 0.2}s, ${i * 0.15}s, ${i * 0.25}s`,
           }}
         >
           {c}

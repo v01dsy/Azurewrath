@@ -80,10 +80,8 @@ export const SPECIAL_SERIAL_CSS = `
   100% { transform: translateY(0px); }
 }
 @keyframes ghostFlicker {
-  0%, 100% { filter: blur(0.3px) drop-shadow(0 0 4px #a78bfa); }
-  30%       { filter: blur(0.8px) drop-shadow(0 0 8px #7c3aed); }
-  60%       { filter: blur(0.2px) drop-shadow(0 0 12px #c4b5fd); }
-  85%       { filter: blur(1px)   drop-shadow(0 0 3px #a78bfa); }
+  0%, 100% { filter: blur(0.3px) drop-shadow(0 0 3px #4a4458); }
+  50%       { filter: blur(0.6px) drop-shadow(0 0 6px #5b5268); }
 }
 @keyframes robloxPulse {
   0%, 100% { text-shadow: 0 0 6px #ef4444, 0 0 12px #dc2626; }

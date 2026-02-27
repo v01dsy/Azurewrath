@@ -77,6 +77,10 @@ export default function RootLayout({
               <img src="/Images/search.png" alt="Search icon" draggable="false" />
               <p>Search</p>
             </a>
+            <a href="/players">
+              <img src="/Images/players.png" alt="Players icon" draggable="false" />
+              <p>Players</p>
+            </a>
             <a href="/deals">
               <img src="/Images/deals.png" alt="Deals icon" draggable="false" />
               <p>Deals</p>

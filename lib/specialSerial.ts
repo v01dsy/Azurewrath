@@ -64,20 +64,16 @@ export const SPECIAL_SERIAL_CSS = `
   98%          { opacity: 0.5; }
   99%          { opacity: 1; }
 }
-@keyframes ghostFade {
-  0%, 100% { opacity: 0.2; letter-spacing: 0.05em; }
-  50%      { opacity: 0.7; letter-spacing: 0.12em; }
-}
-@keyframes ghostDrift {
-  0%   { transform: translateX(0px); }
-  25%  { transform: translateX(-1px); }
-  75%  { transform: translateX(1px); }
-  100% { transform: translateX(0px); }
-}
 @keyframes ghostWave {
-  0%   { transform: translateY(0px); }
-  50%  { transform: translateY(-4px); }
-  100% { transform: translateY(0px); }
+  0%   { transform: translateY(0px) translateX(0px); }
+  25%  { transform: translateY(-4px) translateX(-1px); }
+  50%  { transform: translateY(-6px) translateX(0px); }
+  75%  { transform: translateY(-4px) translateX(1px); }
+  100% { transform: translateY(0px) translateX(0px); }
+}
+@keyframes ghostFade {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 0.9; }
 }
 @keyframes ghostFlicker {
   0%, 100% { filter: blur(0.3px) drop-shadow(0 0 3px #4a4458); }

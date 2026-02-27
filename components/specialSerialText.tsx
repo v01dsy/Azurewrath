@@ -121,32 +121,31 @@ function SpecialSerial({ serial }: { serial: number }) {
 function GhostSerial() {
   const chars = '#???'.split('');
   return (
-    <span
-      style={{
-        fontFamily: 'Papyrus, fantasy',
-        fontWeight: 900,
-        letterSpacing: '0.15em',
-        display: 'inline-flex',
-        animation: 'ghostFlicker 4s ease-in-out infinite',
-        filter: 'drop-shadow(0 0 3px #3d3a47)',
-        fontSize: '1.4em',
-      }}
-      title="Limited U item — no serial number"
-    >
-      {chars.map((c, i) => (
-        <span
-          key={i}
-          style={{
-            color: '#6b6875',  // dark grey with barely-there purple undertone
-            display: 'inline-block',
-            animation: 'ghostWave 2.5s ease-in-out infinite, ghostFade 3s ease-in-out infinite, ghostDrift 4s ease-in-out infinite',
-            animationDelay: `${i * 0.2}s, ${i * 0.15}s, ${i * 0.25}s`,
-          }}
-        >
-          {c}
-        </span>
-      ))}
-    </span>
+      <span
+    style={{
+      fontFamily: 'Papyrus, fantasy',
+      fontWeight: 900,
+      letterSpacing: '0.15em',
+      display: 'inline-block',  // 👈 was inline-flex
+      animation: 'ghostFlicker 4s ease-in-out infinite',
+      filter: 'drop-shadow(0 0 3px #3d3a47)',
+      fontSize: '1.2em',
+    }}
+  >
+    {chars.map((c, i) => (
+      <span
+        key={i}
+        style={{
+          color: '#6b6875',
+          display: 'inline-block',  // this is what makes translateY work on inline elements
+          animation: 'ghostWave 2.5s ease-in-out infinite, ghostFade 3s ease-in-out infinite',
+          animationDelay: `${i * 0.2}s, ${i * 0.15}s`,
+        }}
+      >
+        {c}
+      </span>
+    ))}
+  </span>
   );
 }
 

@@ -16,6 +16,7 @@ import {
 import { getUserSession } from '@/lib/userSession';
 import { getSerialTier } from '@/lib/specialSerial';
 import { SpecialSerialText } from '@/components/specialSerialText';
+import HoardsSection from '@/components/HoardsSection';
 
 interface PricePoint {
   id: string;
@@ -400,7 +401,6 @@ export default function ItemPage() {
                   </div>
                 ) : null}
               </div>
-              {item.description && <p className="text-slate-400 text-sm">{item.description}</p>}
               <p className="text-slate-500 text-xs mt-2 font-mono">Asset ID: {item.assetId}</p>
             </div>
           </div>
@@ -735,6 +735,9 @@ export default function ItemPage() {
             </div>
           )}
         </div>
+
+        {/* ── Hoards ──────────────────────────────────────────────── */}
+        <HoardsSection itemId={itemId} />
 
       </div>
     </div>

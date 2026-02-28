@@ -81,7 +81,8 @@ export async function GET(
               username: user.username,
               displayName: user.displayName,
               avatarUrl: avatarUrl || user.avatarUrl,
-              description: user.description
+              description: user.description,
+              role: user.role ?? 'user',
             },
             inventory: [],
             stats: {
@@ -252,7 +253,8 @@ export async function GET(
         username: user.username,
         displayName: user.displayName,
         avatarUrl: avatarUrl || user.avatarUrl,
-        description: user.description
+        description: user.description,
+        role: user.role ?? 'user',
       },
       inventory: inventoryData.map(item => ({
         assetId: item.assetId.toString(),

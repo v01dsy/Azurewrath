@@ -17,6 +17,7 @@ import { getUserSession } from '@/lib/userSession';
 import { getSerialTier } from '@/lib/specialSerial';
 import { SpecialSerialText } from '@/components/specialSerialText';
 import HoardsSection from '@/components/HoardsSection';
+import { hasRole } from '@/lib/roles';
 
 interface PricePoint {
   id: string;
@@ -98,6 +99,7 @@ export default function ItemPage() {
     progress: null,
   });
   const [scanStarting, setScanStarting] = useState(false);
+  const [activeTab, setActiveTab] = useState<'owners' | 'hoards'>('owners');
 
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -274,8 +276,8 @@ export default function ItemPage() {
     }
   };
 
-  const canToggleManipulated = ['admin', 'moderator'].includes(userRole);
-  const isAdmin = userRole === 'admin';
+  const canToggleManipulated = hasRole(userRole, 'moderator');
+  const isAdmin = hasRole(userRole, 'admin');
   const { scanning, stopRequested, progress } = scanState;
 
   const sortedOwners = [...owners].sort((a, b) => {
@@ -401,6 +403,7 @@ export default function ItemPage() {
                   </div>
                 ) : null}
               </div>
+              {item.description && <p className="text-slate-400 text-sm">{item.description}</p>}
               <p className="text-slate-500 text-xs mt-2 font-mono">Asset ID: {item.assetId}</p>
             </div>
           </div>
@@ -528,216 +531,243 @@ export default function ItemPage() {
           </a>
         </div>
 
-        {/* ── Owners List ─────────────────────────────────────────── */}
+        {/* ── Owners / Hoards Tabs ────────────────────────────────── */}
         <div className="bg-slate-800 rounded-2xl border border-purple-500/20 overflow-hidden">
-          <div className="px-6 py-5 border-b border-slate-700">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div>
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  Known Owners
-                  {!ownersLoading && (
-                    <span className="text-slate-400 text-sm font-normal">
-                      ({owners.length.toLocaleString()} tracked
-                      {scanning && progress ? ` · ${progress.processed}/${progress.total} scanned` : ''})
-                    </span>
-                  )}
-                </h2>
-                <p className="text-slate-400 text-sm mt-1">
-                  {scanning
-                    ? 'Scanning inventories in the background — owners appear as each scan completes'
-                    : 'Players currently holding this item in their latest scanned inventory'
-                  }
-                </p>
-              </div>
 
-              <div className="flex items-center gap-3 flex-wrap">
-                <select
-                  value={ownerSort}
-                  onChange={e => setOwnerSort(e.target.value as any)}
-                  className="bg-slate-700 text-white text-xs px-3 py-1.5 rounded-lg border border-purple-500/20 focus:border-purple-500/50 outline-none"
-                >
-                  <option value="serial">Serial ↑</option>
-                  <option value="username">Username A–Z</option>
-                  <option value="recent">Recently Scanned</option>
-                </select>
-
-                {isAdmin && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleScanOwners}
-                      disabled={scanning}
-                      className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-red-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-1.5 rounded-lg transition"
-                      title="Fetch all owners from Roblox and scan their full inventories"
-                    >
-                      {scanning ? (
-                        <>
-                          <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          Scanning...
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                          </svg>
-                          Scan All Owners
-                        </>
-                      )}
-                    </button>
-
-                    {scanning && !stopRequested && (
-                      <button
-                        onClick={handleStopScan}
-                        className="flex items-center gap-1.5 bg-slate-700 hover:bg-red-600/80 border border-red-500/40 hover:border-red-500 text-red-400 hover:text-white text-xs font-bold px-3 py-1.5 rounded-lg transition"
-                        title="Stop after current user completes"
-                      >
-                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                          <rect x="6" y="6" width="12" height="12" rx="1" />
-                        </svg>
-                        Stop
-                      </button>
-                    )}
-
-                    {stopRequested && (
-                      <span className="text-yellow-400 text-xs py-1.5 flex items-center gap-1">
-                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M12 2a10 10 0 100 20A10 10 0 0012 2zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z"/>
-                        </svg>
-                        Stopping...
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Progress bar */}
-            {scanning && progress && (
-              <div className="mt-4 space-y-2">
-                <div className="flex justify-between items-center text-xs text-slate-400">
-                  <span>
-                    {progress.processed} / {progress.total} owners
-                    {progress.failed > 0 && (
-                      <span className="text-red-400 ml-2">· {progress.failed} failed</span>
-                    )}
-                  </span>
-                  <span className="flex items-center gap-3">
-                    {etaSec !== null && etaSec > 0 && (
-                      <span className="text-slate-500">~{fmtEta(etaSec)} left</span>
-                    )}
-                    <span className="text-purple-400 font-bold">{progressPct}%</span>
-                  </span>
-                </div>
-                <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-orange-500 to-red-500 h-1.5 rounded-full transition-all duration-500"
-                    style={{ width: `${progressPct}%` }}
-                  />
-                </div>
-                {progress.currentUser && (
-                  <div className="text-slate-500 text-xs truncate">
-                    Scanning: <span className="text-slate-300">{progress.currentUser}</span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {scanMessage && (
-              <div className={`mt-3 text-sm px-3 py-2 rounded-lg ${
-                scanMessage.ok
-                  ? 'bg-green-500/10 text-green-400 border border-green-500/20'
-                  : 'bg-red-500/10 text-red-400 border border-red-500/20'
-              }`}>
-                {scanMessage.text}
-              </div>
-            )}
+          {/* Tab bar */}
+          <div className="flex border-b border-slate-700">
+            <button
+              onClick={() => setActiveTab('owners')}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-sm font-semibold border-b-2 transition-colors -mb-px ${
+                activeTab === 'owners'
+                  ? 'border-purple-500 text-white'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Owners
+              {!ownersLoading && (
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === 'owners' ? 'bg-purple-500/20 text-purple-300' : 'bg-slate-700 text-slate-400'}`}>
+                  {owners.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('hoards')}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-sm font-semibold border-b-2 transition-colors -mb-px ${
+                activeTab === 'hoards'
+                  ? 'border-blue-500 text-white'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Hoards
+            </button>
           </div>
 
-          {ownersLoading ? (
-            <div className="px-6 py-12 text-center">
-              <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-slate-400 text-sm">Loading owners...</p>
-            </div>
-          ) : sortedOwners.length === 0 ? (
-            <div className="px-6 py-12 text-center">
-              <div className="text-4xl mb-3">👤</div>
-              <p className="text-slate-400">No tracked owners found for this item.</p>
-              <p className="text-slate-500 text-sm mt-1">
-                {isAdmin
-                  ? 'Click "Scan All Owners" above to fetch and scan every owner\'s inventory.'
-                  : "Owners appear once a player's inventory has been scanned."}
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-700/30">
-                  <tr className="border-b border-slate-700">
-                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">Player</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">Serial</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">UAID</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">Last Seen</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-700">
-                  {sortedOwners.map(owner => {
-                    const tier = getSerialTier(owner.serialNumber);
-                    return (
-                      <tr key={owner.userAssetId} className="hover:bg-slate-700/20 transition-colors">
-                        <td className="px-6 py-4">
-                          <a href={`/player/${owner.robloxUserId}`} className="flex items-center gap-3 group">
-                            {owner.avatarUrl ? (
-                              <img src={owner.avatarUrl} alt={owner.username} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
-                            ) : (
-                              <div className="w-10 h-10 rounded-lg bg-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0">
-                                {owner.username[0]?.toUpperCase()}
-                              </div>
-                            )}
-                            <div>
-                              <div className="text-white font-semibold group-hover:text-purple-400 transition-colors">
-                                {owner.displayName}
-                              </div>
-                              {owner.displayName !== owner.username && (
-                                <div className="text-slate-500 text-xs">@{owner.username}</div>
-                              )}
-                            </div>
-                          </a>
-                        </td>
-                        <td className="px-6 py-4">
-                          {owner.serialNumber !== null ? (
-                            tier
-                              ? <SpecialSerialText serial={owner.serialNumber} tier={tier} variant="badge" />
-                              : <span className="text-orange-400 font-bold text-sm">#{owner.serialNumber.toLocaleString()}</span>
-                          ) : (
-                            <span className="text-slate-500 text-sm">—</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          <a
-                            href={`/uaid/${owner.userAssetId}`}
-                            className="font-mono text-purple-300 text-xs bg-slate-700/50 px-2 py-1 rounded border border-purple-500/20 hover:border-purple-400/50 transition-colors"
-                          >
-                            {owner.userAssetId}
-                          </a>
-                        </td>
-                        <td className="px-6 py-4 text-slate-400 text-sm">
-                          {new Date(owner.scannedAt).toLocaleDateString('en-US', {
-                            month: 'short', day: 'numeric', year: 'numeric',
-                          })}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+          {/* Owners tab */}
+          {activeTab === 'owners' && (
+            <>
+              <div className="px-6 py-3 border-b border-slate-700">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <p className="text-slate-400 text-sm">
+                    {scanning
+                      ? `Scanning… ${progress ? `${progress.processed}/${progress.total}` : ''}`
+                      : `${owners.length.toLocaleString()} tracked owners`
+                    }
+                  </p>
 
-        {/* ── Hoards ──────────────────────────────────────────────── */}
-        <HoardsSection itemId={itemId} />
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <select
+                      value={ownerSort}
+                      onChange={e => setOwnerSort(e.target.value as any)}
+                      className="bg-slate-700 text-white text-xs px-3 py-1.5 rounded-lg border border-purple-500/20 focus:border-purple-500/50 outline-none"
+                    >
+                      <option value="serial">Serial ↑</option>
+                      <option value="username">Username A–Z</option>
+                      <option value="recent">Recently Scanned</option>
+                    </select>
+
+                    {isAdmin && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleScanOwners}
+                          disabled={scanning}
+                          className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-red-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-1.5 rounded-lg transition"
+                          title="Fetch all owners from Roblox and scan their full inventories"
+                        >
+                          {scanning ? (
+                            <>
+                              <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              Scanning...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                              Scan All Owners
+                            </>
+                          )}
+                        </button>
+
+                        {scanning && !stopRequested && (
+                          <button
+                            onClick={handleStopScan}
+                            className="flex items-center gap-1.5 bg-slate-700 hover:bg-red-600/80 border border-red-500/40 hover:border-red-500 text-red-400 hover:text-white text-xs font-bold px-3 py-1.5 rounded-lg transition"
+                            title="Stop after current user completes"
+                          >
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                              <rect x="6" y="6" width="12" height="12" rx="1" />
+                            </svg>
+                            Stop
+                          </button>
+                        )}
+
+                        {stopRequested && (
+                          <span className="text-yellow-400 text-xs py-1.5 flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M12 2a10 10 0 100 20A10 10 0 0012 2zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z"/>
+                            </svg>
+                            Stopping...
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                {scanning && progress && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex justify-between items-center text-xs text-slate-400">
+                      <span>
+                        {progress.processed} / {progress.total} owners
+                        {progress.failed > 0 && (
+                          <span className="text-red-400 ml-2">· {progress.failed} failed</span>
+                        )}
+                      </span>
+                      <span className="flex items-center gap-3">
+                        {etaSec !== null && etaSec > 0 && (
+                          <span className="text-slate-500">~{fmtEta(etaSec)} left</span>
+                        )}
+                        <span className="text-purple-400 font-bold">{progressPct}%</span>
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-orange-500 to-red-500 h-1.5 rounded-full transition-all duration-500"
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
+                    {progress.currentUser && (
+                      <div className="text-slate-500 text-xs truncate">
+                        Scanning: <span className="text-slate-300">{progress.currentUser}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {scanMessage && (
+                  <div className={`mt-3 text-sm px-3 py-2 rounded-lg ${
+                    scanMessage.ok
+                      ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+                      : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                  }`}>
+                    {scanMessage.text}
+                  </div>
+                )}
+              </div>
+
+              {ownersLoading ? (
+                <div className="px-6 py-12 text-center">
+                  <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-slate-400 text-sm">Loading owners...</p>
+                </div>
+              ) : sortedOwners.length === 0 ? (
+                <div className="px-6 py-12 text-center">
+                  <div className="text-4xl mb-3">👤</div>
+                  <p className="text-slate-400">No tracked owners found for this item.</p>
+                  <p className="text-slate-500 text-sm mt-1">
+                    {isAdmin
+                      ? 'Click "Scan All Owners" above to fetch and scan every owner\'s inventory.'
+                      : "Owners appear once a player's inventory has been scanned."}
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-700/30">
+                      <tr className="border-b border-slate-700">
+                        <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">Player</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">Serial</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">UAID</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">Last Seen</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-700">
+                      {sortedOwners.map(owner => {
+                        const tier = getSerialTier(owner.serialNumber);
+                        return (
+                          <tr key={owner.userAssetId} className="hover:bg-slate-700/20 transition-colors">
+                            <td className="px-6 py-4">
+                              <a href={`/player/${owner.robloxUserId}`} className="flex items-center gap-3 group">
+                                {owner.avatarUrl ? (
+                                  <img src={owner.avatarUrl} alt={owner.username} className="w-10 h-10 rounded-full object-cover flex-shrink-0 ring-2 ring-purple-500/60" />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0 ring-2 ring-purple-500/60">
+                                    {owner.username[0]?.toUpperCase()}
+                                  </div>
+                                )}
+                                <div>
+                                  <div className="text-white font-semibold group-hover:text-purple-400 transition-colors">
+                                    {owner.displayName}
+                                  </div>
+                                  {owner.displayName !== owner.username && (
+                                    <div className="text-slate-500 text-xs">@{owner.username}</div>
+                                  )}
+                                </div>
+                              </a>
+                            </td>
+                            <td className="px-6 py-4">
+                              {owner.serialNumber !== null ? (
+                                tier
+                                  ? <SpecialSerialText serial={owner.serialNumber} tier={tier} variant="badge" />
+                                  : <span className="text-orange-400 font-bold text-sm">#{owner.serialNumber.toLocaleString()}</span>
+                              ) : (
+                                <span className="text-slate-500 text-sm">—</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              <a
+                                href={`/uaid/${owner.userAssetId}`}
+                                className="font-mono text-purple-300 text-xs bg-slate-700/50 px-2 py-1 rounded border border-purple-500/20 hover:border-purple-400/50 transition-colors"
+                              >
+                                {owner.userAssetId}
+                              </a>
+                            </td>
+                            <td className="px-6 py-4 text-slate-400 text-sm">
+                              {new Date(owner.scannedAt).toLocaleDateString('en-US', {
+                                month: 'short', day: 'numeric', year: 'numeric',
+                              })}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Hoards tab */}
+          {activeTab === 'hoards' && (
+            <HoardsSection itemId={itemId} embedded />
+          )}
+
+        </div>
 
       </div>
     </div>

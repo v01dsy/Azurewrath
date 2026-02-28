@@ -14,6 +14,7 @@ interface User {
   displayName: string | null;
   avatarUrl: string | null;
   description: string | null;
+  role?: string | null;
 }
 
 interface InventoryItem {
@@ -184,7 +185,20 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
         <div className="flex items-stretch gap-6 mb-8">
           {/* Left Sidebar - Avatar & Profile Info */}
           <div className="w-80 flex-shrink-0">
-            <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6 h-full">
+            <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6 h-full relative">
+              {/* Role icon — top-right corner, only for non-user roles */}
+              {user.role && user.role !== 'user' && (
+                <div className="absolute top-4 left-4 group z-10">
+                  <img
+                    src={`/Images/${user.role}.png`}
+                    alt={user.role}
+                    className="w-7 h-7 object-contain opacity-90 hover:opacity-100 transition"
+                  />
+                  <div className="absolute left-0 top-full mt-1.5 px-2 py-1 rounded-md bg-[#1a0a2e] border border-purple-500/60 text-xs font-semibold text-purple-200 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg capitalize">
+                    {user.role}
+                  </div>
+                </div>
+              )}
               {user.avatarUrl ? (
                 <img
                   src={user.avatarUrl}
@@ -202,6 +216,7 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
                 <div>
                   <h1 className="text-2xl font-bold text-white">{user.displayName || user.username}</h1>
                   <p className="text-purple-300">@{user.username}</p>
+
                 </div>
                 
                 {/* Description with View More */}

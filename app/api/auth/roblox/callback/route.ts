@@ -22,6 +22,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log('🔴 redirect_uri being sent:', process.env.NEXT_PUBLIC_APP_URL + '/verify');
+    console.log('🔴 client_id:', process.env.ROBLOX_CLIENT_ID);
+    console.log('🔴 client_secret length:', process.env.ROBLOX_CLIENT_SECRET?.length);
+    console.log('🔴 client_secret first 5:', process.env.ROBLOX_CLIENT_SECRET?.substring(0, 5));
+
     // Exchange authorization code for tokens
     const tokenResponse = await fetch('https://apis.roblox.com/oauth/v1/token', {
       method: 'POST',

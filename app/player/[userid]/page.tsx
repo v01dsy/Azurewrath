@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import ClientInventoryGrid from './ClientInventoryGrid';
 import InventoryGraph from './InventoryGraph';
 import SnapshotModal from './SnapshotModal';
+import DevLoginButton from '@/components/DevLoginButton';
 
 interface User {
   id: string;
@@ -216,8 +217,13 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
                 <div>
                   <h1 className="text-2xl font-bold text-white">{user.displayName || user.username}</h1>
                   <p className="text-purple-300">@{user.username}</p>
-
                 </div>
+
+                {/* Dev Login Button — only visible locally */}
+                <DevLoginButton
+                  robloxUserId={user.robloxUserId}
+                  username={user.username}
+                />
                 
                 {/* Description with View More */}
                 {user.description && (

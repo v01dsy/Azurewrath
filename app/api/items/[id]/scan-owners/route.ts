@@ -8,25 +8,35 @@ export const dynamic = "force-dynamic";
 
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-const ongoingItemScans = new Set<string>();
-const stopRequested = new Set<string>();
+// ─── DB helpers ────────────────────────────────────────────────────────────
 
-const scanProgress = new Map<string, {
-  total: number;
-  processed: number;
-  failed: number;
-  currentUser: string | null;
-  startedAt: number;
-  pagesFound: number;
-}>();
+async function getActiveJob(assetId: string) {
+  return prisma.scanJob.findFirst({
+    where: { assetId: BigInt(assetId), status: 'running' },
+    orderBy: { startedAt: 'desc' },
+  });
+}
+
+async function isStopRequested(jobId: string) {
+  const job = await prisma.scanJob.findUnique({ where: { id: jobId }, select: { status: true } });
+  return job?.status === 'stopped';
+}
+
+async function updateProgress(jobId: string, data: {
+  total?: number;
+  processed?: number;
+  failed?: number;
+  pagesFound?: number;
+  currentUser?: string | null;
+}) {
+  await prisma.scanJob.update({ where: { id: jobId }, data });
+}
 
 // ─── Page fetcher (producer) ───────────────────────────────────────────────
-// Continuously fetches pages and pushes valid owner entries into the queue.
-// Signals done by pushing null.
 async function fetchPagesIntoQueue(
   assetId: string,
+  jobId: string,
   queue: Array<any>,
-  onNewOwners: (count: number) => void,
   isDone: { value: boolean }
 ) {
   const baseUrl = `https://inventory.roblox.com/v2/assets/${assetId}/owners?limit=100&sortOrder=Asc`;
@@ -36,7 +46,7 @@ async function fetchPagesIntoQueue(
   let pageNum = 0;
 
   do {
-    if (stopRequested.has(assetId)) {
+    if (await isStopRequested(jobId)) {
       console.log(`🛑 Page fetcher: stop requested — halting`);
       break;
     }
@@ -47,7 +57,6 @@ async function fetchPagesIntoQueue(
     try {
       console.log(`📄 Fetching page ${pageNum + 1} — ${url}`);
       const rawCookie = process.env.ROBLOX_SECURITY_COOKIE ?? '';
-      // Strip any surrounding quotes that .env parsers might leave in
       const cleanCookie = rawCookie.replace(/^"|"$/g, '').replace(/^'|'$/g, '');
       const headers: Record<string, string> = { 'User-Agent': 'Mozilla/5.0' };
       if (cleanCookie) {
@@ -67,45 +76,34 @@ async function fetchPagesIntoQueue(
       const waitMs = Math.max((retryAfter ? parseInt(retryAfter) : 0) * 1000, 30000);
       console.warn(`⏳ 429 on page ${pageNum + 1} — waiting ${waitMs / 1000}s...`);
       await delay(waitMs);
-      continue; // retry same cursor
+      continue;
     }
 
-    if (res.status === 404) {
-      console.warn(`⚠️ 404 — asset not found`);
-      break;
-    }
-
-    if (!res.ok) {
-      console.error(`❌ API error ${res.status} on page ${pageNum + 1}`);
-      break;
-    }
+    if (res.status === 404) { console.warn(`⚠️ 404 — asset not found`); break; }
+    if (!res.ok) { console.error(`❌ API error ${res.status} on page ${pageNum + 1}`); break; }
 
     const data = await res.json();
     pageNum++;
 
-    if (pageNum === 1) console.log(`   🔍 FULL PAGE 1 SAMPLE (first 3):`, JSON.stringify(data.data?.slice(0,3), null, 2));
     const entries: any[] = data.data ?? [];
-    const withOwner = entries.filter((e: any) => e.owner !== null && e.owner !== undefined);
-    const withOwnerId = entries.filter((e: any) => e.owner?.id != null);
-    console.log(`   🔍 total=${entries.length} | non-null owner=${withOwner.length} | has owner.id=${withOwnerId.length}`);
-    if (entries[1]) console.log(`   🔍 entry[1].owner=${JSON.stringify(entries[1].owner)}`);
-    const valid = withOwnerId;
+    const valid = entries.filter((e: any) => e.owner?.id != null);
     const nullCount = entries.length - valid.length;
 
     console.log(`   ✅ Page ${pageNum}: ${valid.length} valid owners, ${nullCount} null skipped`);
-    if (valid.length > 0) console.log(`   🔑 First valid owner.id on this page: ${valid[0].owner.id}`);
 
-    // Push valid entries into the queue
-    for (const entry of valid) {
-      queue.push(entry);
+    for (const entry of valid) queue.push(entry);
+
+    // Update total and pages in DB
+    const job = await prisma.scanJob.findUnique({ where: { id: jobId }, select: { total: true, pagesFound: true } });
+    if (job) {
+      await prisma.scanJob.update({
+        where: { id: jobId },
+        data: { total: job.total + valid.length, pagesFound: pageNum },
+      });
     }
-    onNewOwners(valid.length);
-
-    const progress = scanProgress.get(assetId);
-    if (progress) progress.pagesFound = pageNum;
 
     cursor = data.nextPageCursor ?? null;
-    if (cursor) await delay(2500); // rate limit between pages
+    if (cursor) await delay(2500);
 
   } while (cursor);
 
@@ -114,9 +112,9 @@ async function fetchPagesIntoQueue(
 }
 
 // ─── Owner processor (consumer) ───────────────────────────────────────────
-// Continuously pulls from the queue and processes each owner.
 async function processOwnersFromQueue(
   assetId: string,
+  jobId: string,
   queue: Array<any>,
   isDone: { value: boolean }
 ) {
@@ -124,33 +122,27 @@ async function processOwnersFromQueue(
   let failed = 0;
 
   while (true) {
-    // If queue is empty, either wait for more or exit if fetcher is done
     if (queue.length === 0) {
       if (isDone.value) break;
-      await delay(500); // wait for fetcher to push more
+      await delay(500);
       continue;
     }
 
-    if (stopRequested.has(assetId)) {
+    if (await isStopRequested(jobId)) {
       console.log(`🛑 Owner processor: stop requested — halting`);
       break;
     }
 
     const entry = queue.shift()!;
     const robloxUserId = entry.owner?.id?.toString();
-    const uaid = entry.id?.toString();
-
     if (!robloxUserId) continue;
 
-    const progress = scanProgress.get(assetId)!;
-    progress.processed = processed;
-    progress.failed = failed;
-    progress.currentUser = `userId:${robloxUserId}`;
+    const job = await prisma.scanJob.findUnique({ where: { id: jobId }, select: { total: true } });
+    const total = job?.total ?? 0;
+    const pct = total > 0 ? Math.round((processed / total) * 100) : '?';
+    console.log(`\n👤 [${processed + 1}/${total || '?'}] (${pct}%) — userId: ${robloxUserId}`);
 
-    const pct = progress.total > 0 ? Math.round((processed / progress.total) * 100) : '?';
-    console.log(`\n👤 [${processed + 1}/${progress.total || '?'}] (${pct}%)`);
-    console.log(`   🆔 userId: ${robloxUserId} | UAID: ${uaid}`);
-    console.log(`   🔍 Fetching Roblox user info...`);
+    await updateProgress(jobId, { currentUser: `userId:${robloxUserId}`, processed, failed });
 
     try {
       let username = `user_${robloxUserId}`;
@@ -174,9 +166,8 @@ async function processOwnersFromQueue(
         console.warn(`   ⚠️ Could not fetch info for ${robloxUserId} — using placeholder`);
       }
 
-      progress.currentUser = username;
+      await updateProgress(jobId, { currentUser: username });
 
-      console.log(`   💾 Upserting to DB...`);
       await prisma.user.upsert({
         where: { robloxUserId: BigInt(robloxUserId) },
         update: { username, displayName, avatarUrl, description },
@@ -187,19 +178,13 @@ async function processOwnersFromQueue(
       await saveInventorySnapshot(robloxUserId, robloxUserId);
 
       processed++;
-      progress.processed = processed;
-
-      const elapsed = Math.round((Date.now() - scanProgress.get(assetId)!.startedAt) / 1000);
-      const rate = processed / Math.max(elapsed, 1);
-      const remaining = progress.total > 0
-        ? Math.round((progress.total - processed) / Math.max(rate, 0.01))
-        : null;
-      console.log(`   ✅ Done: ${username} | ${processed}/${progress.total || '?'} | ${remaining != null ? `~${remaining}s remaining` : 'calculating...'}`);
+      await updateProgress(jobId, { processed, failed });
+      console.log(`   ✅ Done: ${username} | ${processed}/${total || '?'}`);
 
       await delay(2500);
     } catch (err) {
       failed++;
-      progress.failed = failed;
+      await updateProgress(jobId, { failed });
       console.error(`   ❌ Failed userId ${robloxUserId}:`, err);
       await delay(2500);
     }
@@ -209,61 +194,52 @@ async function processOwnersFromQueue(
 }
 
 // ─── Main scan orchestrator ────────────────────────────────────────────────
-async function scanOwnersStreaming(assetId: string) {
+async function scanOwnersStreaming(assetId: string, jobId: string) {
   console.log(`\n🚀 ========== OWNER SCAN START ==========`);
-  console.log(`📦 Asset: ${assetId} — fetching pages & processing in parallel`);
+  console.log(`📦 Asset: ${assetId} | Job: ${jobId}`);
   console.log(`=========================================`);
-
-  scanProgress.set(assetId, {
-    total: 0,
-    processed: 0,
-    failed: 0,
-    currentUser: null,
-    startedAt: Date.now(),
-    pagesFound: 0,
-  });
 
   const queue: any[] = [];
   const isDone = { value: false };
 
-  // Callback to update total as pages come in
-  const onNewOwners = (count: number) => {
-    const progress = scanProgress.get(assetId);
-    if (progress) progress.total += count;
-  };
-
-  // Run fetcher and processor concurrently
   const [, { processed, failed }] = await Promise.all([
-    fetchPagesIntoQueue(assetId, queue, onNewOwners, isDone),
-    processOwnersFromQueue(assetId, queue, isDone),
+    fetchPagesIntoQueue(assetId, jobId, queue, isDone),
+    processOwnersFromQueue(assetId, jobId, queue, isDone),
   ]);
 
-  const wasStopped = stopRequested.has(assetId);
-  const elapsed = Math.round((Date.now() - scanProgress.get(assetId)!.startedAt) / 1000);
+  const finalJob = await prisma.scanJob.findUnique({ where: { id: jobId }, select: { status: true } });
+  const wasStopped = finalJob?.status === 'stopped';
 
   console.log(`\n${wasStopped ? '🛑 SCAN STOPPED' : '🎉 SCAN COMPLETE'} — Asset: ${assetId}`);
-  console.log(`   ✅ Processed: ${processed} | ❌ Failed: ${failed} | ⏱️ Time: ${elapsed}s`);
+  console.log(`   ✅ Processed: ${processed} | ❌ Failed: ${failed}`);
   console.log(`=========================================\n`);
 
-  const progress = scanProgress.get(assetId)!;
-  progress.processed = processed;
-  progress.failed = failed;
-  progress.currentUser = null;
+  await prisma.scanJob.update({
+    where: { id: jobId },
+    data: { status: wasStopped ? 'stopped' : 'done', processed, failed, currentUser: null },
+  });
 
-  ongoingItemScans.delete(assetId);
-  stopRequested.delete(assetId);
-  setTimeout(() => scanProgress.delete(assetId), 60_000);
+  // Clean up old completed jobs after 60s
+  setTimeout(async () => {
+    await prisma.scanJob.deleteMany({
+      where: { assetId: BigInt(assetId), status: { in: ['done', 'stopped'] } },
+    });
+  }, 60_000);
 }
 
-// ─── POST: Start scan ──────────────────────────────────────────────────────
+// ─── POST: Start or stop scan ──────────────────────────────────────────────
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  console.log('🔴 POST hit');
   try {
     const { id: itemIdString } = await params;
+    console.log('🔴 itemIdString:', itemIdString);
     const body = await request.json();
+    console.log('🔴 body:', body);
     const { userId, action } = body;
+    console.log('🔴 userId:', userId, 'action:', action);
 
     if (!userId) {
       return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
@@ -273,51 +249,63 @@ export async function POST(
       where: { robloxUserId: BigInt(userId) },
       select: { role: true },
     });
+    console.log('🔴 user role:', user?.role);
 
-    if (!user || user.role !== 'admin') {
+    if (!user || !['admin', 'owner'].includes(user.role)) {
       return NextResponse.json({ error: 'Forbidden — admin only' }, { status: 403 });
     }
 
     if (action === 'stop') {
-      if (ongoingItemScans.has(itemIdString)) {
-        stopRequested.add(itemIdString);
+      const activeJob = await getActiveJob(itemIdString);
+      if (activeJob) {
+        await prisma.scanJob.update({ where: { id: activeJob.id }, data: { status: 'stopped' } });
         console.log(`🛑 Stop requested for asset ${itemIdString}`);
         return NextResponse.json({ success: true, message: 'Stop requested — will halt after current user.' });
       }
       return NextResponse.json({ success: false, message: 'No scan is running for this item.' });
     }
 
-    // Lock immediately before anything else
-    if (ongoingItemScans.has(itemIdString)) {
+    // Check no active scan already running
+    const existing = await getActiveJob(itemIdString);
+    console.log('🔴 existing job:', existing?.id ?? 'none');
+    if (existing) {
       return NextResponse.json({ success: false, message: 'A scan is already running for this item.' }, { status: 409 });
     }
-    ongoingItemScans.add(itemIdString);
 
     const item = await prisma.item.findUnique({
       where: { assetId: BigInt(itemIdString) },
       select: { assetId: true, name: true },
     });
+    console.log('🔴 item:', item?.name ?? 'not found');
 
     if (!item) {
-      ongoingItemScans.delete(itemIdString);
       return NextResponse.json({ error: 'Item not found' }, { status: 404 });
     }
 
-    // Start streaming scan in background — responds immediately
-    scanOwnersStreaming(itemIdString).catch(err => {
-      console.error('Streaming scan crashed:', err);
-      ongoingItemScans.delete(itemIdString);
-      stopRequested.delete(itemIdString);
-      scanProgress.delete(itemIdString);
+    // Create job in DB immediately — visible to all instances
+    const job = await prisma.scanJob.create({
+      data: { assetId: BigInt(itemIdString), status: 'running' },
+    });
+    console.log('🔴 job created:', job.id);
+
+    // Start scan in background
+    scanOwnersStreaming(itemIdString, job.id).catch(async (err) => {
+      console.error('🔴 SCAN CRASHED:', err);
+      console.error('🔴 Stack:', err?.stack);
+      await prisma.scanJob.update({
+        where: { id: job.id },
+        data: { status: 'done', currentUser: null },
+      }).catch(() => {});
     });
 
+    console.log('🔴 returning success');
     return NextResponse.json({
       success: true,
       message: `Scan started — pages are fetched and owners processed simultaneously.`,
     });
 
   } catch (error) {
-    console.error('Scan owners error:', error);
+    console.error('🔴 POST outer catch:', error);
     return NextResponse.json({ error: 'Scan failed', details: String(error) }, { status: 500 });
   }
 }
@@ -328,11 +316,32 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: itemIdString } = await params;
-  const progress = scanProgress.get(itemIdString);
+
+  const job = await prisma.scanJob.findFirst({
+    where: { assetId: BigInt(itemIdString), status: 'running' },
+    orderBy: { startedAt: 'desc' },
+  });
+
+  // Also check for a recently stopped/done job within the last 60s for UI feedback
+  const recentJob = job ?? await prisma.scanJob.findFirst({
+    where: {
+      assetId: BigInt(itemIdString),
+      status: { in: ['stopped', 'done'] },
+      startedAt: { gte: new Date(Date.now() - 60_000) },
+    },
+    orderBy: { startedAt: 'desc' },
+  });
 
   return NextResponse.json({
-    scanning: ongoingItemScans.has(itemIdString),
-    stopRequested: stopRequested.has(itemIdString),
-    progress: progress ?? null,
+    scanning: job !== null,
+    stopRequested: false, // stop is now instant — sets status to 'stopped' directly
+    progress: recentJob ? {
+      total: recentJob.total,
+      processed: recentJob.processed,
+      failed: recentJob.failed,
+      currentUser: recentJob.currentUser,
+      startedAt: recentJob.startedAt.getTime(),
+      pagesFound: recentJob.pagesFound,
+    } : null,
   });
 }

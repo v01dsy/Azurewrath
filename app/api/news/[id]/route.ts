@@ -7,7 +7,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const post = await prisma.post.findUnique({
     where: { id: Number(id) },
-    include: { author: { select: { username: true, avatarUrl: true } } },
+    include: { author: { select: { username: true, avatarUrl: true, role: true } } },
   });
   if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json({ ...post, authorId: post.authorId.toString() });

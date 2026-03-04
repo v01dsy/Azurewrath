@@ -6,7 +6,7 @@ export async function GET() {
   const posts = await prisma.post.findMany({
     where: { published: true },
     orderBy: { createdAt: 'desc' },
-    include: { author: { select: { username: true, avatarUrl: true } } },
+    include: { author: { select: { username: true, avatarUrl: true, role: true } } },
   });
   return NextResponse.json(posts.map(p => ({ ...p, authorId: p.authorId.toString() })));
 }

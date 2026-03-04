@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getUserSession } from '@/lib/userSession';
-import { hasRole } from '@/lib/roles';
+import { hasRole, canDeletePost } from '@/lib/roles';
 
 interface Post {
   id: number;
@@ -13,7 +13,7 @@ interface Post {
   content: string;
   excerpt: string | null;
   createdAt: string;
-  author: { username: string; avatarUrl: string | null };
+  author: { username: string; avatarUrl: string | null; role: string };
 }
 
 export default function NewsPostPage() {
@@ -54,7 +54,7 @@ export default function NewsPostPage() {
           <Link href="/news" className="text-slate-400 hover:text-white text-sm transition">
             ← Back to News
           </Link>
-          {hasRole(userRole, 'moderator') && (
+          {canDeletePost(userRole, post.author.role) && (
             <button
               onClick={handleDelete}
               className="text-red-400 hover:text-red-300 text-sm px-3 py-1 rounded-lg border border-red-500/20 hover:border-red-500/40 transition"

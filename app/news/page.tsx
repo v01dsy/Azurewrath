@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getUserSession } from '@/lib/userSession';
-import { hasRole } from '@/lib/roles';
+import { hasRole, canDeletePost } from '@/lib/roles';
 
 interface Post {
   id: number;
@@ -11,7 +11,7 @@ interface Post {
   slug: string;
   excerpt: string | null;
   createdAt: string;
-  author: { username: string; avatarUrl: string | null };
+  author: { username: string; avatarUrl: string | null; role: string };
 }
 
 export default function NewsPage() {
@@ -87,7 +87,7 @@ export default function NewsPage() {
                       <span>{new Date(post.createdAt).toLocaleDateString()}</span>
                     </div>
                   </div>
-                  {hasRole(userRole, 'moderator') && (
+                  {canDeletePost(userRole, post.author.role) && (
                     <button
                       onClick={() => handleDelete(post.id)}
                       className="text-red-400 hover:text-red-300 text-xs px-3 py-1 rounded-lg border border-red-500/20 hover:border-red-500/40 transition flex-shrink-0"

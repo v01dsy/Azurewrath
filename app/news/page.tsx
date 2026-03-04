@@ -1,3 +1,5 @@
+// app/news/page.tsx
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -47,14 +49,25 @@ export default function NewsPage() {
           <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
             News
           </h1>
-          {hasRole(userRole, 'moderator') && (
-            <Link
-              href="/news/create"
-              className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-semibold hover:opacity-90 transition"
-            >
-              + New Post
-            </Link>
-          )}
+          <div className="flex items-center gap-3">
+            {userRole === 'owner' && (
+              <Link
+                href="/news/trash"
+                className="px-3 py-2 bg-slate-800 border border-red-500/20 hover:border-red-500/40 rounded-lg text-sm text-red-400 hover:text-red-300 transition"
+                title="View deleted posts"
+              >
+                🗑️ Trash
+              </Link>
+            )}
+            {hasRole(userRole, 'moderator') && (
+              <Link
+                href="/news/create"
+                className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-semibold hover:opacity-90 transition"
+              >
+                + New Post
+              </Link>
+            )}
+          </div>
         </div>
 
         {loading ? (

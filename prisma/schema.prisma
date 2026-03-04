@@ -207,18 +207,23 @@ model ScanJob {
 }
 
 model Post {
-  id          Int      @id @default(autoincrement())
-  title       String
-  slug        String   @unique
-  content     String
-  excerpt     String?
-  authorId    BigInt
-  published   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  author      User     @relation(fields: [authorId], references: [robloxUserId], onDelete: Cascade)
+  id             Int       @id @default(autoincrement())
+  title          String
+  slug           String    @unique
+  content        String
+  excerpt        String?
+  authorId       BigInt
+  published      Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  // Soft delete
+  deletedAt      DateTime?
+  deletedById    BigInt?
+  deletedReason  String?
+  author         User      @relation(fields: [authorId], references: [robloxUserId], onDelete: Cascade)
 
   @@index([slug])
   @@index([authorId])
   @@index([createdAt])
+  @@index([deletedAt])
 }

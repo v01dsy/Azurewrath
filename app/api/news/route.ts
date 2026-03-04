@@ -1,10 +1,12 @@
+// app/api/news/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { hasRole } from '@/lib/roles';
 
 export async function GET() {
   const posts = await prisma.post.findMany({
-    where: { published: true },
+    where: { published: true, deletedAt: null },
     orderBy: { createdAt: 'desc' },
     include: { author: { select: { username: true, avatarUrl: true, role: true } } },
   });

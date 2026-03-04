@@ -39,8 +39,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const deleterRank = roleRank[deleterRole] ?? 0;
   const authorRank = roleRank[authorRole] ?? 0;
 
-  // Must be at least a moderator, and must outrank the author
-  if (deleterRank < 1 || deleterRank <= authorRank) {
+  const isSelfDelete = session.user.robloxUserId === post.authorId;
+
+  if (deleterRank < 1 || (!isSelfDelete && deleterRank <= authorRank)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

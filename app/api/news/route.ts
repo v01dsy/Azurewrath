@@ -8,7 +8,7 @@ export async function GET() {
     orderBy: { createdAt: 'desc' },
     include: { author: { select: { username: true, avatarUrl: true } } },
   });
-  return NextResponse.json(posts);
+  return NextResponse.json(posts.map(p => ({ ...p, authorId: p.authorId.toString() })));
 }
 
 export async function POST(req: NextRequest) {
@@ -29,5 +29,5 @@ export async function POST(req: NextRequest) {
     data: { title, slug, content, excerpt, published: published ?? false, authorId: session.user.robloxUserId },
   });
 
-  return NextResponse.json(post, { status: 201 });
+  return NextResponse.json({ id: post.id }, { status: 201 });
 }

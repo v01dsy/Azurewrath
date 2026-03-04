@@ -6,7 +6,7 @@ import { getUserSession } from '@/lib/userSession';
 import { hasRole } from '@/lib/roles';
 
 interface Post {
-  id: string;
+  id: number;
   title: string;
   slug: string;
   excerpt: string | null;
@@ -34,10 +34,10 @@ export default function NewsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleDelete = async (slug: string) => {
+  const handleDelete = async (id: number) => {
     if (!confirm('Delete this post?')) return;
-    await fetch(`/api/news/${slug}`, { method: 'DELETE' });
-    setPosts(p => p.filter(post => post.slug !== slug));
+    await fetch(`/api/news/${id}`, { method: 'DELETE' });
+    setPosts(p => p.filter(post => post.id !== id));
   };
 
   return (
@@ -70,7 +70,7 @@ export default function NewsPage() {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    <Link href={`/news/${post.slug}`}>
+                    <Link href={`/news/${post.id}`}>
                       <h2 className="text-xl font-bold text-white hover:text-purple-300 transition mb-1 truncate">
                         {post.title}
                       </h2>
@@ -89,7 +89,7 @@ export default function NewsPage() {
                   </div>
                   {hasRole(userRole, 'moderator') && (
                     <button
-                      onClick={() => handleDelete(post.slug)}
+                      onClick={() => handleDelete(post.id)}
                       className="text-red-400 hover:text-red-300 text-xs px-3 py-1 rounded-lg border border-red-500/20 hover:border-red-500/40 transition flex-shrink-0"
                     >
                       Delete

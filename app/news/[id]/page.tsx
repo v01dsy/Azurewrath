@@ -7,7 +7,7 @@ import { getUserSession } from '@/lib/userSession';
 import { hasRole } from '@/lib/roles';
 
 interface Post {
-  id: string;
+  id: number;
   title: string;
   slug: string;
   content: string;
@@ -17,7 +17,7 @@ interface Post {
 }
 
 export default function NewsPostPage() {
-  const { slug } = useParams<{ slug: string }>();
+  const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,15 +32,15 @@ export default function NewsPostPage() {
         .catch(() => {});
     }
 
-    fetch(`/api/news/${slug}`)
+    fetch(`/api/news/${id}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => setPost(data))
       .finally(() => setLoading(false));
-  }, [slug]);
+  }, [id]);
 
   const handleDelete = async () => {
     if (!confirm('Delete this post?')) return;
-    await fetch(`/api/news/${slug}`, { method: 'DELETE' });
+    await fetch(`/api/news/${id}`, { method: 'DELETE' });
     router.push('/news');
   };
 

@@ -43,7 +43,7 @@ export default function CreateNewsPage() {
 
     if (res.ok) {
       const post = await res.json();
-      router.push(`/news/${post.slug}`);
+      router.push(`/news/${post.id}`);
     } else {
       const d = await res.json();
       setError(d.error || 'Failed to create post.');

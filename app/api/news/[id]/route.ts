@@ -24,7 +24,25 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     include: { user: true },
   });
   if (!session || session.expires < new Date()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(session.user.role, 'moderator')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  const post = await prisma.post.findUnique({
+    where: { id: Number(id) },
+    include: { author: { select: { role: true } } },
+  });
+  if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  const deleterRole = session.user.role;
+  const authorRole = post.author.role;
+
+  const roleRank: Record<string, number> = { owner: 3, admin: 2, moderator: 1, user: 0 };
+
+  const deleterRank = roleRank[deleterRole] ?? 0;
+  const authorRank = roleRank[authorRole] ?? 0;
+
+  // Must be at least a moderator, and must outrank the author
+  if (deleterRank < 1 || deleterRank <= authorRank) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   await prisma.post.delete({ where: { id: Number(id) } });
   return NextResponse.json({ success: true });

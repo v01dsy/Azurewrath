@@ -1,4 +1,3 @@
-// app/components/ProfileDropdown.tsx
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
@@ -13,6 +12,57 @@ type UserSession = {
   authMethod?: string;
 };
 
+const iconStyle: React.CSSProperties = {
+  width: 26,
+  height: 26,
+  objectFit: 'contain',
+  flexShrink: 0,
+};
+
+const rowStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 12,
+  padding: '10px 16px',
+  color: 'white',
+  textDecoration: 'none',
+  width: '100%',
+  textAlign: 'left',
+  background: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  transition: 'background 0.15s',
+  fontSize: '0.875rem',
+};
+
+function DropdownLink({ href, onClick, children }: { href: string; onClick?: () => void; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      style={rowStyle}
+      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(139,92,246,0.25)')}
+      onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function DropdownButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      style={rowStyle}
+      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(139,92,246,0.25)')}
+      onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function ProfileDropdown() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -23,26 +73,14 @@ export default function ProfileDropdown() {
 
   useEffect(() => {
     const restore = async () => {
-      // First try localStorage
       const local = getUserSession();
-      if (local) {
-        setUser(local);
-        return;
-      }
-
-      // localStorage is empty — try restoring from cookie via server
+      if (local) { setUser(local); return; }
       try {
         const res = await fetch('/api/auth/session');
         const data = await res.json();
-        if (data.user) {
-          setUserSession(data.user); // restore localStorage
-          setUser(data.user);
-        }
-      } catch {
-        // silently fail — user just stays logged out
-      }
+        if (data.user) { setUserSession(data.user); setUser(data.user); }
+      } catch {}
     };
-
     restore();
   }, []);
 
@@ -52,19 +90,14 @@ export default function ProfileDropdown() {
       if (!res.ok) return;
       const data = await res.json();
       setUnreadCount(data.unreadCount ?? 0);
-    } catch {
-      // silently fail
-    }
+    } catch {}
   }, []);
 
-  // Poll for unread count every 60s
   useEffect(() => {
     if (!user) return;
     fetchUnreadCount(user.robloxUserId);
     pollRef.current = setInterval(() => fetchUnreadCount(user.robloxUserId), 60000);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [user, fetchUnreadCount]);
 
   const handleLogout = async () => {
@@ -72,7 +105,6 @@ export default function ProfileDropdown() {
     setUser(null);
     setUnreadCount(0);
     setOpen(false);
-    // Also clear the cookie
     await fetch('/api/auth/logout', { method: 'POST' });
     window.location.reload();
   };
@@ -87,14 +119,11 @@ export default function ProfileDropdown() {
           body: JSON.stringify({ userId: user.robloxUserId, markAll: true }),
         });
         setUnreadCount(0);
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
     router.push('/notifications');
   };
 
-  // Close on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -121,7 +150,6 @@ export default function ProfileDropdown() {
           aria-expanded={open}
           style={{ padding: 0, background: 'none', border: 'none', cursor: 'pointer' }}
         >
-          {/* Avatar with unread badge */}
           <div className="relative">
             <img
               src={user?.avatarUrl || "/Images/profile.png"}
@@ -131,22 +159,12 @@ export default function ProfileDropdown() {
             />
             {unreadCount > 0 && (
               <span style={{
-                position: 'absolute',
-                top: -2,
-                right: -4,
+                position: 'absolute', top: -2, right: -4,
                 background: 'linear-gradient(135deg, #ec4899, #8b5cf6)',
-                color: '#fff',
-                borderRadius: '9999px',
-                fontSize: '0.55rem',
-                fontWeight: 700,
-                minWidth: 15,
-                height: 15,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '0 3px',
-                lineHeight: 1,
-                border: '1.5px solid #0a0a0a',
+                color: '#fff', borderRadius: '9999px', fontSize: '0.55rem',
+                fontWeight: 700, minWidth: 15, height: 15, display: 'flex',
+                alignItems: 'center', justifyContent: 'center',
+                padding: '0 3px', lineHeight: 1, border: '1.5px solid #0a0a0a',
               }}>
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
@@ -156,77 +174,60 @@ export default function ProfileDropdown() {
             {user ? (user.displayName || user.username) : 'Profile'}
           </p>
         </button>
-
-        {/* Bridge area to prevent mouseout gap */}
         {open && <div style={{ height: 8, marginBottom: -8, width: '100%' }} />}
       </div>
 
       {open && (
         <div
-          className="absolute right-0 mt-2 w-48 bg-slate-800 border border-purple-500/20 rounded-lg shadow-lg z-50"
-          style={{ pointerEvents: 'auto', marginTop: 0 }}
+          className="absolute right-0 w-52 bg-slate-800 border border-purple-500/20 rounded-xl shadow-xl z-50 overflow-hidden py-1"
+          style={{ pointerEvents: 'auto', top: 'calc(100% + 8px)' }}
         >
           {!user ? (
-            <Link
-              href="/verify"
-              className="block px-4 py-2 text-white hover:bg-purple-600 rounded-lg transition"
-            >
-              Verify Account
-            </Link>
+            <DropdownLink href="/verify">
+              <img src="/Images/verify.png" alt="" style={iconStyle} draggable="false" />
+              <span>Verify Account</span>
+            </DropdownLink>
           ) : (
             <>
-              <Link
-                href={`/player/${user.robloxUserId}`}
-                className="block px-4 py-2 text-white hover:bg-purple-600 transition"
-                onClick={() => setOpen(false)}
-              >
-                Profile
-              </Link>
-              <Link
-                href="/watchlist"
-                className="block px-4 py-2 text-white hover:bg-purple-600 transition"
-                onClick={() => setOpen(false)}
-              >
-                Watchlist
-              </Link>
-              <button
-                onClick={handleNotificationsClick}
-                className="flex items-center justify-between w-full px-4 py-2 text-white hover:bg-purple-600 transition text-left"
-              >
-                <span>Notifications</span>
+              <DropdownLink href={`/player/${user.robloxUserId}`} onClick={() => setOpen(false)}>
+                <img src="/Images/profile.png" alt="" style={iconStyle} draggable="false" />
+                <span>Profile</span>
+              </DropdownLink>
+
+              <DropdownLink href="/watchlist" onClick={() => setOpen(false)}>
+                <img src="/Images/watchlist.png" alt="" style={iconStyle} draggable="false" />
+                <span>Watchlist</span>
+              </DropdownLink>
+
+              <DropdownButton onClick={handleNotificationsClick}>
+                <img src="/Images/notification.png" alt="" style={iconStyle} draggable="false" />
+                <span style={{ flex: 1 }}>Notifications</span>
                 {unreadCount > 0 && (
                   <span style={{
                     background: 'linear-gradient(135deg, #ec4899, #8b5cf6)',
-                    color: '#fff',
-                    borderRadius: '9999px',
-                    fontSize: '0.6rem',
-                    fontWeight: 700,
-                    minWidth: 18,
-                    height: 18,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '0 4px',
+                    color: '#fff', borderRadius: '9999px', fontSize: '0.6rem',
+                    fontWeight: 700, minWidth: 18, height: 18,
+                    display: 'inline-flex', alignItems: 'center',
+                    justifyContent: 'center', padding: '0 4px',
                   }}>
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </span>
                 )}
-              </button>
+              </DropdownButton>
+
               <div className="border-t border-slate-700 my-1" />
-              <Link
-                href="/settings"
-                className="block px-4 py-2 text-white hover:bg-purple-600 transition"
-                onClick={() => setOpen(false)}
-              >
-                Settings
-              </Link>
+
+              <DropdownLink href="/settings" onClick={() => setOpen(false)}>
+                <img src="/Images/settings.png" alt="" style={iconStyle} draggable="false" />
+                <span>Settings</span>
+              </DropdownLink>
+
               <div className="border-t border-slate-700 my-1" />
-              <button
-                onClick={handleLogout}
-                className="block w-full text-left px-4 py-2 text-white hover:bg-purple-600 transition"
-              >
-                Logout
-              </button>
+
+              <DropdownButton onClick={handleLogout}>
+                <img src="/Images/logout.png" alt="" style={iconStyle} draggable="false" />
+                <span>Logout</span>
+              </DropdownButton>
             </>
           )}
         </div>

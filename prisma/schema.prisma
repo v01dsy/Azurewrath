@@ -71,6 +71,7 @@ model User {
   notifications        Notification[]
   pushSubscriptions    PushSubscription[]
   snipeConfigs         SnipeConfig[]
+  posts                Post[]
 }
 
 model InventorySnapshot {
@@ -203,4 +204,21 @@ model ScanJob {
 
   @@index([assetId, status])
   @@index([startedAt])
+}
+
+model Post {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  content     String
+  excerpt     String?
+  authorId    BigInt
+  published   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  author      User     @relation(fields: [authorId], references: [robloxUserId], onDelete: Cascade)
+
+  @@index([slug])
+  @@index([authorId])
+  @@index([createdAt])
 }

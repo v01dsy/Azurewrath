@@ -546,7 +546,7 @@ export default function SnipePage() {
           <li>The worker bot scans Roblox every second for price changes.</li>
           <li>When an item drops below RAP by your specified %, it records the deal.</li>
           <li>This page checks for new deals every second over a live connection.</li>
-          <li>The Azuresniper extension auto-buys it before the Roblox tab even loads.</li>
+          <li>The <a href="https://chromewebstore.google.com/detail/azuresniper/mpbklfiemgpdbcghjpbepnkbjbbickdm" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 underline transition-colors">Azuresniper</a> extension auto-buys it before the Roblox tab even loads.</li>
         </ol>
         <p className="text-xs text-zinc-600 mt-1">
           💡 Keep this tab open and the Azuresniper extension installed while sniping.

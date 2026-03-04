@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 import './globals.css';
 import ProfileDropdown from '../components/ProfileDropdown';
+import MoreDropdown from '../components/MoreDropdown';
 import QueryProvider from './QueryProvider.tsx';
 
 export const metadata: Metadata = {
@@ -94,6 +95,7 @@ export default function RootLayout({
               <p>Sales</p>
             </a>
             <ProfileDropdown />
+            <MoreDropdown />
           </nav>
           <main className="pt-20">
             {children}

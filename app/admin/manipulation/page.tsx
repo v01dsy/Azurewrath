@@ -69,12 +69,12 @@ function FlagCard({ flag, onAction, acting }: {
 }) {
   const isManip = flag.flagType === 'manipulation';
   const isActing = acting === flag.id;
+  const isPending = flag.status === 'pending';
+  const isAccepted = flag.status === 'accepted';
 
   return (
     <div className={`rounded-2xl border p-5 space-y-4 transition ${
-      isManip
-        ? 'bg-red-950/20 border-red-500/30'
-        : 'bg-emerald-950/20 border-emerald-500/30'
+      isManip ? 'bg-red-950/20 border-red-500/30' : 'bg-emerald-950/20 border-emerald-500/30'
     }`}>
       {/* Header */}
       <div className="flex items-start gap-4">
@@ -135,27 +135,46 @@ function FlagCard({ flag, onAction, acting }: {
         <Sparkline data={flag.item.priceHistory} />
       </div>
 
-      {/* Actions */}
-      <div className="flex gap-3 pt-1">
-        <button
-          onClick={() => onAction(flag.id, 'accept')}
-          disabled={isActing}
-          className={`flex-1 py-2 rounded-xl font-semibold text-sm transition ${
-            isManip
-              ? 'bg-red-500/20 hover:bg-red-500/40 text-red-200 border border-red-500/30 hover:border-red-400/60'
-              : 'bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-200 border border-emerald-500/30 hover:border-emerald-400/60'
-          } disabled:opacity-40`}
-        >
-          {isActing ? '...' : isManip ? '✓ Mark Manipulated' : '✓ Unmark Item'}
-        </button>
-        <button
-          onClick={() => onAction(flag.id, 'dismiss')}
-          disabled={isActing}
-          className="flex-1 py-2 rounded-xl font-semibold text-sm bg-slate-700/40 hover:bg-slate-700/70 text-slate-300 border border-slate-600/30 hover:border-slate-500/50 transition disabled:opacity-40"
-        >
-          {isActing ? '...' : '✕ Dismiss'}
-        </button>
-      </div>
+      {/* Actions or review summary */}
+      {isPending ? (
+        <div className="flex gap-3 pt-1">
+          <button
+            onClick={() => onAction(flag.id, 'accept')}
+            disabled={isActing}
+            className={`flex-1 py-2 rounded-xl font-semibold text-sm transition ${
+              isManip
+                ? 'bg-red-500/20 hover:bg-red-500/40 text-red-200 border border-red-500/30 hover:border-red-400/60'
+                : 'bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-200 border border-emerald-500/30 hover:border-emerald-400/60'
+            } disabled:opacity-40`}
+          >
+            {isActing ? '...' : isManip ? '✓ Mark Manipulated' : '✓ Unmark Item'}
+          </button>
+          <button
+            onClick={() => onAction(flag.id, 'dismiss')}
+            disabled={isActing}
+            className="flex-1 py-2 rounded-xl font-semibold text-sm bg-slate-700/40 hover:bg-slate-700/70 text-slate-300 border border-slate-600/30 hover:border-slate-500/50 transition disabled:opacity-40"
+          >
+            {isActing ? '...' : '✕ Dismiss'}
+          </button>
+        </div>
+      ) : (
+        <div className={`flex items-center gap-3 pt-1 px-4 py-3 rounded-xl border ${
+          isAccepted
+            ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300'
+            : 'bg-slate-800/50 border-slate-600/30 text-slate-400'
+        }`}>
+          <span className="text-lg">{isAccepted ? '✓' : '✕'}</span>
+          <div className="text-sm">
+            <span className="font-semibold">{isAccepted ? 'Accepted' : 'Dismissed'}</span>
+            {flag.reviewedBy && (
+              <span> by <span className="text-white font-medium">{flag.reviewedBy}</span></span>
+            )}
+            {flag.reviewedAt && (
+              <span className="text-slate-500"> · {timeAgo(flag.reviewedAt)}</span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

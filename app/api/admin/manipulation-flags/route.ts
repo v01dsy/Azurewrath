@@ -4,13 +4,26 @@ import prisma from '@/lib/prisma';
 import { hasRole } from '@/lib/roles';
 
 async function getSession(req: NextRequest) {
+  // Try cookie first
   const token = req.cookies.get('session')?.value;
-  if (!token) return null;
-  const s = await prisma.session.findUnique({
-    where: { sessionToken: token },
-    include: { user: true },
-  });
-  return s && s.expires > new Date() ? s : null;
+  if (token) {
+    const s = await prisma.session.findUnique({
+      where: { sessionToken: token },
+      include: { user: true },
+    });
+    if (s && s.expires > new Date()) return s;
+  }
+
+  // Fall back to userId query param
+  const userId = req.nextUrl.searchParams.get('userId');
+  if (userId) {
+    const user = await prisma.user.findUnique({
+      where: { robloxUserId: BigInt(userId) },  // ← BigInt, not string
+    });
+    if (user) return { user };
+  }
+
+  return null;
 }
 
 // GET /api/admin/manipulation-flags?status=pending&type=all

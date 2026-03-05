@@ -95,7 +95,7 @@ export default function MoreDropdown() {
               alignItems: 'center', justifyContent: 'center',
               padding: '0 3px', lineHeight: 1, border: '1.5px solid #0a0a0a',
             }}>
-              {pendingFlags > 0 ? (pendingFlags > 9 ? '9+' : pendingFlags) : (unreadNews > 9 ? '9+' : unreadNews)}
+              {pendingFlags > 0 ? (pendingFlags > 99 ? '99+' : pendingFlags) : (unreadNews > 99 ? '99+' : unreadNews)}
             </span>
           )}
         </div>
@@ -184,7 +184,12 @@ export default function MoreDropdown() {
                 className="hover:bg-red-600/20 transition-colors group"
               >
                 <div className="relative flex-shrink-0 w-7 h-7 flex items-center justify-center">
-                  <span className="text-lg">🛡️</span>
+                  <img
+                    src="/Images/admin.png"
+                    alt="Admin"
+                    draggable="false"
+                    style={{ width: 28, height: 28, objectFit: 'contain' }}
+                  />
                   {pendingFlags > 0 && (
                     <span style={{
                       position: 'absolute', top: -3, right: -3,
@@ -194,7 +199,7 @@ export default function MoreDropdown() {
                       alignItems: 'center', justifyContent: 'center',
                       padding: '0 2px', lineHeight: 1, border: '1.5px solid #1e293b',
                     }}>
-                      {pendingFlags > 9 ? '9+' : pendingFlags}
+                      {pendingFlags > 99 ? '99+' : pendingFlags}
                     </span>
                   )}
                 </div>
@@ -205,7 +210,7 @@ export default function MoreDropdown() {
                       <span className="ml-1.5 text-xs font-bold text-red-400">{pendingFlags} pending</span>
                     )}
                   </span>
-                  <span className="text-slate-500 text-xs">Moderation tools</span>
+                  <span className="text-slate-500 text-xs">Admin tools</span>
                 </div>
               </Link>
             </>

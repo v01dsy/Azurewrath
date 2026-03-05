@@ -1,9 +1,9 @@
 // app/news/page.tsx
-
 'use client';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { getUserSession } from '@/lib/userSession';
 import { hasRole, canDeletePost } from '@/lib/roles';
 
@@ -18,6 +18,7 @@ interface Post {
 }
 
 export default function NewsPage() {
+  const router = useRouter();
   const [posts, setPosts] = useState<Post[]>([]);
   const [readIds, setReadIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -38,8 +39,6 @@ export default function NewsPage() {
       .then(r => r.json())
       .then(async (data: Post[]) => {
         setPosts(data);
-
-        // Fetch which posts the user has already read
         if (session) {
           const res = await fetch(`/api/news/read-status?userId=${session.robloxUserId}`);
           if (res.ok) {
@@ -51,7 +50,9 @@ export default function NewsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (e: React.MouseEvent, id: number) => {
+    e.preventDefault(); // don't navigate
+    e.stopPropagation();
     if (!confirm('Delete this post?')) return;
     await fetch(`/api/news/${id}`, { method: 'DELETE' });
     setPosts(p => p.filter(post => post.id !== id));
@@ -78,7 +79,7 @@ export default function NewsPage() {
               <Link
                 href="/news/trash"
                 className="px-3 py-2 bg-slate-800 border border-red-500/20 hover:border-red-500/40 rounded-lg text-sm text-red-400 hover:text-red-300 transition"
-                title="View deleted posts"
+                onClick={e => e.stopPropagation()}
               >
                 🗑️ Trash
               </Link>
@@ -87,6 +88,7 @@ export default function NewsPage() {
               <Link
                 href="/news/create"
                 className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-semibold hover:opacity-90 transition"
+                onClick={e => e.stopPropagation()}
               >
                 + New Post
               </Link>
@@ -102,28 +104,31 @@ export default function NewsPage() {
           <div className="space-y-4">
             {posts.map(post => {
               const isUnread = currentUserId && !readIds.has(post.id);
+              const canDelete = canDeletePost(userRole, post.author.role, currentUserId, post.authorId);
+
               return (
-                <div
+                <Link
                   key={post.id}
-                  className={`rounded-xl p-6 transition border ${
+                  href={`/news/${post.id}`}
+                  className={`block rounded-xl p-6 transition border group ${
                     isUnread
-                      ? 'bg-blue-950/30 border-blue-500/40 hover:border-blue-400/60'
-                      : 'bg-slate-800/60 border-purple-500/20 hover:border-purple-500/40'
+                      ? 'bg-blue-950/30 border-blue-500/40 hover:border-blue-400/70 hover:bg-blue-950/50'
+                      : 'bg-slate-800/60 border-purple-500/20 hover:border-purple-500/50 hover:bg-slate-800/80'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         {isUnread && (
-                          <span className="flex-shrink-0 w-2 h-2 rounded-full bg-blue-400" title="Unread" />
+                          <span className="flex-shrink-0 w-2 h-2 rounded-full bg-blue-400" />
                         )}
-                        <Link href={`/news/${post.id}`}>
-                          <h2 className={`text-xl font-bold transition truncate ${
-                            isUnread ? 'text-white hover:text-blue-300' : 'text-white hover:text-purple-300'
-                          }`}>
-                            {post.title}
-                          </h2>
-                        </Link>
+                        <h2 className={`text-xl font-bold transition truncate ${
+                          isUnread
+                            ? 'text-white group-hover:text-blue-300'
+                            : 'text-white group-hover:text-purple-300'
+                        }`}>
+                          {post.title}
+                        </h2>
                         {isUnread && (
                           <span className="flex-shrink-0 text-xs font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
                             NEW
@@ -142,16 +147,17 @@ export default function NewsPage() {
                         <span>{new Date(post.createdAt).toLocaleDateString()}</span>
                       </div>
                     </div>
-                    {canDeletePost(userRole, post.author.role, currentUserId, post.authorId) && (
+
+                    {canDelete && (
                       <button
-                        onClick={() => handleDelete(post.id)}
-                        className="text-red-400 hover:text-red-300 text-xs px-3 py-1 rounded-lg border border-red-500/20 hover:border-red-500/40 transition flex-shrink-0"
+                        onClick={e => handleDelete(e, post.id)}
+                        className="flex-shrink-0 text-red-400 hover:text-red-300 text-xs px-3 py-1 rounded-lg border border-red-500/20 hover:border-red-500/40 transition"
                       >
                         Delete
                       </button>
                     )}
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>

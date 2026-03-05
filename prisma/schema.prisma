@@ -8,20 +8,23 @@ datasource db {
 }
 
 model Item {
-  assetId          BigInt          @id
-  name             String
-  imageUrl         String?
-  description      String?
-  manipulated      Boolean         @default(false)
-  isLimitedUnique  Boolean?        // true = Limited U, false = Limited, null = unknown
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  inventoryItems   InventoryItem[]
-  priceHistory     PriceHistory[]
-  sales            Sale[]
-  watchlist        Watchlist[]
-  notifications    Notification[]
-  snipeConfigs     SnipeConfig[]
+  assetId           BigInt          @id
+  name              String
+  imageUrl          String?
+  description       String?
+  manipulated       Boolean         @default(false)
+  isLimitedUnique   Boolean?        // true = Limited U, false = Limited, null = unknown
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  inventoryItems    InventoryItem[]
+  priceHistory      PriceHistory[]
+  sales             Sale[]
+  watchlist         Watchlist[]
+  notifications     Notification[]
+  snipeConfigs      SnipeConfig[]
+  manipulatedAt     DateTime?
+  manipulatedRap    Float?
+  flags             ManipulationFlag[]
 
   @@index([assetId])
 }
@@ -73,6 +76,7 @@ model User {
   snipeConfigs         SnipeConfig[]
   posts                Post[]
   newsReads            NewsRead[]
+  flagReviews          ManipulationFlag[]
 }
 
 model InventorySnapshot {
@@ -239,4 +243,24 @@ model NewsRead {
   @@id([userId, postId])
   @@index([userId])
   @@index([postId])
+}
+
+model ManipulationFlag {
+  id            String    @id @default(cuid())
+  assetId       BigInt
+  flagType      String    @default("manipulation") // "manipulation" | "unmark_suggestion"
+  status        String    @default("pending")       // "pending" | "accepted" | "dismissed"
+  reason        String
+  rapAtFlag     Float
+  rapGrowthPct  Float?
+  timeWindowHrs Float?
+  reviewedBy    BigInt?
+  reviewedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  item          Item      @relation(fields: [assetId], references: [assetId], onDelete: Cascade)
+  reviewer      User?     @relation(fields: [reviewedBy], references: [robloxUserId])
+
+  @@index([assetId, status])
+  @@index([flagType, status])
+  @@index([createdAt])
 }

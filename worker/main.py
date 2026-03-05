@@ -17,6 +17,7 @@ import uuid
 from discord_notifications import send_discord_notifications
 from snipe_events import fire_snipe_events
 from snipe_server import start_snipe_server
+from manipulation_detector import detect_manipulation
 
 load_dotenv()
 
@@ -630,7 +631,8 @@ def save_results_to_db(results, current_time):
 
         # ── 4. Snipe events ────────────────────────────────────────────────
         fire_snipe_events(cursor, results)
-
+        
+        detect_manipulation(cursor)
         conn.commit()
         logger.info(f"💾 Database commit successful!")
 

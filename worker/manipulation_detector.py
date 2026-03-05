@@ -4,10 +4,11 @@ Auto-detects potentially manipulated items and suggests unmarks.
 Call detect_manipulation(cursor) at the end of save_results_to_db().
 
 Rules:
-  MANIPULATION FLAG : RAP grew >= RAP_GROWTH_PCT% within TIME_WINDOW_HRS hours,
-                      with no admin dismissal already in place.
-  UNMARK SUGGESTION : Item is marked manipulated AND current RAP has fallen
-                      back to or below the RAP when it was originally marked.
+  MANIPULATION FLAG (rap_growth)        : RAP grew >= RAP_GROWTH_PCT% within TIME_WINDOW_HRS hours.
+  MANIPULATION FLAG (sale_above_best)   : A sale was implied at >= PRICE_ABOVE_BEST_PCT% above
+                                          the item's best price at the time of sale.
+  UNMARK SUGGESTION                     : Item is marked manipulated AND current RAP has fallen
+                                          back to or below the RAP when it was originally marked.
 
 Neither acts automatically — both create pending ManipulationFlag rows
 for an admin to Accept or Dismiss in /admin/manipulation.
@@ -18,14 +19,16 @@ import uuid, logging, traceback
 logger = logging.getLogger(__name__)
 
 # ── Thresholds (tune as needed) ──────────────────────────────────────────────
-RAP_GROWTH_PCT   = 25.0    # % growth within window = suspicious
-TIME_WINDOW_HRS  = 48.0    # look-back window in hours
-MIN_RAP          = 5_000   # ignore very cheap items (noise)
+RAP_GROWTH_PCT       = 25.0   # % RAP growth within window = suspicious
+PRICE_ABOVE_BEST_PCT = 20.0   # % implied sale above best price = suspicious
+TIME_WINDOW_HRS      = 48.0   # look-back window in hours
+MIN_RAP              = 5_000  # ignore very cheap items (noise)
 
 
 def detect_manipulation(cursor):
     try:
         _flag_rap_growth(cursor)
+        _flag_sale_above_best_price(cursor)
         _suggest_unmarks(cursor)
     except Exception as e:
         logger.error(f"[manip_detector] {e}\n{traceback.format_exc()}")
@@ -76,7 +79,6 @@ def _flag_rap_growth(cursor):
         return
 
     for asset_id, name, _, rap_start, rap_end, growth_pct, hrs in rows:
-        # Skip if a pending manipulation flag already exists
         cursor.execute("""
             SELECT 1 FROM "ManipulationFlag"
             WHERE "assetId" = %s AND "flagType" = 'manipulation' AND status = 'pending'
@@ -85,7 +87,6 @@ def _flag_rap_growth(cursor):
         if cursor.fetchone():
             continue
 
-        # Also skip if there's a dismissed flag in the last 7 days (admin said no recently)
         cursor.execute("""
             SELECT 1 FROM "ManipulationFlag"
             WHERE "assetId" = %s AND "flagType" = 'manipulation' AND status = 'dismissed'
@@ -102,14 +103,90 @@ def _flag_rap_growth(cursor):
 
         cursor.execute("""
             INSERT INTO "ManipulationFlag"
-              (id, "assetId", "flagType", status, reason, "rapAtFlag", "rapGrowthPct", "timeWindowHrs", "createdAt")
-            VALUES (%s, %s, 'manipulation', 'pending', %s, %s, %s, %s, NOW())
+              (id, "assetId", "flagType", status, reason, "rapAtFlag", "rapGrowthPct", "timeWindowHrs", "detectionMethod", "createdAt")
+            VALUES (%s, %s, 'manipulation', 'pending', %s, %s, %s, %s, 'rap_growth', NOW())
         """, (str(uuid.uuid4()), int(asset_id), reason, float(rap_end), float(growth_pct), float(hrs)))
 
-        logger.info(f"[manip_detector] 🚩 Flagged '{name}' — {reason}")
+        logger.info(f"[manip_detector] 🚩 Flagged '{name}' (RAP growth) — {reason}")
 
 
-# ── Rule 2: unmark suggestions ───────────────────────────────────────────────
+# ── Rule 2: sale implied above best price ─────────────────────────────────────
+def _flag_sale_above_best_price(cursor):
+    cursor.execute("""
+        WITH recent_sales AS (
+            SELECT
+                s."itemId",
+                s."newRap",
+                s."saleDate",
+                (
+                    SELECT ph.price
+                    FROM "PriceHistory" ph
+                    WHERE ph."itemId" = s."itemId"
+                      AND ph.price IS NOT NULL
+                      AND ph.price > 0
+                      AND ph.timestamp <= s."saleDate"
+                    ORDER BY ph.timestamp DESC
+                    LIMIT 1
+                ) AS best_price_at_sale
+            FROM "Sale" s
+            WHERE s."saleDate" >= NOW() - INTERVAL '%s hours'
+              AND s."newRap" > s."oldRap"
+        )
+        SELECT
+            rs."itemId",
+            i.name,
+            i.manipulated,
+            rs."newRap",
+            rs.best_price_at_sale,
+            ROUND((((rs."newRap" - rs.best_price_at_sale) / NULLIF(rs.best_price_at_sale, 0)) * 100)::numeric, 2) AS overpay_pct,
+            rs."saleDate"
+        FROM recent_sales rs
+        JOIN "Item" i ON i."assetId" = rs."itemId"
+        WHERE
+            rs.best_price_at_sale IS NOT NULL
+            AND rs.best_price_at_sale >= %s
+            AND rs."newRap" > rs.best_price_at_sale
+            AND ((rs."newRap" - rs.best_price_at_sale) / NULLIF(rs.best_price_at_sale, 0)) * 100 >= %s
+            AND NOT i.manipulated
+    """, (TIME_WINDOW_HRS, MIN_RAP, PRICE_ABOVE_BEST_PCT))
+
+    rows = cursor.fetchall()
+    if not rows:
+        return
+
+    for asset_id, name, _, new_rap, best_price, overpay_pct, sale_date in rows:
+        cursor.execute("""
+            SELECT 1 FROM "ManipulationFlag"
+            WHERE "assetId" = %s AND "flagType" = 'manipulation' AND status = 'pending'
+            LIMIT 1
+        """, (asset_id,))
+        if cursor.fetchone():
+            continue
+
+        cursor.execute("""
+            SELECT 1 FROM "ManipulationFlag"
+            WHERE "assetId" = %s AND "flagType" = 'manipulation' AND status = 'dismissed'
+              AND "reviewedAt" >= NOW() - INTERVAL '7 days'
+            LIMIT 1
+        """, (asset_id,))
+        if cursor.fetchone():
+            continue
+
+        reason = (
+            f"Sale implied {overpay_pct:.1f}% above best price "
+            f"(best: {int(best_price):,} R$ → new RAP: {int(new_rap):,} R$)"
+        )
+
+        cursor.execute("""
+            INSERT INTO "ManipulationFlag"
+              (id, "assetId", "flagType", status, reason, "rapAtFlag", "rapGrowthPct", "timeWindowHrs", "detectionMethod", "createdAt")
+            VALUES (%s, %s, 'manipulation', 'pending', %s, %s, %s, %s, 'sale_above_best', NOW())
+        """, (str(uuid.uuid4()), int(asset_id), reason, float(new_rap), float(overpay_pct), float(TIME_WINDOW_HRS)))
+
+        logger.info(f"[manip_detector] 🚩 Flagged '{name}' (sale above best price) — {reason}")
+
+
+# ── Rule 3: unmark suggestions ───────────────────────────────────────────────
 def _suggest_unmarks(cursor):
     cursor.execute("""
         WITH latest AS (
@@ -146,8 +223,8 @@ def _suggest_unmarks(cursor):
 
         cursor.execute("""
             INSERT INTO "ManipulationFlag"
-              (id, "assetId", "flagType", status, reason, "rapAtFlag", "createdAt")
-            VALUES (%s, %s, 'unmark_suggestion', 'pending', %s, %s, NOW())
+              (id, "assetId", "flagType", status, reason, "rapAtFlag", "detectionMethod", "createdAt")
+            VALUES (%s, %s, 'unmark_suggestion', 'pending', %s, %s, 'unmark_suggestion', NOW())
         """, (str(uuid.uuid4()), int(asset_id), reason, float(current_rap)))
 
         logger.info(f"[manip_detector] 💡 Unmark suggestion for '{name}' — {reason}")

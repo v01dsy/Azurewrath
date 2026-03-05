@@ -24,6 +24,7 @@ interface Flag {
   id: string;
   assetId: string;
   flagType: 'manipulation' | 'unmark_suggestion';
+  detectionMethod: 'rap_growth' | 'sale_above_best' | 'unmark_suggestion' | null;
   status: string;
   reason: string;
   rapAtFlag: number;
@@ -71,6 +72,8 @@ function FlagCard({ flag, onAction, acting }: {
   const isActing = acting === flag.id;
   const isPending = flag.status === 'pending';
   const isAccepted = flag.status === 'accepted';
+  const isRapGrowth = flag.detectionMethod === 'rap_growth';
+  const isSaleAboveBest = flag.detectionMethod === 'sale_above_best';
 
   return (
     <div className={`rounded-2xl border p-5 space-y-4 transition ${
@@ -90,6 +93,17 @@ function FlagCard({ flag, onAction, acting }: {
             }`}>
               {isManip ? '🚩 Possible Manipulation' : '💡 Unmark Suggestion'}
             </span>
+            {/* Detection method badge */}
+            {isRapGrowth && (
+              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-500/20 text-orange-300 border border-orange-500/30">
+                RAP Growth
+              </span>
+            )}
+            {isSaleAboveBest && (
+              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
+                Sale Above Best Price
+              </span>
+            )}
             <span className="text-slate-500 text-xs">{timeAgo(flag.createdAt)}</span>
           </div>
           <Link
@@ -103,24 +117,35 @@ function FlagCard({ flag, onAction, acting }: {
         </div>
       </div>
 
-      {/* Stats row */}
+      {/* Stats row — adapts based on detection method */}
       <div className="grid grid-cols-3 gap-3">
+        {/* RAP at Flag — always shown */}
         <div className="bg-slate-800/60 rounded-lg p-3 text-center">
-          <p className="text-slate-500 text-xs uppercase tracking-wider mb-1">RAP at Flag</p>
+          <p className="text-slate-500 text-xs uppercase tracking-wider mb-1">
+            {isSaleAboveBest ? 'New RAP' : 'RAP at Flag'}
+          </p>
           <p className="text-white font-bold text-sm">{fmt(flag.rapAtFlag)} R$</p>
         </div>
+
+        {/* Growth % for rap_growth, Overpay % for sale_above_best */}
         {flag.rapGrowthPct != null && (
           <div className="bg-red-900/30 rounded-lg p-3 text-center">
-            <p className="text-slate-500 text-xs uppercase tracking-wider mb-1">Growth</p>
+            <p className="text-slate-500 text-xs uppercase tracking-wider mb-1">
+              {isSaleAboveBest ? 'Overpay' : 'Growth'}
+            </p>
             <p className="text-red-300 font-bold text-sm">+{flag.rapGrowthPct.toFixed(1)}%</p>
           </div>
         )}
-        {flag.timeWindowHrs != null && (
+
+        {/* Window — only for rap_growth */}
+        {isRapGrowth && flag.timeWindowHrs != null && (
           <div className="bg-slate-800/60 rounded-lg p-3 text-center">
             <p className="text-slate-500 text-xs uppercase tracking-wider mb-1">Window</p>
             <p className="text-white font-bold text-sm">{flag.timeWindowHrs.toFixed(1)}h</p>
           </div>
         )}
+
+        {/* Marked At — for unmark suggestions */}
         {flag.item.manipulatedRap != null && flag.flagType === 'unmark_suggestion' && (
           <div className="bg-slate-800/60 rounded-lg p-3 text-center">
             <p className="text-slate-500 text-xs uppercase tracking-wider mb-1">Marked At</p>
@@ -243,7 +268,7 @@ export default function ManipulationAdminPage() {
           Manipulation Review
         </h1>
         <p className="text-slate-400 text-sm mt-1">
-            Review potential manipulation items. Accept to update their manipulated status, or dismiss to ignore.
+          Review potential manipulation items. Accept to update their manipulated status, or dismiss to ignore.
         </p>
       </div>
 
@@ -295,7 +320,7 @@ export default function ManipulationAdminPage() {
             {tab === 'pending' ? 'No pending flags — all clear! ✓' : `No ${tab} flags`}
           </p>
           <p className="text-slate-600 text-sm">
-            The worker checks for suspicious RAP growth every cycle.
+            The worker checks for suspicious activity every cycle.
           </p>
         </div>
       ) : (

@@ -176,7 +176,7 @@ export default function ManipulationAdminPage() {
     fetch(`/api/user/role?userId=${session.robloxUserId}`)
       .then(r => r.json())
       .then(d => {
-        if (!hasRole(d.role, 'moderator')) { router.replace('/'); return; }
+        if (!hasRole(d.role, 'admin')) { router.replace('/'); return; }
         setUserId(session.robloxUserId);
         setAuthorized(true);
       });

@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     include: { user: true },
   });
   if (!session || session.expires < new Date()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(session.user.role, 'moderator')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!hasRole(session.user.role, 'mod')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { title, content, excerpt, published } = await req.json();
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-' + Date.now();

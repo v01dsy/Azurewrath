@@ -54,9 +54,9 @@ export default function MoreDropdown() {
     return () => clearInterval(interval);
   }, []);
 
-  // Poll pending flags for mods+
+  // Poll pending flags for admins+
   useEffect(() => {
-    if (!userId || !hasRole(userRole, 'moderator')) return;
+    if (!userId || !hasRole(userRole, 'admin')) return;
     const checkFlags = () => {
       fetch(`/api/admin/manipulation-flags?status=pending&userId=${userId}`)
         .then(r => r.json())
@@ -68,7 +68,7 @@ export default function MoreDropdown() {
     return () => clearInterval(interval);
   }, [userId, userRole]);
 
-  const isMod = hasRole(userRole, 'moderator');
+  const isAdmin = hasRole(userRole, 'admin');
 
   return (
     <div
@@ -167,8 +167,8 @@ export default function MoreDropdown() {
             </Link>
           ))}
 
-          {/* Admin section — only for mods+ */}
-          {isMod && (
+          {/* Admin section — only for admins+ */}
+          {isAdmin && (
             <>
               <div className="mx-3 my-1 border-t border-slate-700/60" />
               <Link

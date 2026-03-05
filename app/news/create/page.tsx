@@ -22,7 +22,7 @@ export default function CreateNewsPage() {
     fetch(`/api/user/role?userId=${session.robloxUserId}`)
       .then(r => r.json())
       .then(d => {
-        if (!hasRole(d.role, 'moderator')) router.push('/');
+        if (!hasRole(d.role, 'mod')) router.push('/');
         else setAuthorized(true);
       });
   }, [router]);

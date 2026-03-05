@@ -19,7 +19,7 @@ export default function AdminPage() {
     fetch(`/api/user/role?userId=${session.robloxUserId}`)
       .then(r => r.json())
       .then(d => {
-        if (!hasRole(d.role, 'moderator')) { router.replace('/'); return; }
+        if (!hasRole(d.role, 'mod')) { router.replace('/'); return; }
         setAuthorized(true);
         setUserId(session.robloxUserId);
       });

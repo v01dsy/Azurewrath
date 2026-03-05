@@ -268,7 +268,7 @@ export default function ItemPage() {
 
   // ── Derived ────────────────────────────────────────────────────────────
 
-  const canToggleManipulated = hasRole(userRole, 'moderator');
+  const canToggleManipulated = hasRole(userRole, 'mod');
   const isAdmin               = hasRole(userRole, 'admin');
   const { scanning, stopRequested, progress } = scanState;
 

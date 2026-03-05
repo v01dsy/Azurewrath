@@ -79,7 +79,7 @@ export default function NewsPage() {
                 🗑️ Trash
               </Link>
             )}
-            {hasRole(userRole, 'moderator') && (
+            {hasRole(userRole, 'mod') && (
               <Link href="/news/create" className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-semibold hover:opacity-90 transition" onClick={e => e.stopPropagation()}>
                 + New Post
               </Link>

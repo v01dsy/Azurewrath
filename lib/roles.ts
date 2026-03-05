@@ -2,7 +2,7 @@
 
 const ROLE_HIERARCHY: Record<string, number> = {
   user:      0,
-  moderator: 1,
+  mod:       1,
   admin:     2,
   owner:     3,
 };
@@ -21,7 +21,7 @@ export function hasRole(role: string | null | undefined, required: string): bool
  * Rules:
  *  - Anyone can delete their OWN post (self-delete always allowed)
  *  - To delete someone else's post, your rank must be strictly higher than theirs
- *    AND you must be at least a moderator
+ *    AND you must be at least a mod
  */
 export function canDeletePost(
   deleterRole: string | null | undefined,

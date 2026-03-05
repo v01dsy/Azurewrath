@@ -2,7 +2,7 @@
 
 export const ROLE_PERMISSIONS = {
   user:      [] as const,
-  moderator: ['toggle_manipulated'] as const,
+  mod: ['toggle_manipulated'] as const,
   admin:     ['toggle_manipulated', 'manage_users', 'manage_items'] as const,
   owner:     ['toggle_manipulated', 'manage_users', 'manage_items'] as const,
 } as const;

@@ -60,7 +60,7 @@ def _flag_rap_growth(cursor):
         SELECT
             i."assetId", i.name, i.manipulated,
             a.rap_start, a.rap_end,
-            ROUND(((a.rap_end - a.rap_start) / NULLIF(a.rap_start, 0)) * 100, 2) AS growth_pct,
+            ROUND((((a.rap_end - a.rap_start) / NULLIF(a.rap_start, 0)) * 100)::numeric, 2) AS growth_pct,
             a.hrs
         FROM agg a
         JOIN "Item" i ON i."assetId" = a."itemId"

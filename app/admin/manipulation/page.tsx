@@ -45,9 +45,7 @@ function timeAgo(s: string) {
 }
 
 function Sparkline({ data }: { data: PricePoint[] }) {
-  const points = data
-    .filter(p => p.rap != null)
-    .map(p => ({ rap: p.rap! }));
+  const points = data.filter(p => p.rap != null).map(p => ({ rap: p.rap! }));
   if (points.length < 2) return <div className="text-slate-600 text-xs italic">no chart data</div>;
   return (
     <ResponsiveContainer width="100%" height={48}>
@@ -58,24 +56,13 @@ function Sparkline({ data }: { data: PricePoint[] }) {
           formatter={(v: number) => [`${fmt(v)} R$`, 'RAP']}
           labelFormatter={() => ''}
         />
-        <Line
-          type="monotone"
-          dataKey="rap"
-          stroke="#a78bfa"
-          strokeWidth={2}
-          dot={false}
-          isAnimationActive={false}
-        />
+        <Line type="monotone" dataKey="rap" stroke="#a78bfa" strokeWidth={2} dot={false} isAnimationActive={false} />
       </LineChart>
     </ResponsiveContainer>
   );
 }
 
-function FlagCard({
-  flag,
-  onAction,
-  acting,
-}: {
+function FlagCard({ flag, onAction, acting }: {
   flag: Flag;
   onAction: (id: string, action: 'accept' | 'dismiss') => void;
   acting: string | null;
@@ -92,15 +79,11 @@ function FlagCard({
       {/* Header */}
       <div className="flex items-start gap-4">
         {flag.item.imageUrl && (
-          <img
-            src={flag.item.imageUrl}
-            alt={flag.item.name}
-            className="w-14 h-14 rounded-xl object-cover flex-shrink-0 ring-1 ring-white/10"
-          />
+          <img src={flag.item.imageUrl} alt={flag.item.name} className="w-14 h-14 rounded-xl object-cover flex-shrink-0 border border-slate-700" />
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
               isManip
                 ? 'bg-red-500/20 text-red-300 border border-red-500/30'
                 : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
@@ -179,6 +162,7 @@ function FlagCard({
 
 export default function ManipulationAdminPage() {
   const router = useRouter();
+  const [userId, setUserId] = useState<string | null>(null);
   const [flags, setFlags] = useState<Flag[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'pending' | 'accepted' | 'dismissed'>('pending');
@@ -193,30 +177,32 @@ export default function ManipulationAdminPage() {
       .then(r => r.json())
       .then(d => {
         if (!hasRole(d.role, 'moderator')) { router.replace('/'); return; }
+        setUserId(session.robloxUserId);
         setAuthorized(true);
       });
   }, [router]);
 
   const load = useCallback(() => {
-    if (!authorized) return;
+    if (!authorized || !userId) return;
     setLoading(true);
-    const params = new URLSearchParams({ status: tab });
+    const params = new URLSearchParams({ status: tab, userId });
     if (typeFilter !== 'all') params.set('type', typeFilter);
     fetch(`/api/admin/manipulation-flags?${params}`)
       .then(r => r.json())
-      .then(setFlags)
+      .then(data => setFlags(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
-  }, [authorized, tab, typeFilter]);
+  }, [authorized, userId, tab, typeFilter]);
 
   useEffect(() => { load(); }, [load]);
 
   const handleAction = async (id: string, action: 'accept' | 'dismiss') => {
+    if (!userId) return;
     setActing(id);
     try {
       await fetch('/api/admin/manipulation-flags', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, action }),
+        body: JSON.stringify({ id, action, userId }),
       });
       setFlags(prev => prev.filter(f => f.id !== id));
     } finally {
@@ -224,22 +210,21 @@ export default function ManipulationAdminPage() {
     }
   };
 
-  const pendingCount   = flags.filter(f => f.status === 'pending').length;
-  const manipCount     = flags.filter(f => f.flagType === 'manipulation').length;
-  const unmarkCount    = flags.filter(f => f.flagType === 'unmark_suggestion').length;
-
   if (!authorized) return null;
 
   return (
     <div className="min-h-screen text-white px-4 pb-20 pt-10 max-w-4xl mx-auto space-y-6">
 
       {/* Header */}
+      <div className="flex items-center gap-3">
+        <Link href="/admin" className="text-slate-400 hover:text-white text-sm transition">← Admin</Link>
+      </div>
       <div>
         <h1 className="text-3xl font-bold bg-gradient-to-r from-red-400 via-orange-400 to-amber-400 bg-clip-text text-transparent">
           Manipulation Review
         </h1>
         <p className="text-slate-400 text-sm mt-1">
-          Auto-detected flags for admin review. No items are changed automatically.
+            Review potential manipulation items. Accept to update their manipulated status, or dismiss to ignore.
         </p>
       </div>
 
@@ -256,7 +241,7 @@ export default function ManipulationAdminPage() {
             }`}
           >
             {t}
-            {t === 'pending' && flags.length > 0 && (
+            {t === 'pending' && tab === 'pending' && flags.length > 0 && (
               <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">
                 {flags.length}
               </span>
@@ -297,12 +282,7 @@ export default function ManipulationAdminPage() {
       ) : (
         <div className="space-y-4">
           {flags.map(flag => (
-            <FlagCard
-              key={flag.id}
-              flag={flag}
-              onAction={handleAction}
-              acting={acting}
-            />
+            <FlagCard key={flag.id} flag={flag} onAction={handleAction} acting={acting} />
           ))}
         </div>
       )}

@@ -1,5 +1,4 @@
 // app/news/[id]/page.tsx
-
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -36,15 +35,11 @@ export default function NewsPostPage() {
         .then(d => setUserRole(d.role ?? 'user'))
         .catch(() => {});
     }
-
     fetch(`/api/news/${id}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         setPost(data);
-        // Mark as read — fire and forget
-        if (data) {
-          fetch(`/api/news/${id}/read`, { method: 'POST' }).catch(() => {});
-        }
+        if (data) fetch(`/api/news/${id}/read`, { method: 'POST' }).catch(() => {});
       })
       .finally(() => setLoading(false));
   }, [id]);
@@ -55,11 +50,24 @@ export default function NewsPostPage() {
     router.push('/news');
   };
 
-  if (loading) return <div className="text-slate-400 text-center py-20">Loading...</div>;
-  if (!post) return <div className="text-slate-400 text-center py-20">Post not found.</div>;
+  if (loading) {
+    return (
+      <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white -mt-20 pt-28 px-4 pb-12 flex items-center justify-center">
+        <p className="text-slate-400">Loading...</p>
+      </div>
+    );
+  }
+
+  if (!post) {
+    return (
+      <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white -mt-20 pt-28 px-4 pb-12 flex items-center justify-center">
+        <p className="text-slate-400">Post not found.</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen w-full text-white p-4">
+    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white -mt-20 pt-28 px-4 pb-12">
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <Link href="/news" className="text-slate-400 hover:text-white text-sm transition">
@@ -78,9 +86,7 @@ export default function NewsPostPage() {
         <div className="bg-slate-800/60 border border-purple-500/20 rounded-xl p-8">
           <h1 className="text-3xl font-bold text-white mb-3">{post.title}</h1>
           <div className="flex items-center gap-2 text-sm text-slate-400 mb-8 pb-6 border-b border-white/10">
-            {post.author.avatarUrl && (
-              <img src={post.author.avatarUrl} alt="" className="w-6 h-6 rounded-full" />
-            )}
+            {post.author.avatarUrl && <img src={post.author.avatarUrl} alt="" className="w-6 h-6 rounded-full" />}
             <span>{post.author.username}</span>
             <span>·</span>
             <span>{new Date(post.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</span>

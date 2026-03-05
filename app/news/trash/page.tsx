@@ -1,5 +1,4 @@
 // app/news/trash/page.tsx
-
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -28,7 +27,6 @@ export default function NewsTrashPage() {
   useEffect(() => {
     const session = getUserSession();
     if (!session) { router.push('/'); return; }
-
     fetch(`/api/user/role?userId=${session.robloxUserId}`)
       .then(r => r.json())
       .then(d => {
@@ -56,7 +54,7 @@ export default function NewsTrashPage() {
   if (!authorized) return null;
 
   return (
-    <div className="min-h-screen w-full text-white p-4">
+    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white -mt-20 pt-28 px-4 pb-12">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -84,13 +82,9 @@ export default function NewsTrashPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <h2 className="text-lg font-bold text-white/70 mb-1 truncate">{post.title}</h2>
-                    {post.excerpt && (
-                      <p className="text-slate-500 text-sm line-clamp-2 mb-3">{post.excerpt}</p>
-                    )}
+                    {post.excerpt && <p className="text-slate-500 text-sm line-clamp-2 mb-3">{post.excerpt}</p>}
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                      {post.author.avatarUrl && (
-                        <img src={post.author.avatarUrl} alt="" className="w-4 h-4 rounded-full" />
-                      )}
+                      {post.author.avatarUrl && <img src={post.author.avatarUrl} alt="" className="w-4 h-4 rounded-full" />}
                       <span>by <span className="text-slate-400">{post.author.username}</span></span>
                       <span>·</span>
                       <span>posted {new Date(post.createdAt).toLocaleDateString()}</span>

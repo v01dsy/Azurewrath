@@ -34,7 +34,6 @@ export default function NewsPage() {
         .then(d => setUserRole(d.role ?? 'user'))
         .catch(() => {});
     }
-
     fetch('/api/news')
       .then(r => r.json())
       .then(async (data: Post[]) => {
@@ -51,7 +50,7 @@ export default function NewsPage() {
   }, []);
 
   const handleDelete = async (e: React.MouseEvent, id: number) => {
-    e.preventDefault(); // don't navigate
+    e.preventDefault();
     e.stopPropagation();
     if (!confirm('Delete this post?')) return;
     await fetch(`/api/news/${id}`, { method: 'DELETE' });
@@ -61,7 +60,7 @@ export default function NewsPage() {
   const unreadCount = posts.filter(p => !readIds.has(p.id)).length;
 
   return (
-    <div className="min-h-screen w-full text-white p-4">
+    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white -mt-20 pt-28 px-4 pb-12">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
@@ -76,20 +75,12 @@ export default function NewsPage() {
           </div>
           <div className="flex items-center gap-3">
             {userRole === 'owner' && (
-              <Link
-                href="/news/trash"
-                className="px-3 py-2 bg-slate-800 border border-red-500/20 hover:border-red-500/40 rounded-lg text-sm text-red-400 hover:text-red-300 transition"
-                onClick={e => e.stopPropagation()}
-              >
+              <Link href="/news/trash" className="px-3 py-2 bg-slate-800 border border-red-500/20 hover:border-red-500/40 rounded-lg text-sm text-red-400 hover:text-red-300 transition" onClick={e => e.stopPropagation()}>
                 🗑️ Trash
               </Link>
             )}
             {hasRole(userRole, 'moderator') && (
-              <Link
-                href="/news/create"
-                className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-semibold hover:opacity-90 transition"
-                onClick={e => e.stopPropagation()}
-              >
+              <Link href="/news/create" className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-semibold hover:opacity-90 transition" onClick={e => e.stopPropagation()}>
                 + New Post
               </Link>
             )}
@@ -105,7 +96,6 @@ export default function NewsPage() {
             {posts.map(post => {
               const isUnread = currentUserId && !readIds.has(post.id);
               const canDelete = canDeletePost(userRole, post.author.role, currentUserId, post.authorId);
-
               return (
                 <Link
                   key={post.id}
@@ -119,35 +109,22 @@ export default function NewsPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        {isUnread && (
-                          <span className="flex-shrink-0 w-2 h-2 rounded-full bg-blue-400" />
-                        )}
-                        <h2 className={`text-xl font-bold transition truncate ${
-                          isUnread
-                            ? 'text-white group-hover:text-blue-300'
-                            : 'text-white group-hover:text-purple-300'
-                        }`}>
+                        {isUnread && <span className="flex-shrink-0 w-2 h-2 rounded-full bg-blue-400" />}
+                        <h2 className={`text-xl font-bold transition truncate ${isUnread ? 'text-white group-hover:text-blue-300' : 'text-white group-hover:text-purple-300'}`}>
                           {post.title}
                         </h2>
                         {isUnread && (
-                          <span className="flex-shrink-0 text-xs font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                            NEW
-                          </span>
+                          <span className="flex-shrink-0 text-xs font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">NEW</span>
                         )}
                       </div>
-                      {post.excerpt && (
-                        <p className="text-slate-400 text-sm line-clamp-2 mb-3">{post.excerpt}</p>
-                      )}
+                      {post.excerpt && <p className="text-slate-400 text-sm line-clamp-2 mb-3">{post.excerpt}</p>}
                       <div className="flex items-center gap-2 text-xs text-slate-500">
-                        {post.author.avatarUrl && (
-                          <img src={post.author.avatarUrl} alt="" className="w-5 h-5 rounded-full" />
-                        )}
+                        {post.author.avatarUrl && <img src={post.author.avatarUrl} alt="" className="w-5 h-5 rounded-full" />}
                         <span>{post.author.username}</span>
                         <span>·</span>
                         <span>{new Date(post.createdAt).toLocaleDateString()}</span>
                       </div>
                     </div>
-
                     {canDelete && (
                       <button
                         onClick={e => handleDelete(e, post.id)}

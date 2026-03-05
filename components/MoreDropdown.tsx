@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getUserSession } from '@/lib/userSession';
+import { hasRole } from '@/lib/roles';
 
 const staticItems = [
   {
@@ -26,23 +27,48 @@ const staticItems = [
 export default function MoreDropdown() {
   const [open, setOpen] = useState(false);
   const [unreadNews, setUnreadNews] = useState(0);
+  const [userRole, setUserRole] = useState<string>('user');
+  const [pendingFlags, setPendingFlags] = useState(0);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const session = getUserSession();
     if (!session) return;
+    setUserId(session.robloxUserId);
 
-    const check = () => {
+    // Fetch role
+    fetch(`/api/user/role?userId=${session.robloxUserId}`)
+      .then(r => r.json())
+      .then(d => setUserRole(d.role ?? 'user'))
+      .catch(() => {});
+
+    // Fetch unread news
+    const checkNews = () => {
       fetch(`/api/news/unread?userId=${session.robloxUserId}`)
         .then(r => r.json())
         .then(d => setUnreadNews(d.unread ?? 0))
         .catch(() => {});
     };
-
-    check();
-    // Re-check every 2 minutes
-    const interval = setInterval(check, 120_000);
+    checkNews();
+    const interval = setInterval(checkNews, 120_000);
     return () => clearInterval(interval);
   }, []);
+
+  // Poll pending flags for mods+
+  useEffect(() => {
+    if (!userId || !hasRole(userRole, 'moderator')) return;
+    const checkFlags = () => {
+      fetch(`/api/admin/manipulation-flags?status=pending&userId=${userId}`)
+        .then(r => r.json())
+        .then(data => setPendingFlags(Array.isArray(data) ? data.length : 0))
+        .catch(() => {});
+    };
+    checkFlags();
+    const interval = setInterval(checkFlags, 60_000);
+    return () => clearInterval(interval);
+  }, [userId, userRole]);
+
+  const isMod = hasRole(userRole, 'moderator');
 
   return (
     <div
@@ -59,16 +85,17 @@ export default function MoreDropdown() {
             draggable="false"
             style={{ height: 40, width: 'auto', objectFit: 'contain', userSelect: 'none' } as React.CSSProperties}
           />
-          {unreadNews > 0 && (
+          {/* Badge: show news OR pending flags, whichever is higher priority */}
+          {(unreadNews > 0 || pendingFlags > 0) && (
             <span style={{
               position: 'absolute', top: -2, right: -4,
-              background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
+              background: pendingFlags > 0 ? '#ef4444' : 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
               color: '#fff', borderRadius: '9999px', fontSize: '0.55rem',
               fontWeight: 700, minWidth: 15, height: 15, display: 'flex',
               alignItems: 'center', justifyContent: 'center',
               padding: '0 3px', lineHeight: 1, border: '1.5px solid #0a0a0a',
             }}>
-              {unreadNews > 9 ? '9+' : unreadNews}
+              {pendingFlags > 0 ? (pendingFlags > 9 ? '9+' : pendingFlags) : (unreadNews > 9 ? '9+' : unreadNews)}
             </span>
           )}
         </div>
@@ -139,6 +166,50 @@ export default function MoreDropdown() {
               </div>
             </Link>
           ))}
+
+          {/* Admin section — only for mods+ */}
+          {isMod && (
+            <>
+              <div className="mx-3 my-1 border-t border-slate-700/60" />
+              <Link
+                href="/admin"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '12px 16px',
+                  textDecoration: 'none',
+                }}
+                className="hover:bg-red-600/20 transition-colors group"
+              >
+                <div className="relative flex-shrink-0 w-7 h-7 flex items-center justify-center">
+                  <span className="text-lg">🛡️</span>
+                  {pendingFlags > 0 && (
+                    <span style={{
+                      position: 'absolute', top: -3, right: -3,
+                      background: '#ef4444',
+                      color: '#fff', borderRadius: '9999px', fontSize: '0.5rem',
+                      fontWeight: 700, minWidth: 13, height: 13, display: 'flex',
+                      alignItems: 'center', justifyContent: 'center',
+                      padding: '0 2px', lineHeight: 1, border: '1.5px solid #1e293b',
+                    }}>
+                      {pendingFlags > 9 ? '9+' : pendingFlags}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span className="text-red-300 text-sm font-semibold group-hover:text-red-200 transition-colors">
+                    Admin
+                    {pendingFlags > 0 && (
+                      <span className="ml-1.5 text-xs font-bold text-red-400">{pendingFlags} pending</span>
+                    )}
+                  </span>
+                  <span className="text-slate-500 text-xs">Moderation tools</span>
+                </div>
+              </Link>
+            </>
+          )}
         </div>
       )}
     </div>

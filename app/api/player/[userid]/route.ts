@@ -3,23 +3,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { saveInventorySnapshot } from '@/lib/inventoryTracker';
 
-export const revalidate = 300; // Cache for 5 minutes
+export const revalidate = 300;
 
-// ✅ Track ongoing scans to prevent duplicates
 const ongoingScans = new Set<string>();
 
-// ✅ Helper function to check if inventory is viewable
 async function canViewInventory(robloxUserId: string): Promise<boolean> {
   try {
     const response = await fetch(
       `https://inventory.roblox.com/v1/users/${robloxUserId}/can-view-inventory`
     );
-    
     if (!response.ok) {
       console.warn(`canViewInventory returned ${response.status} for ${robloxUserId} — assuming public`);
       return true;
     }
-    
     const data = await response.json();
     return data.canView !== false;
   } catch (error) {
@@ -36,9 +32,7 @@ export async function GET(
     const { userid } = await params;
 
     const user = await prisma.user.findUnique({
-      where: {
-        robloxUserId: BigInt(userid)
-      }
+      where: { robloxUserId: BigInt(userid) }
     });
 
     if (!user) {
@@ -47,7 +41,7 @@ export async function GET(
 
     const robloxUserIdString = user.robloxUserId.toString();
 
-    // Fetch avatar from Roblox API (server-side)
+    // Fetch avatar
     let avatarUrl: string | null = null;
     try {
       const avatarResponse = await fetch(
@@ -61,7 +55,7 @@ export async function GET(
       console.warn('Failed to fetch avatar:', error);
     }
 
-    // ✅ CHECK IF SCAN IS ALREADY RUNNING
+    // Scan logic
     if (ongoingScans.has(robloxUserIdString)) {
       console.log(`⏳ Scan already in progress for ${user.username}, skipping...`);
     } else {
@@ -73,7 +67,7 @@ export async function GET(
 
       if (!latestSnapshotCheck) {
         const canView = await canViewInventory(robloxUserIdString);
-        
+
         if (!canView) {
           return NextResponse.json({
             user: {
@@ -85,26 +79,20 @@ export async function GET(
               role: user.role ?? 'user',
             },
             inventory: [],
-            stats: {
-              totalRAP: 0,
-              totalItems: 0,
-              uniqueItems: 0,
-              lastScanned: null
-            },
+            stats: { totalRAP: 0, totalItems: 0, uniqueItems: 0, lastScanned: null },
             graphData: [],
             isPrivate: true
           });
         }
 
-        console.log(`📸 No snapshot exists for user ${user.username} - creating initial scan (BLOCKING)`);
+        console.log(`📸 No snapshot for ${user.username} — creating initial scan (BLOCKING)`);
         ongoingScans.add(robloxUserIdString);
-        
         try {
           await saveInventorySnapshot(robloxUserIdString, robloxUserIdString);
-          console.log(`✅ Initial snapshot created successfully`);
+          console.log(`✅ Initial snapshot created`);
         } catch (err) {
           console.error('❌ Initial scan failed:', err);
-          return NextResponse.json({ 
+          return NextResponse.json({
             error: 'Failed to create initial inventory snapshot',
             details: String(err)
           }, { status: 500 });
@@ -112,31 +100,23 @@ export async function GET(
           ongoingScans.delete(robloxUserIdString);
         }
       } else {
-        const now = new Date();
-        const snapshotAge = now.getTime() - latestSnapshotCheck.createdAt.getTime();
+        const snapshotAge = Date.now() - latestSnapshotCheck.createdAt.getTime();
         const fiveMinutes = 5 * 60 * 1000;
-        
+
         if (snapshotAge > fiveMinutes) {
           console.log(`🔄 Triggering background rescan for ${user.username}...`);
           ongoingScans.add(robloxUserIdString);
-          
           saveInventorySnapshot(robloxUserIdString, robloxUserIdString)
-            .then(snapshot => {
-              console.log(`✅ Background scan completed - Snapshot ID: ${snapshot.id}`);
-            })
-            .catch(err => {
-              console.error('❌ Background scan failed:', err);
-            })
-            .finally(() => {
-              ongoingScans.delete(robloxUserIdString);
-            });
+            .then(snapshot => console.log(`✅ Background scan done — Snapshot ID: ${snapshot.id}`))
+            .catch(err => console.error('❌ Background scan failed:', err))
+            .finally(() => ongoingScans.delete(robloxUserIdString));
         } else {
-          console.log(`⏭️ Skipping scan for ${user.username} (last scan was ${Math.round(snapshotAge / 1000)}s ago)`);
+          console.log(`⏭️ Skipping scan for ${user.username} (${Math.round(snapshotAge / 1000)}s old)`);
         }
       }
     }
 
-    // Get latest snapshot inventory
+    // Latest snapshot inventory
     const inventoryData = await prisma.$queryRaw<Array<{
       assetId: bigint;
       userAssetId: bigint;
@@ -199,7 +179,7 @@ export async function GET(
       ORDER BY "assetId", rap DESC NULLS LAST
     `;
 
-    // Get graph data directly from stored snapshot values
+    // Graph data from stored snapshot values
     const graphData = await prisma.$queryRaw<Array<{
       snapshotId: string;
       createdAt: Date;
@@ -219,13 +199,9 @@ export async function GET(
       LIMIT 30
     `;
 
-    // Calculate totals
     const totalRAP = inventoryData.reduce((sum, item) => sum + ((item.rap || 0) * item.itemCount), 0);
     const totalItems = inventoryData.reduce((sum, item) => sum + item.itemCount, 0);
-
-    const latestSnapshot = graphData.length > 0
-      ? graphData[graphData.length - 1]
-      : null;
+    const latestSnapshot = graphData.length > 0 ? graphData[graphData.length - 1] : null;
 
     // Deduplicate: keep only the latest snapshot per calendar day
     const dedupedGraphData = (() => {
@@ -241,6 +217,7 @@ export async function GET(
       return Array.from(byDay.entries()).map(([day, snap]) => ({
         snapshotId: snap.snapshotId,
         date: day,
+        timestamp: new Date(snap.createdAt).getTime(), // unix ms for time-gap-aware charting
         rap: Number(snap.totalRap),
         itemCount: Number(snap.itemCount),
         uniqueCount: Number(snap.uniqueCount),

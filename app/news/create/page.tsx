@@ -1,3 +1,4 @@
+// app/news/create/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -18,7 +19,6 @@ export default function CreateNewsPage() {
   useEffect(() => {
     const session = getUserSession();
     if (!session) { router.push('/'); return; }
-
     fetch(`/api/user/role?userId=${session.robloxUserId}`)
       .then(r => r.json())
       .then(d => {
@@ -28,19 +28,14 @@ export default function CreateNewsPage() {
   }, [router]);
 
   const handleSubmit = async () => {
-    if (!title.trim() || !content.trim()) {
-      setError('Title and content are required.');
-      return;
-    }
+    if (!title.trim() || !content.trim()) { setError('Title and content are required.'); return; }
     setSubmitting(true);
     setError('');
-
     const res = await fetch('/api/news', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title, content, excerpt: excerpt || null, published }),
     });
-
     if (res.ok) {
       const post = await res.json();
       router.push(`/news/${post.id}`);
@@ -54,7 +49,7 @@ export default function CreateNewsPage() {
   if (!authorized) return null;
 
   return (
-    <div className="min-h-screen w-full text-white p-4">
+    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white -mt-20 pt-28 px-4 pb-12">
       <div className="max-w-3xl mx-auto">
         <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-8">
           New Post
@@ -96,9 +91,7 @@ export default function CreateNewsPage() {
             <button
               onClick={() => setPublished(p => !p)}
               className={`px-4 py-2 rounded-lg text-sm font-semibold border transition ${
-                published
-                  ? 'bg-green-600/30 border-green-500/40 text-green-300'
-                  : 'bg-white/5 border-white/10 text-slate-400'
+                published ? 'bg-green-600/30 border-green-500/40 text-green-300' : 'bg-white/5 border-white/10 text-slate-400'
               }`}
             >
               {published ? '✓ Published' : 'Draft'}

@@ -77,6 +77,7 @@ export async function GET(
       imageUrl: item.imageUrl ?? null,
       description: item.description ?? null,
       manipulated: item.manipulated,
+      isLimitedUnique: item.isLimitedUnique ?? null, // ✅ ADDED — needed for ghost serial detection
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
       currentPrice: latest?.price ?? null,

@@ -2,29 +2,25 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import axios from 'axios';
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { getUserSession } from '@/lib/userSession';
-import { getSerialTier } from '@/lib/specialSerial';
+import { getSerialTier, getGhostTier } from '@/lib/specialSerial'; // ✅ ghost serial
 import { SpecialSerialText } from '@/components/specialSerialText';
 import HoardsSection from '@/components/HoardsSection';
+import Pagination from '@/components/Pagination';
 import { hasRole } from '@/lib/roles';
+
+// ── Types ──────────────────────────────────────────────────────────────────
 
 interface PricePoint {
   id: string;
   price: number;
   rap?: number;
-  lowestResale?: number;
-  salesVolume?: number;
   timestamp: string;
 }
 
@@ -34,6 +30,7 @@ interface ItemDetail {
   imageUrl?: string;
   description?: string;
   manipulated: boolean;
+  isLimitedUnique?: boolean | null; // ✅ ghost serial
   currentPrice?: number;
   currentRap?: number;
   priceHistory: PricePoint[];
@@ -70,64 +67,85 @@ interface ScanState {
   progress: ScanProgress | null;
 }
 
-function fmt(n: number) {
-  return n.toLocaleString();
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+const fmt    = (n: number) => n.toLocaleString();
+const fmtEta = (s: number) => s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
+
+function niceMax(raw: number) {
+  if (raw <= 0) return 100;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const candidates = [1, 2, 2.5, 5, 10].map(n => n * mag);
+  return candidates.find(c => c >= raw * 1.15) ?? raw * 1.5;
 }
+function buildTicks(max: number, n = 5) {
+  const step = max / (n - 1);
+  return Array.from({ length: n }, (_, i) => Math.round(i * step));
+}
+const fmtY = (v: number) => {
+  if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}B`;
+  if (v >= 1_000_000)     return `${(v / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (v >= 1_000)         return `${(v / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
+  return String(v);
+};
+
+// ── Shared table chrome ───────────────────────────────────────────────────
+
+function Th({ children }: { children: React.ReactNode }) {
+  return (
+    <th className="px-5 py-3 text-left text-[11px] font-bold text-purple-400 uppercase tracking-wider">
+      {children}
+    </th>
+  );
+}
+
+// ── Component ─────────────────────────────────────────────────────────────
 
 export default function ItemPage() {
   const params = useParams();
   const router = useRouter();
   const itemId = params.id as string;
 
-  const [item, setItem] = useState<ItemDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isWatchlisted, setIsWatchlisted] = useState(false);
-  const [watchlistLoading, setWatchlistLoading] = useState(false);
-  const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
-  const [userRole, setUserRole] = useState<string>('user');
+  const [item, setItem]                             = useState<ItemDetail | null>(null);
+  const [loading, setLoading]                       = useState(true);
+  const [error, setError]                           = useState<string | null>(null);
+  const [userRole, setUserRole]                     = useState('user');
+  const [isWatchlisted, setIsWatchlisted]           = useState(false);
+  const [watchlistLoading, setWatchlistLoading]     = useState(false);
   const [manipulatedLoading, setManipulatedLoading] = useState(false);
+  const [hiddenLines, setHiddenLines]               = useState<Set<string>>(new Set());
 
-  const [owners, setOwners] = useState<Owner[]>([]);
+  const [owners, setOwners]               = useState<Owner[]>([]);
   const [ownersLoading, setOwnersLoading] = useState(true);
-  const [ownerSort, setOwnerSort] = useState<'serial' | 'username' | 'recent'>('serial');
-  const [scanMessage, setScanMessage] = useState<{ text: string; ok: boolean } | null>(null);
+  const [ownerSort, setOwnerSort]         = useState<'serial' | 'username' | 'recent'>('serial');
+  const [ownerPage, setOwnerPage]         = useState(1);
+  const [ownerPageSize, setOwnerPageSize] = useState<10 | 25 | 50 | 100>(25);
 
-  const [scanState, setScanState] = useState<ScanState>({
-    scanning: false,
-    stopRequested: false,
-    progress: null,
-  });
+  const [scanState, setScanState]       = useState<ScanState>({ scanning: false, stopRequested: false, progress: null });
   const [scanStarting, setScanStarting] = useState(false);
-  const [activeTab, setActiveTab] = useState<'owners' | 'hoards'>('owners');
+  const [scanMessage, setScanMessage]   = useState<{ text: string; ok: boolean } | null>(null);
+  const [activeTab, setActiveTab]       = useState<'owners' | 'hoards'>('owners');
 
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const legendItems = [
-    { dataKey: 'rap', name: 'RAP', color: '#34d399' },
+    { dataKey: 'rap',   name: 'RAP',   color: '#34d399' },
     { dataKey: 'price', name: 'Price', color: '#3b82f6' },
   ];
 
-  const toggleLine = (dataKey: string) => {
-    setHiddenLines(prev => {
-      const next = new Set(prev);
-      next.has(dataKey) ? next.delete(dataKey) : next.add(dataKey);
-      return next;
-    });
-  };
+  // ── Fetch owners ───────────────────────────────────────────────────────
 
-  const fetchOwners = async () => {
+  const fetchOwners = useCallback(async () => {
     try {
       const res = await axios.get(`/api/items/${itemId}/owners`);
       setOwners(res.data.owners || []);
-    } catch {
-      setOwners([]);
-    } finally {
-      setOwnersLoading(false);
-    }
-  };
+    } catch { setOwners([]); }
+    finally  { setOwnersLoading(false); }
+  }, [itemId]);
 
-  const startPolling = () => {
+  // ── Scan polling ───────────────────────────────────────────────────────
+
+  const startPolling = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       try {
@@ -141,7 +159,7 @@ export default function ItemPage() {
           clearInterval(pollRef.current!);
           pollRef.current = null;
           setScanMessage({ text: '✅ Scan complete', ok: true });
-          await fetchOwners();
+          fetchOwners();
         }
       } catch {
         clearInterval(pollRef.current!);
@@ -149,59 +167,45 @@ export default function ItemPage() {
         setScanState(prev => ({ ...prev, scanning: false }));
       }
     }, 2000);
-  };
+  }, [itemId, fetchOwners]);
 
   const handleScanOwners = async () => {
     const user = getUserSession();
     if (!user) return;
-    setScanMessage(null);
-    setScanStarting(true);
+    setScanMessage(null); setScanStarting(true);
     try {
-      const res = await axios.post(`/api/items/${itemId}/scan-owners`, {
-        userId: user.robloxUserId,
-      });
+      const res = await axios.post(`/api/items/${itemId}/scan-owners`, { userId: user.robloxUserId });
       setScanState({ scanning: true, stopRequested: false, progress: null });
       setScanMessage({ text: `🔄 ${res.data.message}`, ok: true });
       startPolling();
     } catch (err: any) {
       setScanMessage({ text: `❌ ${err.response?.data?.error || 'Scan failed'}`, ok: false });
-    } finally {
-      setScanStarting(false);
-    }
+    } finally { setScanStarting(false); }
   };
 
   const handleStopScan = async () => {
     const user = getUserSession();
     if (!user) return;
     try {
-      await axios.post(`/api/items/${itemId}/scan-owners`, {
-        userId: user.robloxUserId,
-        action: 'stop',
-      });
+      await axios.post(`/api/items/${itemId}/scan-owners`, { userId: user.robloxUserId, action: 'stop' });
       setScanState(prev => ({ ...prev, stopRequested: true }));
-      setScanMessage({ text: '🛑 Stop requested — finishing current user then halting...', ok: true });
-    } catch {
-      setScanMessage({ text: '❌ Failed to send stop request', ok: false });
-    }
+      setScanMessage({ text: '🛑 Stopping after current user…', ok: true });
+    } catch { setScanMessage({ text: '❌ Failed to send stop request', ok: false }); }
   };
 
-  // Check on mount if a scan is already running
+  // ── Effects ────────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!itemId) return;
     axios.get(`/api/items/${itemId}/scan-owners`).then(res => {
       const data: ScanState = res.data;
       setScanState(data);
-      if (data.scanning) {
-        setScanMessage({ text: '🔄 A scan is already running for this item...', ok: true });
-        startPolling();
-      }
+      if (data.scanning) { setScanMessage({ text: '🔄 Scan already running…', ok: true }); startPolling(); }
     }).catch(() => {});
-  }, [itemId]);
+  }, [itemId, startPolling]);
 
-  // Cleanup poll on unmount
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
-  // Fetch item
   useEffect(() => {
     if (!itemId) return;
     axios.get(`/api/items/${itemId}`)
@@ -210,39 +214,31 @@ export default function ItemPage() {
       .finally(() => setLoading(false));
   }, [itemId]);
 
-  // Fetch owners
-  useEffect(() => {
-    if (!itemId) return;
-    fetchOwners();
-  }, [itemId]);
+  useEffect(() => { if (itemId) fetchOwners(); }, [itemId, fetchOwners]);
+  useEffect(() => { if (item?.name) document.title = `${item.name} | Azurewrath`; }, [item]);
 
-  // Page title
-  useEffect(() => {
-    if (item?.name) document.title = `${item.name} | Limited Item - Azurewrath`;
-  }, [item]);
-
-  // Watchlist status
   useEffect(() => {
     if (!item) return;
     const user = getUserSession();
     if (!user) return;
     axios.get(`/api/items/${itemId}/watchlist?userId=${user.robloxUserId}`)
-      .then(res => setIsWatchlisted(res.data.isWatchlisted))
-      .catch(() => {});
+      .then(res => setIsWatchlisted(res.data.isWatchlisted)).catch(() => {});
   }, [item, itemId]);
 
-  // User role
   useEffect(() => {
     const user = getUserSession();
     if (!user) return;
     axios.get(`/api/user/role?userId=${user.robloxUserId}`)
-      .then(res => setUserRole(res.data.role ?? 'user'))
-      .catch(() => {});
+      .then(res => setUserRole(res.data.role ?? 'user')).catch(() => {});
   }, []);
+
+  useEffect(() => { setOwnerPage(1); }, [ownerSort, ownerPageSize]);
+
+  // ── Actions ────────────────────────────────────────────────────────────
 
   const handleWatchlistToggle = async () => {
     const user = getUserSession();
-    if (!user) { alert('Please log in to add items to your watchlist'); router.push('/'); return; }
+    if (!user) { router.push('/verify'); return; }
     setWatchlistLoading(true);
     try {
       if (isWatchlisted) {
@@ -252,11 +248,8 @@ export default function ItemPage() {
         await axios.post(`/api/items/${itemId}/watchlist`, { userId: user.robloxUserId });
         setIsWatchlisted(true);
       }
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to update watchlist');
-    } finally {
-      setWatchlistLoading(false);
-    }
+    } catch (err: any) { alert(err.response?.data?.error || 'Failed to update watchlist'); }
+    finally { setWatchlistLoading(false); }
   };
 
   const handleManipulatedToggle = async () => {
@@ -269,15 +262,14 @@ export default function ItemPage() {
         assetId: item.assetId,
       });
       setItem(prev => prev ? { ...prev, manipulated: res.data.manipulated } : prev);
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to toggle manipulated');
-    } finally {
-      setManipulatedLoading(false);
-    }
+    } catch (err: any) { alert(err.response?.data?.error || 'Failed to toggle manipulated'); }
+    finally { setManipulatedLoading(false); }
   };
 
+  // ── Derived ────────────────────────────────────────────────────────────
+
   const canToggleManipulated = hasRole(userRole, 'moderator');
-  const isAdmin = hasRole(userRole, 'admin');
+  const isAdmin               = hasRole(userRole, 'admin');
   const { scanning, stopRequested, progress } = scanState;
 
   const sortedOwners = [...owners].sort((a, b) => {
@@ -288,485 +280,360 @@ export default function ItemPage() {
       return a.serialNumber - b.serialNumber;
     }
     if (ownerSort === 'username') return a.username.localeCompare(b.username);
-    if (ownerSort === 'recent') return new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime();
-    return 0;
+    return new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime();
   });
 
-  if (loading) {
-    return (
-      <div className="min-h-screen w-full text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin text-4xl mb-4">⚙️</div>
-          <p className="text-slate-400">Loading item details...</p>
-        </div>
-      </div>
-    );
-  }
+  const ownerTotalPages = Math.max(1, Math.ceil(sortedOwners.length / ownerPageSize));
+  const pagedOwners     = sortedOwners.slice((ownerPage - 1) * ownerPageSize, ownerPage * ownerPageSize);
 
-  if (error || !item) {
-    return (
-      <div className="min-h-screen w-full text-white flex items-center justify-center">
-        <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8 max-w-md w-full">
-          <h1 className="text-3xl font-bold text-red-400 mb-4">Oops!</h1>
-          <p className="text-slate-400">{error || 'Item not found'}</p>
-        </div>
-      </div>
-    );
-  }
+  const progressPct = progress && progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
+  const elapsed     = progress ? Math.round((Date.now() - progress.startedAt) / 1000) : 0;
+  const rate        = elapsed > 0 && progress ? progress.processed / elapsed : 0;
+  const etaSec      = rate > 0 && progress ? Math.round((progress.total - progress.processed) / rate) : null;
 
-  const chartData = [...item.priceHistory]
+  // Chart — numeric timestamps so recharts spaces points by real time
+  const chartData = [...(item?.priceHistory ?? [])]
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-    .map(ph => ({
-      timestamp: new Date(ph.timestamp).toLocaleString(undefined, {
-        month: 'numeric', day: 'numeric', year: 'numeric',
-        hour: 'numeric', minute: '2-digit', hour12: true,
-      }),
-      price: ph.price,
-      rap: ph.rap,
-    }));
+    .map(ph => ({ ts: new Date(ph.timestamp).getTime(), price: ph.price, rap: ph.rap ?? null }));
 
-  const displayImageUrl =
-    item.imageUrl ??
-    `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=420&height=420&format=png`;
+  const priceMax = chartData.length ? Math.max(...chartData.map(d => Math.max(d.price || 0, d.rap || 0))) : 0;
+  const yNice    = niceMax(priceMax);
+  const yTicks   = buildTicks(yNice);
 
-  const yMax = Math.max(...chartData.map(d => Math.max(d.price || 0, d.rap || 0)));
-  const targetCeiling = yMax * 1.2;
-  const magnitude = Math.pow(10, Math.floor(Math.log10(targetCeiling)));
-  const niceNumbers = [1, 2, 4, 5, 8, 10];
-  const closestNice = niceNumbers.reduce((best, n) =>
-    Math.abs(n - targetCeiling / magnitude) < Math.abs(best - targetCeiling / magnitude) ? n : best
+  const tsArr  = chartData.map(d => d.ts);
+  const xTicks = (() => {
+    if (tsArr.length <= 6) return tsArr;
+    const min = tsArr[0], max = tsArr[tsArr.length - 1];
+    const step = (max - min) / 5;
+    return Array.from({ length: 6 }, (_, i) => Math.round(min + i * step));
+  })();
+
+  const formatXTick        = (ts: number) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const formatTooltipLabel = (ts: number) => new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+
+  const displayImageUrl = item?.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${item?.assetId}&width=420&height=420&format=png`;
+
+  // ── Loading / error states ─────────────────────────────────────────────
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center text-white">
+      <div className="text-center"><div className="animate-spin text-4xl mb-4">⚙️</div><p className="text-slate-400">Loading item…</p></div>
+    </div>
   );
-  const ceiling = closestNice * magnitude;
-  const inc = ceiling / 4;
-  const yTicks = [0, inc, inc * 2, inc * 3, ceiling];
 
-  const formatY = (v: number) => {
-    if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}B`;
-    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-    if (v >= 1_000) return `${(v / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
-    return v.toString();
-  };
+  if (error || !item) return (
+    <div className="min-h-screen flex items-center justify-center text-white">
+      <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8 max-w-md w-full">
+        <h1 className="text-3xl font-bold text-red-400 mb-4">Oops!</h1>
+        <p className="text-slate-400">{error || 'Item not found'}</p>
+      </div>
+    </div>
+  );
 
-  const progressPct = progress && progress.total > 0
-    ? Math.round((progress.processed / progress.total) * 100)
-    : 0;
-
-  const elapsedSec = progress ? Math.round((Date.now() - progress.startedAt) / 1000) : 0;
-  const rate = elapsedSec > 0 && progress ? progress.processed / elapsedSec : 0;
-  const etaSec = rate > 0 && progress ? Math.round((progress.total - progress.processed) / rate) : null;
-  const fmtEta = (s: number) => s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
+  // ── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white p-32 -mt-20">
+    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white px-6 py-10 pt-28">
       <div className="max-w-5xl mx-auto space-y-6">
 
         {/* Back */}
-        <button
-          onClick={() => router.push('/search')}
-          className="text-purple-400 hover:text-purple-300 transition flex items-center gap-2"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-          Back
+        <button onClick={() => router.push('/search')} className="flex items-center gap-2 text-purple-400 hover:text-purple-300 transition text-sm">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+          Back to Search
         </button>
 
-        {/* Header */}
+        {/* ── Header card ────────────────────────────────────────────── */}
         <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
-          <div className="flex items-start gap-6">
-            <div className="w-32 h-32 bg-slate-700/50 rounded-lg overflow-hidden flex-shrink-0">
+          <div className="flex items-start gap-5">
+            <div className="w-28 h-28 bg-slate-700/60 rounded-xl overflow-hidden flex-shrink-0">
               <img src={displayImageUrl} alt={item.name} className="w-full h-full object-cover" />
             </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-3 flex-wrap mb-1">
-                <h1 className="text-3xl font-bold text-white">{item.name}</h1>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                <h1 className="text-2xl font-bold text-white leading-tight">{item.name}</h1>
                 {canToggleManipulated ? (
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={handleManipulatedToggle}
-                      disabled={manipulatedLoading}
-                      className="hover:opacity-80 transition"
-                      title={item.manipulated ? 'Mark as not manipulated' : 'Mark as manipulated'}
-                    >
-                      <img
-                        src={item.manipulated ? '/Images/manipulated1.png' : '/Images/manipulated0.png'}
-                        alt="Toggle Manipulated"
-                        className="w-8 h-8"
-                      />
-                    </button>
-                    {item.manipulated && <span className="text-red-400 text-sm font-bold">Manipulated</span>}
-                  </div>
+                  <button onClick={handleManipulatedToggle} disabled={manipulatedLoading} title={item.manipulated ? 'Unmark as manipulated' : 'Mark as manipulated'} className="hover:opacity-80 transition disabled:opacity-40">
+                    <img src="/Images/manipulated1.png" alt="manipulated" className={`w-5 h-5 ${item.manipulated ? 'opacity-100' : 'opacity-20'}`} />
+                  </button>
                 ) : item.manipulated ? (
-                  <div className="flex items-center gap-1.5">
-                    <img src="/Images/manipulated1.png" alt="Manipulated" className="w-8 h-8" />
-                    <span className="text-red-400 text-sm font-bold">Manipulated</span>
-                  </div>
+                  <span className="flex items-center gap-1 text-red-400 text-xs font-bold">
+                    <img src="/Images/manipulated1.png" alt="" className="w-4 h-4" /> Manipulated
+                  </span>
                 ) : null}
               </div>
-              {item.description && <p className="text-slate-400 text-sm">{item.description}</p>}
-              <p className="text-slate-500 text-xs mt-2 font-mono">Asset ID: {item.assetId}</p>
-            </div>
-          </div>
-        </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-6">
-          <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
-            <div className="text-slate-400 text-xs uppercase tracking-wider mb-2">Best Price</div>
-            <div className="text-blue-400 text-3xl font-bold">
-              {item.currentPrice === -1 ? 'No Sellers' : item.currentPrice != null ? fmt(item.currentPrice) + ' R$' : 'N/A'}
-            </div>
-          </div>
-          <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
-            <div className="text-slate-400 text-xs uppercase tracking-wider mb-2">Current RAP</div>
-            <div className="text-green-400 text-3xl font-bold">
-              {item.currentRap != null ? fmt(item.currentRap) : 'N/A'} R$
-            </div>
-          </div>
-        </div>
+              <p className="text-slate-500 text-xs font-mono mb-3">ID: {item.assetId}</p>
 
-        {/* Chart */}
-        {chartData.length > 0 && (
-          <>
-            <h2 className="text-2xl font-bold text-white">Price History</h2>
-            <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
-              <ResponsiveContainer width="100%" height={450}>
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis
-                    dataKey="timestamp"
-                    stroke="#94a3b8"
-                    height={50}
-                    interval={Math.floor(chartData.length / 6)}
-                    tick={({ x, y, payload }: any) => {
-                      const parts = (payload.value as string).split(', ');
-                      return (
-                        <g transform={`translate(${x},${y})`}>
-                          <text x={0} y={0} dy={12} textAnchor="middle" fill="#94a3b8" fontSize={11}>{parts[0]}</text>
-                          <text x={0} y={0} dy={26} textAnchor="middle" fill="#64748b" fontSize={10}>{parts[1]}</text>
-                        </g>
-                      );
-                    }}
-                  />
-                  <YAxis
-                    stroke="#94a3b8"
-                    tick={{ fontSize: 11, fill: '#94a3b8' }}
-                    width={25}
-                    tickFormatter={formatY}
-                    domain={[0, ceiling]}
-                    ticks={yTicks}
-                  />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #a855f7', borderRadius: '8px' }}
-                    labelStyle={{ color: '#fff', marginBottom: 4, fontSize: 12, fontWeight: 'bold' }}
-                    formatter={(value: number, name: string) => [
-                      <span style={{ fontWeight: 700 }}>{fmt(value)}</span>,
-                      name === 'rap' ? 'RAP' : 'Price'
-                    ]}
-                  />
-                  {!hiddenLines.has('rap') && (
-                    <Line type="monotone" dataKey="rap" stroke="#34d399" strokeWidth={2} dot={false} name="rap" />
-                  )}
-                  {!hiddenLines.has('price') && (
-                    <Line type="monotone" dataKey="price" stroke="#3b82f6" strokeWidth={2} dot={false} name="price" />
-                  )}
-                </LineChart>
-              </ResponsiveContainer>
-              <div className="flex justify-center gap-6 pt-2">
-                {legendItems.map(li => (
-                  <button
-                    key={li.dataKey}
-                    onClick={() => toggleLine(li.dataKey)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all ${hiddenLines.has(li.dataKey) ? 'opacity-40 hover:opacity-60' : 'hover:opacity-80'}`}
-                  >
-                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: li.color }} />
-                    <span className="text-sm text-slate-300">{li.name}</span>
-                  </button>
-                ))}
+              <div className="flex gap-5 flex-wrap mb-4">
+                <div>
+                  <p className="text-slate-400 text-[11px] uppercase tracking-wider mb-0.5">Best Price</p>
+                  <p className="text-blue-400 font-bold text-lg leading-none">
+                    {item.currentPrice === -1
+                      ? <span className="text-slate-500 text-sm">No Sellers</span>
+                      : item.currentPrice != null ? `${fmt(item.currentPrice)} R$` : '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-400 text-[11px] uppercase tracking-wider mb-0.5">RAP</p>
+                  <p className="text-green-400 font-bold text-lg leading-none">{item.currentRap != null ? `${fmt(item.currentRap)} R$` : '—'}</p>
+                </div>
+                {item.currentPrice && item.currentRap && item.currentPrice > 0 && item.currentPrice < item.currentRap && (
+                  <div>
+                    <p className="text-slate-400 text-[11px] uppercase tracking-wider mb-0.5">Deal</p>
+                    <p className="text-purple-400 font-bold text-lg leading-none">{Math.round(((item.currentRap - item.currentPrice) / item.currentRap) * 100)}% off RAP</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button onClick={() => router.push(`/item/${item.assetId}/sales`)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-600/30 transition">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                  Sales History
+                </button>
+                <button onClick={handleWatchlistToggle} disabled={watchlistLoading} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition disabled:opacity-50 ${isWatchlisted ? 'bg-purple-600/30 border-purple-500/40 text-purple-300 hover:bg-red-500/20 hover:border-red-500/40 hover:text-red-300' : 'bg-blue-600/10 border-blue-500/20 text-blue-300 hover:bg-blue-600/20 hover:border-blue-400/40'}`}>
+                  {watchlistLoading
+                    ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                    : <img src="/Images/watchlist.png" alt="" className={`w-3.5 h-3.5 ${isWatchlisted ? '' : 'opacity-60'}`} />}
+                  {isWatchlisted ? 'Watchlisted' : 'Add to Watchlist'}
+                </button>
+                <a href={`https://www.roblox.com/catalog/${item.assetId}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 transition">
+                  View on Roblox ↗
+                </a>
               </div>
             </div>
-          </>
-        )}
+          </div>
+        </div>
 
-        {/* Market Trends */}
-        {item.marketTrends && (
-          <div className="grid grid-cols-3 gap-6">
-            <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
-              <div className="text-slate-400 text-xs uppercase tracking-wider mb-2">Trend</div>
-              <div className="text-blue-400 text-xl font-bold capitalize">{item.marketTrends.trend}</div>
-            </div>
-            <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
-              <div className="text-slate-400 text-xs uppercase tracking-wider mb-2">Volatility</div>
-              <div className="text-purple-400 text-xl font-bold">{(item.marketTrends.volatility * 100).toFixed(1)}%</div>
-            </div>
-            <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
-              <div className="text-slate-400 text-xs uppercase tracking-wider mb-2">Demand</div>
-              <div className="text-pink-400 text-xl font-bold">{item.marketTrends.estimatedDemand}/10</div>
+        {/* ── Price chart ─────────────────────────────────────────────── */}
+        {chartData.length > 1 && (
+          <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
+            <h2 className="text-base font-semibold text-white mb-5">Price History</h2>
+            <ResponsiveContainer width="100%" height={380}>
+              <LineChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis
+                  dataKey="ts"
+                  type="number"
+                  scale="time"
+                  domain={['dataMin', 'dataMax']}
+                  ticks={xTicks}
+                  tickFormatter={formatXTick}
+                  stroke="#475569"
+                  tick={{ fill: '#64748b', fontSize: 11 }}
+                  tickLine={false}
+                />
+                <YAxis ticks={yTicks} domain={[0, yNice]} tickFormatter={fmtY} stroke="#475569" tick={{ fill: '#64748b', fontSize: 11 }} tickLine={false} axisLine={false} width={52} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #7c3aed', borderRadius: '8px', fontSize: 12 }}
+                  labelFormatter={formatTooltipLabel}
+                  formatter={(value: number, name: string) => [`${fmt(value)} R$`, name === 'rap' ? 'RAP' : 'Price']}
+                />
+                {!hiddenLines.has('rap')   && <Line type="monotone" dataKey="rap"   stroke="#34d399" strokeWidth={2} dot={false} name="rap"   connectNulls={false} />}
+                {!hiddenLines.has('price') && <Line type="monotone" dataKey="price" stroke="#3b82f6" strokeWidth={2} dot={false} name="price" connectNulls={false} />}
+              </LineChart>
+            </ResponsiveContainer>
+            <div className="flex justify-center gap-5 pt-3 mt-1 border-t border-slate-700/50">
+              {legendItems.map(li => (
+                <button key={li.dataKey} onClick={() => setHiddenLines(prev => { const next = new Set(prev); next.has(li.dataKey) ? next.delete(li.dataKey) : next.add(li.dataKey); return next; })}
+                  className={`flex items-center gap-2 px-3 py-1 rounded-lg transition text-sm ${hiddenLines.has(li.dataKey) ? 'opacity-30 hover:opacity-60' : 'hover:opacity-80'}`}>
+                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: li.color }} />
+                  <span className="text-slate-300">{li.name}</span>
+                </button>
+              ))}
             </div>
           </div>
         )}
 
-        {/* Actions */}
-        <div className="flex gap-4">
-          <button
-            onClick={() => router.push(`/item/${item.assetId}/sales`)}
-            className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition"
-          >
-            View Sales History 📊
-          </button>
-          <button
-            onClick={handleWatchlistToggle}
-            disabled={watchlistLoading}
-            className={`flex-1 px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition ${isWatchlisted ? 'bg-gradient-to-r from-red-500 to-pink-600' : 'bg-gradient-to-r from-blue-500 to-purple-600'}`}
-          >
-            {watchlistLoading ? '...' : isWatchlisted ? 'Remove from Watchlist ❌' : 'Add to Watchlist 👁️'}
-          </button>
-          <a
-            href={`https://www.roblox.com/catalog/${item.assetId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition text-center"
-          >
-            View on Roblox 🔗
-          </a>
-        </div>
+        {/* ── Market trends ───────────────────────────────────────────── */}
+        {item.marketTrends && (
+          <div className="grid grid-cols-3 gap-4">
+            {[
+              { label: 'Trend',      value: item.marketTrends.trend,                              color: 'text-blue-400'   },
+              { label: 'Volatility', value: `${(item.marketTrends.volatility * 100).toFixed(1)}%`, color: 'text-purple-400' },
+              { label: 'Demand',     value: `${item.marketTrends.estimatedDemand}/10`,             color: 'text-pink-400'   },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="bg-slate-800 rounded-2xl border border-purple-500/20 p-5">
+                <p className="text-slate-400 text-[11px] uppercase tracking-wider mb-1">{label}</p>
+                <p className={`${color} font-bold text-lg capitalize`}>{value}</p>
+              </div>
+            ))}
+          </div>
+        )}
 
-        {/* ── Owners / Hoards Tabs ────────────────────────────────── */}
+        {/* ── Owners / Hoards ──────────────────────────────────────────── */}
         <div className="bg-slate-800 rounded-2xl border border-purple-500/20 overflow-hidden">
 
           {/* Tab bar */}
           <div className="flex border-b border-slate-700">
-            <button
-              onClick={() => setActiveTab('owners')}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-sm font-semibold border-b-2 transition-colors -mb-px ${
-                activeTab === 'owners'
-                  ? 'border-purple-500 text-white'
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              Owners
-              {!ownersLoading && (
-                <span className={`text-xs px-1.5 py-0.5 rounded-full ${activeTab === 'owners' ? 'bg-purple-500/20 text-purple-300' : 'bg-slate-700 text-slate-400'}`}>
-                  {owners.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('hoards')}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-4 text-sm font-semibold border-b-2 transition-colors -mb-px ${
-                activeTab === 'hoards'
-                  ? 'border-blue-500 text-white'
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Hoards
-            </button>
+            {([
+              { key: 'owners', label: 'Owners', badge: owners.length, accent: 'border-purple-500' },
+              { key: 'hoards', label: 'Hoards', badge: null,          accent: 'border-blue-500'   },
+            ] as const).map(tab => (
+              <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+                  activeTab === tab.key ? `${tab.accent} text-white` : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}>
+                {tab.label}
+                {tab.badge !== null && !ownersLoading && (
+                  <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${activeTab === tab.key ? 'bg-purple-500/20 text-purple-300' : 'bg-slate-700 text-slate-500'}`}>
+                    {tab.badge.toLocaleString()}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
 
-          {/* Owners tab */}
+          {/* ── Owners ────────────────────────────────────────────────── */}
           {activeTab === 'owners' && (
             <>
-              <div className="px-6 py-3 border-b border-slate-700">
-                <div className="flex items-center justify-between gap-4 flex-wrap">
-                  <p className="text-slate-400 text-sm">
-                    {scanning
-                      ? `Scanning… ${progress ? `${progress.processed}/${progress.total}` : ''}`
-                      : `${owners.length.toLocaleString()} tracked owners`
-                    }
-                  </p>
-
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <select
-                      value={ownerSort}
-                      onChange={e => setOwnerSort(e.target.value as any)}
-                      className="bg-slate-700 text-white text-xs px-3 py-1.5 rounded-lg border border-purple-500/20 focus:border-purple-500/50 outline-none"
-                    >
-                      <option value="serial">Serial ↑</option>
+              {/* Controls bar */}
+              <div className="px-5 py-3 border-b border-slate-700 space-y-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <span className="text-slate-400 text-sm">
+                    {scanning && progress ? `Scanning… ${progress.processed}/${progress.total}` : `${owners.length.toLocaleString()} tracked owners`}
+                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Sort */}
+                    <select value={ownerSort} onChange={e => setOwnerSort(e.target.value as any)}
+                      className="bg-slate-700 text-white text-xs px-3 py-1.5 rounded-lg border border-slate-600 focus:border-purple-500/60 outline-none">
+                      <option value="serial">Serial #</option>
                       <option value="username">Username A–Z</option>
                       <option value="recent">Recently Scanned</option>
                     </select>
 
-                    {isAdmin && (
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={handleScanOwners}
-                          disabled={scanning}
-                          className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-red-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-1.5 rounded-lg transition"
-                          title="Fetch all owners from Roblox and scan their full inventories"
-                        >
-                          {scanning ? (
-                            <>
-                              <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              Scanning...
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                              </svg>
-                              Scan All Owners
-                            </>
-                          )}
+                    {/* Page size */}
+                    <div className="flex items-center bg-slate-700/60 rounded-lg border border-slate-600 p-0.5">
+                      {([10, 25, 50, 100] as const).map(n => (
+                        <button key={n} onClick={() => setOwnerPageSize(n)}
+                          className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${ownerPageSize === n ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>
+                          {n}
                         </button>
+                      ))}
+                    </div>
 
+                    {/* Admin controls */}
+                    {isAdmin && (
+                      <>
+                        <button onClick={handleScanOwners} disabled={scanning || scanStarting}
+                          className="flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-red-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-3 py-1.5 rounded-lg transition">
+                          {scanning
+                            ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Scanning…</>
+                            : scanStarting ? 'Starting…'
+                            : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>Scan Owners</>}
+                        </button>
                         {scanning && !stopRequested && (
-                          <button
-                            onClick={handleStopScan}
-                            className="flex items-center gap-1.5 bg-slate-700 hover:bg-red-600/80 border border-red-500/40 hover:border-red-500 text-red-400 hover:text-white text-xs font-bold px-3 py-1.5 rounded-lg transition"
-                            title="Stop after current user completes"
-                          >
-                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                              <rect x="6" y="6" width="12" height="12" rx="1" />
-                            </svg>
-                            Stop
+                          <button onClick={handleStopScan} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-red-900/30 border border-red-500/30 text-red-300 hover:bg-red-900/50 transition">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" /></svg>Stop
                           </button>
                         )}
-
-                        {stopRequested && (
-                          <span className="text-yellow-400 text-xs py-1.5 flex items-center gap-1">
-                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M12 2a10 10 0 100 20A10 10 0 0012 2zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z"/>
-                            </svg>
-                            Stopping...
-                          </span>
-                        )}
-                      </div>
+                        {stopRequested && <span className="text-yellow-400 text-xs">Stopping…</span>}
+                      </>
                     )}
                   </div>
                 </div>
 
                 {/* Progress bar */}
                 {scanning && progress && (
-                  <div className="mt-4 space-y-2">
-                    <div className="flex justify-between items-center text-xs text-slate-400">
-                      <span>
-                        {progress.processed} / {progress.total} owners
-                        {progress.failed > 0 && (
-                          <span className="text-red-400 ml-2">· {progress.failed} failed</span>
-                        )}
-                      </span>
-                      <span className="flex items-center gap-3">
-                        {etaSec !== null && etaSec > 0 && (
-                          <span className="text-slate-500">~{fmtEta(etaSec)} left</span>
-                        )}
-                        <span className="text-purple-400 font-bold">{progressPct}%</span>
-                      </span>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs text-slate-500">
+                      <span>{progress.processed}/{progress.total}{progress.failed > 0 && <span className="text-red-400 ml-2">{progress.failed} failed</span>}</span>
+                      <span className="flex gap-3">{etaSec !== null && etaSec > 0 && <span>~{fmtEta(etaSec)} left</span>}<span className="text-purple-400 font-bold">{progressPct}%</span></span>
                     </div>
                     <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className="bg-gradient-to-r from-orange-500 to-red-500 h-1.5 rounded-full transition-all duration-500"
-                        style={{ width: `${progressPct}%` }}
-                      />
+                      <div className="bg-gradient-to-r from-orange-500 to-red-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${progressPct}%` }} />
                     </div>
-                    {progress.currentUser && (
-                      <div className="text-slate-500 text-xs truncate">
-                        Scanning: <span className="text-slate-300">{progress.currentUser}</span>
-                      </div>
-                    )}
+                    {progress.currentUser && <p className="text-slate-500 text-xs truncate">Scanning: <span className="text-slate-300">{progress.currentUser}</span></p>}
                   </div>
                 )}
 
                 {scanMessage && (
-                  <div className={`mt-3 text-sm px-3 py-2 rounded-lg ${
-                    scanMessage.ok
-                      ? 'bg-green-500/10 text-green-400 border border-green-500/20'
-                      : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                  }`}>
+                  <div className={`text-xs px-3 py-2 rounded-lg ${scanMessage.ok ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
                     {scanMessage.text}
                   </div>
                 )}
               </div>
 
+              {/* Table body */}
               {ownersLoading ? (
-                <div className="px-6 py-12 text-center">
-                  <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                  <p className="text-slate-400 text-sm">Loading owners...</p>
+                <div className="py-14 text-center">
+                  <div className="w-7 h-7 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-slate-400 text-sm">Loading owners…</p>
                 </div>
               ) : sortedOwners.length === 0 ? (
-                <div className="px-6 py-12 text-center">
-                  <div className="text-4xl mb-3">👤</div>
-                  <p className="text-slate-400">No tracked owners found for this item.</p>
-                  <p className="text-slate-500 text-sm mt-1">
-                    {isAdmin
-                      ? 'Click "Scan All Owners" above to fetch and scan every owner\'s inventory.'
-                      : "Owners appear once a player's inventory has been scanned."}
-                  </p>
+                <div className="py-14 text-center">
+                  <div className="text-3xl mb-3">👤</div>
+                  <p className="text-slate-400 text-sm">No tracked owners found.</p>
+                  {isAdmin && <p className="text-slate-500 text-xs mt-1">Click "Scan Owners" above to begin.</p>}
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-slate-700/30">
-                      <tr className="border-b border-slate-700">
-                        <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">Player</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">Serial</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">UAID</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">Last Seen</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-700">
-                      {sortedOwners.map(owner => {
-                        const tier = getSerialTier(owner.serialNumber);
-                        return (
-                          <tr key={owner.userAssetId} className="hover:bg-slate-700/20 transition-colors">
-                            <td className="px-6 py-4">
-                              <a href={`/player/${owner.robloxUserId}`} className="flex items-center gap-3 group">
-                                {owner.avatarUrl ? (
-                                  <img src={owner.avatarUrl} alt={owner.username} className="w-10 h-10 rounded-full object-cover flex-shrink-0 ring-2 ring-purple-500/60" />
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-700/30 border-b border-slate-700">
+                        <tr><Th>Player</Th><Th>Serial</Th><Th>UAID</Th><Th>Last Seen</Th></tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-700/50">
+                        {pagedOwners.map(owner => {
+                          // ✅ ghost serial fix
+                          const tier = getGhostTier(item.isLimitedUnique, owner.serialNumber)
+                                    ?? getSerialTier(owner.serialNumber);
+                          return (
+                            <tr key={owner.userAssetId} className="hover:bg-slate-700/20 transition-colors">
+                              <td className="px-5 py-3.5">
+                                <a href={`/player/${owner.robloxUserId}`} className="flex items-center gap-3 group">
+                                  {owner.avatarUrl
+                                    ? <img src={owner.avatarUrl} alt={owner.username} className="w-9 h-9 rounded-full object-cover flex-shrink-0 ring-2 ring-purple-500/50" />
+                                    : <div className="w-9 h-9 rounded-full bg-purple-700 flex items-center justify-center text-white font-bold text-sm flex-shrink-0 ring-2 ring-purple-500/50">{owner.username[0]?.toUpperCase()}</div>}
+                                  <div>
+                                    <p className="text-sm font-semibold text-white group-hover:text-purple-300 transition-colors leading-tight">{owner.displayName}</p>
+                                    {owner.displayName !== owner.username && <p className="text-slate-500 text-xs">@{owner.username}</p>}
+                                  </div>
+                                </a>
+                              </td>
+                              <td className="px-5 py-3.5">
+                                {/* ✅ ghost renders #??? badge instead of "—" */}
+                                {tier === 'ghost' ? (
+                                  <SpecialSerialText serial={null} tier="ghost" variant="badge" />
+                                ) : owner.serialNumber !== null ? (
+                                  tier
+                                    ? <SpecialSerialText serial={owner.serialNumber} tier={tier} variant="badge" />
+                                    : <span className="text-orange-400 font-bold text-sm">#{owner.serialNumber}</span>
                                 ) : (
-                                  <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0 ring-2 ring-purple-500/60">
-                                    {owner.username[0]?.toUpperCase()}
-                                  </div>
+                                  <span className="text-slate-600">—</span>
                                 )}
-                                <div>
-                                  <div className="text-white font-semibold group-hover:text-purple-400 transition-colors">
-                                    {owner.displayName}
-                                  </div>
-                                  {owner.displayName !== owner.username && (
-                                    <div className="text-slate-500 text-xs">@{owner.username}</div>
-                                  )}
-                                </div>
-                              </a>
-                            </td>
-                            <td className="px-6 py-4">
-                              {owner.serialNumber !== null ? (
-                                tier
-                                  ? <SpecialSerialText serial={owner.serialNumber} tier={tier} variant="badge" />
-                                  : <span className="text-orange-400 font-bold text-sm">#{owner.serialNumber.toLocaleString()}</span>
-                              ) : (
-                                <span className="text-slate-500 text-sm">—</span>
-                              )}
-                            </td>
-                            <td className="px-6 py-4">
-                              <a
-                                href={`/uaid/${owner.userAssetId}`}
-                                className="font-mono text-purple-300 text-xs bg-slate-700/50 px-2 py-1 rounded border border-purple-500/20 hover:border-purple-400/50 transition-colors"
-                              >
-                                {owner.userAssetId}
-                              </a>
-                            </td>
-                            <td className="px-6 py-4 text-slate-400 text-sm">
-                              {new Date(owner.scannedAt).toLocaleDateString('en-US', {
-                                month: 'short', day: 'numeric', year: 'numeric',
-                              })}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                              </td>
+                              <td className="px-5 py-3.5">
+                                <a href={`/uaid/${owner.userAssetId}`} className="font-mono text-purple-300 text-xs bg-slate-700/50 px-2 py-1 rounded border border-purple-500/20 hover:border-purple-400/50 transition-colors">
+                                  {owner.userAssetId}
+                                </a>
+                              </td>
+                              <td className="px-5 py-3.5 text-slate-500 text-xs">
+                                {new Date(owner.scannedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Pagination */}
+                  <div className="px-5 py-3 border-t border-slate-700/60">
+                    <Pagination
+                      page={ownerPage}
+                      totalPages={ownerTotalPages}
+                      totalItems={sortedOwners.length}
+                      pageSize={ownerPageSize}
+                      onPageChange={setOwnerPage}
+                    />
+                  </div>
+                </>
               )}
             </>
           )}
 
-          {/* Hoards tab */}
-          {activeTab === 'hoards' && (
-            <HoardsSection itemId={itemId} embedded />
-          )}
-
+          {/* ── Hoards ────────────────────────────────────────────────── */}
+          {activeTab === 'hoards' && <HoardsSection itemId={itemId} embedded />}
         </div>
 
       </div>

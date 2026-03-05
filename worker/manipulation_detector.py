@@ -34,7 +34,7 @@ def detect_manipulation(cursor):
 # ── Rule 1: suspicious RAP growth ────────────────────────────────────────────
 def _flag_rap_growth(cursor):
     cursor.execute("""
-        WITH window AS (
+        WITH rap_window AS (
             SELECT
                 "itemId",
                 FIRST_VALUE(rap) OVER (
@@ -55,7 +55,7 @@ def _flag_rap_growth(cursor):
         ),
         agg AS (
             SELECT DISTINCT "itemId", rap_start, rap_end, hrs
-            FROM window
+            FROM rap_window
         )
         SELECT
             i."assetId", i.name, i.manipulated,

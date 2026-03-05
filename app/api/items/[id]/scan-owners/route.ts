@@ -120,6 +120,7 @@ async function processOwnersFromQueue(
 ) {
   let processed = 0;
   let failed = 0;
+  let skipped = 0;
 
   while (true) {
     if (queue.length === 0) {
@@ -139,12 +140,29 @@ async function processOwnersFromQueue(
 
     const job = await prisma.scanJob.findUnique({ where: { id: jobId }, select: { total: true } });
     const total = job?.total ?? 0;
-    const pct = total > 0 ? Math.round((processed / total) * 100) : '?';
-    console.log(`\n👤 [${processed + 1}/${total || '?'}] (${pct}%) — userId: ${robloxUserId}`);
+    const pct = total > 0 ? Math.round(((processed + skipped) / total) * 100) : '?';
+    console.log(`\n👤 [${processed + skipped + 1}/${total || '?'}] (${pct}%) — userId: ${robloxUserId}`);
 
-    await updateProgress(jobId, { currentUser: `userId:${robloxUserId}`, processed, failed });
+    await updateProgress(jobId, { currentUser: `userId:${robloxUserId}`, processed: processed + skipped, failed });
 
     try {
+      // ─── SKIP CHECK: if this user already has a snapshot, we already know
+      //     their inventory — no need to re-scan them.
+      const existingSnapshot = await prisma.inventorySnapshot.findFirst({
+        where: { userId: BigInt(robloxUserId) },
+        select: { id: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (existingSnapshot) {
+        skipped++;
+        await updateProgress(jobId, { processed: processed + skipped });
+        console.log(`   ⏭️ Already scanned (last: ${existingSnapshot.createdAt.toLocaleDateString()}) — skipping`);
+        // No delay needed since we didn't hit any external APIs
+        continue;
+      }
+
+      // ─── NEW user: fetch their info and scan their inventory ───────────
       let username = `user_${robloxUserId}`;
       let displayName = username;
       let avatarUrl: string | null = null;
@@ -174,12 +192,12 @@ async function processOwnersFromQueue(
         create: { robloxUserId: BigInt(robloxUserId), username, displayName, avatarUrl, description },
       });
 
-      console.log(`   📦 Scanning inventory for ${username}...`);
+      console.log(`   📦 New user — scanning inventory for ${username}...`);
       await saveInventorySnapshot(robloxUserId, robloxUserId);
 
       processed++;
-      await updateProgress(jobId, { processed, failed });
-      console.log(`   ✅ Done: ${username} | ${processed}/${total || '?'}`);
+      await updateProgress(jobId, { processed: processed + skipped, failed });
+      console.log(`   ✅ Done: ${username} | ${processed} scanned, ${skipped} skipped`);
 
       await delay(2500);
     } catch (err) {
@@ -190,7 +208,7 @@ async function processOwnersFromQueue(
     }
   }
 
-  return { processed, failed };
+  return { processed, skipped, failed };
 }
 
 // ─── Main scan orchestrator ────────────────────────────────────────────────
@@ -202,7 +220,7 @@ async function scanOwnersStreaming(assetId: string, jobId: string) {
   const queue: any[] = [];
   const isDone = { value: false };
 
-  const [, { processed, failed }] = await Promise.all([
+  const [, { processed, skipped, failed }] = await Promise.all([
     fetchPagesIntoQueue(assetId, jobId, queue, isDone),
     processOwnersFromQueue(assetId, jobId, queue, isDone),
   ]);
@@ -211,12 +229,12 @@ async function scanOwnersStreaming(assetId: string, jobId: string) {
   const wasStopped = finalJob?.status === 'stopped';
 
   console.log(`\n${wasStopped ? '🛑 SCAN STOPPED' : '🎉 SCAN COMPLETE'} — Asset: ${assetId}`);
-  console.log(`   ✅ Processed: ${processed} | ❌ Failed: ${failed}`);
+  console.log(`   ✅ Scanned: ${processed} | ⏭️ Skipped: ${skipped} | ❌ Failed: ${failed}`);
   console.log(`=========================================\n`);
 
   await prisma.scanJob.update({
     where: { id: jobId },
-    data: { status: wasStopped ? 'stopped' : 'done', processed, failed, currentUser: null },
+    data: { status: wasStopped ? 'stopped' : 'done', processed: processed + skipped, failed, currentUser: null },
   });
 
   // Clean up old completed jobs after 60s
@@ -301,7 +319,7 @@ export async function POST(
     console.log('🔴 returning success');
     return NextResponse.json({
       success: true,
-      message: `Scan started — pages are fetched and owners processed simultaneously.`,
+      message: `Scan started — already-known owners will be skipped automatically.`,
     });
 
   } catch (error) {
@@ -334,7 +352,7 @@ export async function GET(
 
   return NextResponse.json({
     scanning: job !== null,
-    stopRequested: false, // stop is now instant — sets status to 'stopped' directly
+    stopRequested: false,
     progress: recentJob ? {
       total: recentJob.total,
       processed: recentJob.processed,

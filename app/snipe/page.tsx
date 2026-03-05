@@ -229,9 +229,10 @@ export default function SnipePage() {
             assetId: deal.assetId,
             name: deal.name,
             imageUrl: deal.imageUrl,
-            price: deal.bestPrice,
+            price: deal.bestPrice,           // used as expectedPrice in the extension
             rap: deal.rap,
             deal: deal.percent,
+            maxPrice: cfg.maxPrice ?? null,  // user's hard budget cap
           }}));
 
           break;

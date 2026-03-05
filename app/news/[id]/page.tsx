@@ -1,10 +1,12 @@
+// app/news/[id]/page.tsx
+
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getUserSession } from '@/lib/userSession';
-import { hasRole, canDeletePost } from '@/lib/roles';
+import { canDeletePost } from '@/lib/roles';
 
 interface Post {
   id: number;
@@ -13,6 +15,7 @@ interface Post {
   content: string;
   excerpt: string | null;
   createdAt: string;
+  authorId: string;
   author: { username: string; avatarUrl: string | null; role: string };
 }
 
@@ -22,10 +25,12 @@ export default function NewsPostPage() {
   const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState('user');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const session = getUserSession();
     if (session) {
+      setCurrentUserId(session.robloxUserId);
       fetch(`/api/user/role?userId=${session.robloxUserId}`)
         .then(r => r.json())
         .then(d => setUserRole(d.role ?? 'user'))
@@ -34,7 +39,13 @@ export default function NewsPostPage() {
 
     fetch(`/api/news/${id}`)
       .then(r => r.ok ? r.json() : null)
-      .then(data => setPost(data))
+      .then(data => {
+        setPost(data);
+        // Mark as read — fire and forget
+        if (data) {
+          fetch(`/api/news/${id}/read`, { method: 'POST' }).catch(() => {});
+        }
+      })
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -54,7 +65,7 @@ export default function NewsPostPage() {
           <Link href="/news" className="text-slate-400 hover:text-white text-sm transition">
             ← Back to News
           </Link>
-          {canDeletePost(userRole, post.author.role) && (
+          {canDeletePost(userRole, post.author.role, currentUserId, post.authorId) && (
             <button
               onClick={handleDelete}
               className="text-red-400 hover:text-red-300 text-sm px-3 py-1 rounded-lg border border-red-500/20 hover:border-red-500/40 transition"

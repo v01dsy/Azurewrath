@@ -72,6 +72,7 @@ model User {
   pushSubscriptions    PushSubscription[]
   snipeConfigs         SnipeConfig[]
   posts                Post[]
+  newsReads            NewsRead[]
 }
 
 model InventorySnapshot {
@@ -216,14 +217,26 @@ model Post {
   published      Boolean   @default(false)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
-  // Soft delete
   deletedAt      DateTime?
   deletedById    BigInt?
   deletedReason  String?
   author         User      @relation(fields: [authorId], references: [robloxUserId], onDelete: Cascade)
+  newsReads      NewsRead[]
 
   @@index([slug])
   @@index([authorId])
   @@index([createdAt])
   @@index([deletedAt])
+}
+
+model NewsRead {
+  userId    BigInt
+  postId    Int
+  readAt    DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [robloxUserId], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+  @@index([userId])
+  @@index([postId])
 }

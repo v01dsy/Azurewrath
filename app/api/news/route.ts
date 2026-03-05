@@ -31,5 +31,12 @@ export async function POST(req: NextRequest) {
     data: { title, slug, content, excerpt, published: published ?? false, authorId: session.user.robloxUserId },
   });
 
+  // Mark the author as already having read their own post
+  if (published) {
+    await prisma.newsRead.create({
+      data: { userId: session.user.robloxUserId, postId: post.id },
+    });
+  }
+
   return NextResponse.json({ id: post.id }, { status: 201 });
 }

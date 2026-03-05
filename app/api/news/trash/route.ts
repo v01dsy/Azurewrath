@@ -6,17 +6,30 @@ import { hasRole } from '@/lib/roles';
 
 async function getSession(req: NextRequest) {
   const sessionToken = req.cookies.get('session')?.value;
-  if (!sessionToken) return null;
-  return prisma.session.findUnique({
-    where: { sessionToken },
-    include: { user: true },
-  });
+  if (sessionToken) {
+    const s = await prisma.session.findUnique({
+      where: { sessionToken },
+      include: { user: true },
+    });
+    if (s && s.expires > new Date()) return s;
+  }
+
+  const userId = req.nextUrl.searchParams.get('userId');
+  if (userId) {
+    const user = await prisma.user.findUnique({
+      where: { robloxUserId: BigInt(userId) },
+    });
+    if (user) return { user };
+  }
+
+  return null;
 }
 
 // GET /api/news/trash — list all soft-deleted posts (owner only)
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
-  if (!session || session.expires < new Date()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if ('expires' in session && session.expires < new Date()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!hasRole(session.user.role, 'owner')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const posts = await prisma.post.findMany({
@@ -47,7 +60,8 @@ export async function GET(req: NextRequest) {
 // PATCH /api/news/trash — restore a post (owner only)
 export async function PATCH(req: NextRequest) {
   const session = await getSession(req);
-  if (!session || session.expires < new Date()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if ('expires' in session && session.expires < new Date()) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!hasRole(session.user.role, 'owner')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { id } = await req.json();

@@ -23,19 +23,21 @@ export default function NewsTrashPage() {
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState<number | null>(null);
   const [authorized, setAuthorized] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null); // ← add this
 
   useEffect(() => {
     const session = getUserSession();
     if (!session) { router.push('/'); return; }
+    setUserId(session.robloxUserId); // ← add this
     fetch(`/api/user/role?userId=${session.robloxUserId}`)
       .then(r => r.json())
       .then(d => {
         if (d.role !== 'owner') { router.push('/news'); return; }
         setAuthorized(true);
-        return fetch('/api/news/trash');
+        return fetch(`/api/news/trash?userId=${session.robloxUserId}`);
       })
       .then(r => r?.json())
-      .then(data => { if (data) setPosts(data); })
+      .then(data => { if (Array.isArray(data)) setPosts(data); })
       .finally(() => setLoading(false));
   }, [router]);
 
@@ -45,7 +47,7 @@ export default function NewsTrashPage() {
     const res = await fetch('/api/news/trash', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id, userId }),
     });
     if (res.ok) setPosts(p => p.filter(post => post.id !== id));
     setRestoring(null);

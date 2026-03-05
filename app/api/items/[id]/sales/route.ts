@@ -74,7 +74,9 @@ export async function GET(
         sellerUsername: undefined,
         buyerUsername: undefined,
         serialNumber: undefined,
-        saleDate: sale.saleDate.toISOString().replace('T', ' ').replace('Z', ''),
+        // FIX: Keep the full ISO string with Z so the frontend parses it as UTC,
+        // not local time (which was causing a 5-hour offset).
+        saleDate: sale.saleDate.toISOString(),
         rapAfterSale: sale.newRap,
         rapBeforeSale: sale.oldRap,
         rapAtSale: sale.newRap,

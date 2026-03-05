@@ -5,8 +5,9 @@ Call detect_manipulation(cursor) at the end of save_results_to_db().
 
 Rules:
   MANIPULATION FLAG (rap_growth)        : RAP grew >= RAP_GROWTH_PCT% within TIME_WINDOW_HRS hours.
-  MANIPULATION FLAG (sale_above_best)   : A sale was implied at >= PRICE_ABOVE_BEST_PCT% above
-                                          the item's best price at the time of sale.
+  MANIPULATION FLAG (sale_above_best)   : The implied sale price was >= PRICE_ABOVE_BEST_PCT% above
+                                          the item's best listed price at the time of sale.
+                                          Implied sale price = oldRap + ((newRap - oldRap) * 10)
   UNMARK SUGGESTION                     : Item is marked manipulated AND current RAP has fallen
                                           back to or below the RAP when it was originally marked.
 
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # ── Thresholds (tune as needed) ──────────────────────────────────────────────
 RAP_GROWTH_PCT       = 25.0   # % RAP growth within window = suspicious
-PRICE_ABOVE_BEST_PCT = 20.0   # % implied sale above best price = suspicious
+PRICE_ABOVE_BEST_PCT = 5.0    # % implied sale above best price = suspicious
 TIME_WINDOW_HRS      = 48.0   # look-back window in hours
 MIN_RAP              = 5_000  # ignore very cheap items (noise)
 
@@ -112,12 +113,20 @@ def _flag_rap_growth(cursor):
 
 # ── Rule 2: sale implied above best price ─────────────────────────────────────
 def _flag_sale_above_best_price(cursor):
+    # FIX: The old query checked `newRap > best_price_at_sale`, which almost never
+    # passes because newRap (e.g. 2,545) is usually LESS than the listing price
+    # (e.g. 3,398). The correct check is whether the IMPLIED SALE PRICE exceeded
+    # the best listing price by >= PRICE_ABOVE_BEST_PCT%.
+    # Implied sale price formula: oldRap + ((newRap - oldRap) * 10)
     cursor.execute("""
         WITH recent_sales AS (
             SELECT
                 s."itemId",
+                s."oldRap",
                 s."newRap",
                 s."saleDate",
+                -- Implied sale price from RAP change
+                (s."oldRap" + ((s."newRap" - s."oldRap") * 10)) AS implied_sale_price,
                 (
                     SELECT ph.price
                     FROM "PriceHistory" ph
@@ -137,16 +146,17 @@ def _flag_sale_above_best_price(cursor):
             i.name,
             i.manipulated,
             rs."newRap",
+            rs.implied_sale_price,
             rs.best_price_at_sale,
-            ROUND((((rs."newRap" - rs.best_price_at_sale) / NULLIF(rs.best_price_at_sale, 0)) * 100)::numeric, 2) AS overpay_pct,
+            ROUND((((rs.implied_sale_price - rs.best_price_at_sale) / NULLIF(rs.best_price_at_sale, 0)) * 100)::numeric, 2) AS overpay_pct,
             rs."saleDate"
         FROM recent_sales rs
         JOIN "Item" i ON i."assetId" = rs."itemId"
         WHERE
             rs.best_price_at_sale IS NOT NULL
             AND rs.best_price_at_sale >= %s
-            AND rs."newRap" > rs.best_price_at_sale
-            AND ((rs."newRap" - rs.best_price_at_sale) / NULLIF(rs.best_price_at_sale, 0)) * 100 >= %s
+            AND rs.implied_sale_price > rs.best_price_at_sale
+            AND ((rs.implied_sale_price - rs.best_price_at_sale) / NULLIF(rs.best_price_at_sale, 0)) * 100 >= %s
             AND NOT i.manipulated
     """, (TIME_WINDOW_HRS, MIN_RAP, PRICE_ABOVE_BEST_PCT))
 
@@ -154,7 +164,7 @@ def _flag_sale_above_best_price(cursor):
     if not rows:
         return
 
-    for asset_id, name, _, new_rap, best_price, overpay_pct, sale_date in rows:
+    for asset_id, name, _, new_rap, implied_price, best_price, overpay_pct, sale_date in rows:
         cursor.execute("""
             SELECT 1 FROM "ManipulationFlag"
             WHERE "assetId" = %s AND "flagType" = 'manipulation' AND status = 'pending'
@@ -174,7 +184,7 @@ def _flag_sale_above_best_price(cursor):
 
         reason = (
             f"Sale implied {overpay_pct:.1f}% above best price "
-            f"(best: {int(best_price):,} R$ → new RAP: {int(new_rap):,} R$)"
+            f"(best: {int(best_price):,} R$ → implied sale: {int(implied_price):,} R$, new RAP: {int(new_rap):,} R$)"
         )
 
         cursor.execute("""
@@ -207,7 +217,7 @@ def _suggest_unmarks(cursor):
     if not rows:
         return
 
-    for asset_id, name, manip_rap, current_rap in rows:
+    for asset_id, name, manipulated_rap, current_rap in rows:
         cursor.execute("""
             SELECT 1 FROM "ManipulationFlag"
             WHERE "assetId" = %s AND "flagType" = 'unmark_suggestion' AND status = 'pending'
@@ -217,8 +227,8 @@ def _suggest_unmarks(cursor):
             continue
 
         reason = (
-            f"RAP ({int(current_rap):,} R$) has fallen back to or below the level "
-            f"when it was marked ({int(manip_rap):,} R$). May no longer be manipulated."
+            f"RAP has returned to or below the manipulated RAP "
+            f"(marked at: {int(manipulated_rap):,} R$, current: {int(current_rap):,} R$)"
         )
 
         cursor.execute("""

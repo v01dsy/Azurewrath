@@ -336,7 +336,7 @@ export default function ItemPage() {
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white px-6 py-10 pt-28 ">
+    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white px-6 py-10 pt-28 -mt-20 ">
       <div className="max-w-5xl mx-auto space-y-6">
 
         {/* Back */}

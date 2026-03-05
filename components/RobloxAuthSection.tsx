@@ -15,7 +15,6 @@ export default function RobloxAuthSection() {
     setChecking(true);
     setStatus(null);
     try {
-      // Search for user
       const res = await fetch(`/api/roblox/search-user?username=${encodeURIComponent(username)}`);
       if (!res.ok) {
         setStatus("Roblox search API error: " + res.status);
@@ -35,7 +34,6 @@ export default function RobloxAuthSection() {
         return;
       }
 
-      // Fetch user profile
       const profileRes = await fetch(`/api/roblox/user-profile?userId=${encodeURIComponent(userId)}`);
       if (!profileRes.ok) {
         setStatus("Roblox profile API error: " + profileRes.status);
@@ -52,12 +50,10 @@ export default function RobloxAuthSection() {
       if (profileData.description.includes(code)) {
         setStatus("Authentication successful!");
 
-        // Fetch avatar
         const headshotRes = await fetch(`/api/roblox/headshot?userId=${userId}`);
         const headshotData = await headshotRes.json();
         const avatarUrl = headshotData.imageUrl || null;
 
-        // Create proper server session via bio callback
         const sessionRes = await fetch("/api/auth/bio/callback", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -77,9 +73,6 @@ export default function RobloxAuthSection() {
           return;
         }
 
-        const sessionData = await sessionRes.json();
-
-        // Store user session client-side
         setUserSession({
           robloxUserId: userId,
           username: profileData.name,
@@ -101,29 +94,46 @@ export default function RobloxAuthSection() {
   };
 
   return (
-    <div className="bg-slate-700 rounded-lg p-6 border border-purple-500/10 mb-8">
-      <h3 className="text-xl font-bold text-white mb-2">Roblox Account Authentication</h3>
-      <div className="mb-2 text-purple-300">
+    <div>
+      <h3 className="text-sm font-bold text-white mb-3">Roblox Account Authentication</h3>
+      <p className="text-slate-400 text-sm mb-4">
         Enter your Roblox username and set your bio to{" "}
-        <span className="font-mono bg-slate-800 px-2 py-1 rounded">{code}</span> to verify ownership.
-      </div>
-      <div className="flex gap-2 mb-2">
+        <span
+          className="font-mono text-white px-2 py-0.5 rounded text-xs"
+          style={{ backgroundColor: '#1e1e1e', border: '1px solid rgba(255,255,255,0.15)' }}
+        >
+          {code}
+        </span>{" "}
+        to verify ownership.
+      </p>
+      <div className="flex gap-2 mb-3">
         <input
           type="text"
           value={username}
           onChange={e => setUsername(e.target.value)}
           placeholder="Roblox username"
-          className="px-4 py-2 rounded bg-slate-800 text-white border border-purple-500/20 focus:border-purple-500 outline-none"
+          className="flex-1 px-4 py-2 rounded-lg text-white text-sm outline-none transition"
+          style={{
+            backgroundColor: '#1e1e1e',
+            border: '1px solid rgba(255,255,255,0.1)',
+          }}
+          onFocus={e => (e.target.style.borderColor = 'rgba(139,92,246,0.6)')}
+          onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
         />
+        {/* Button color unchanged */}
         <button
           onClick={handleCheck}
           disabled={checking || !username}
-          className="px-6 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-200 shadow-lg"
+          className="px-5 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-200 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm"
         >
           {checking ? "Checking..." : "Authenticate"}
         </button>
       </div>
-      {status && <div className="mt-2 text-purple-300">{status}</div>}
+      {status && (
+        <p className={`text-sm mt-1 ${status.includes('successful') ? 'text-green-400' : 'text-slate-400'}`}>
+          {status}
+        </p>
+      )}
     </div>
   );
 }

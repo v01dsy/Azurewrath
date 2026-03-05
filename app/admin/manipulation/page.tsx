@@ -57,10 +57,18 @@ function Sparkline({ data }: { data: PricePoint[] }) {
           formatter={(v: number) => [`${fmt(v)} R$`, 'RAP']}
           labelFormatter={() => ''}
         />
-        <Line type="monotone" dataKey="rap" stroke="#a78bfa" strokeWidth={2} dot={false} isAnimationActive={false} />
+        <Line type="linear" dataKey="rap" stroke="#a78bfa" strokeWidth={2} dot={false} isAnimationActive={false} />
       </LineChart>
     </ResponsiveContainer>
   );
+}
+
+function FlagIcon({ size = 14 }: { size?: number }) {
+  return <img src="/Images/flag.png" alt="" style={{ width: size, height: size, objectFit: 'contain', display: 'inline-block' }} />;
+}
+
+function UnmarkIcon({ size = 14 }: { size?: number }) {
+  return <img src="/Images/unmark.png" alt="" style={{ width: size, height: size, objectFit: 'contain', display: 'inline-block' }} />;
 }
 
 function FlagCard({ flag, onAction, acting }: {
@@ -76,24 +84,24 @@ function FlagCard({ flag, onAction, acting }: {
   const isSaleAboveBest = flag.detectionMethod === 'sale_above_best';
 
   return (
-    <div className={`rounded-2xl border p-5 space-y-4 transition ${
-      isManip ? 'bg-red-950/20 border-red-500/30' : 'bg-emerald-950/20 border-emerald-500/30'
-    }`}>
+    <div className="rounded-2xl border border-slate-700/60 bg-slate-900/80 p-5 space-y-4 transition hover:border-slate-600/70">
       {/* Header */}
       <div className="flex items-start gap-4">
         {flag.item.imageUrl && (
-          <img src={flag.item.imageUrl} alt={flag.item.name} className="w-14 h-14 rounded-xl object-cover flex-shrink-0 border border-slate-700" />
+          <img
+            src={flag.item.imageUrl}
+            alt={flag.item.name}
+            className="rounded-xl object-cover border border-slate-700"
+            style={{ width: 96, height: 96, minWidth: 96, minHeight: 96, flexShrink: 0 }}
+          />
         )}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-              isManip
-                ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-            }`}>
-              {isManip ? '🚩 Possible Manipulation' : '💡 Unmark Suggestion'}
+          {/* Icon + Flagged label + time */}
+          <div className="flex items-center gap-2 mb-1">
+            {isManip ? <FlagIcon size={16} /> : <UnmarkIcon size={16} />}
+            <span className={`text-xs font-bold ${isManip ? 'text-red-300' : 'text-emerald-300'}`}>
+              {isManip ? 'Flagged' : 'Unmark Suggested'}
             </span>
-            {/* Detection method badge */}
             {isRapGrowth && (
               <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-500/20 text-orange-300 border border-orange-500/30">
                 RAP Growth
@@ -104,55 +112,59 @@ function FlagCard({ flag, onAction, acting }: {
                 Sale Above Best Price
               </span>
             )}
-            <span className="text-slate-500 text-xs">{timeAgo(flag.createdAt)}</span>
+            <span className="text-slate-500 text-xs ml-auto">{timeAgo(flag.createdAt)}</span>
           </div>
           <Link
             href={`/item/${flag.assetId}`}
             target="_blank"
-            className="text-white font-bold text-lg hover:text-purple-300 transition truncate block mt-1"
+            className="text-white font-bold text-lg hover:text-purple-300 transition truncate block"
           >
             {flag.item.name}
           </Link>
           <p className="text-slate-400 text-sm mt-0.5">{flag.reason}</p>
+
+          {/* Stats inline */}
+          <div className="flex items-center gap-4 mt-3 flex-wrap">
+            {flag.item.manipulatedRap != null && flag.flagType === 'unmark_suggestion' && (
+              <>
+                <div className="w-px h-8 bg-slate-700" />
+                <div>
+                  <p className="text-slate-500 text-xs uppercase tracking-wider">Marked At</p>
+                  <p className="text-amber-300 font-bold text-sm">{fmt(flag.item.manipulatedRap)} R$</p>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Stats row — adapts based on detection method */}
-      <div className="grid grid-cols-3 gap-3">
-        {/* RAP at Flag — always shown */}
-        <div className="bg-slate-800/60 rounded-lg p-3 text-center">
-          <p className="text-slate-500 text-xs uppercase tracking-wider mb-1">
-            {isSaleAboveBest ? 'New RAP' : 'RAP at Flag'}
-          </p>
-          <p className="text-white font-bold text-sm">{fmt(flag.rapAtFlag)} R$</p>
-        </div>
-
-        {/* Growth % for rap_growth, Overpay % for sale_above_best */}
-        {flag.rapGrowthPct != null && (
-          <div className="bg-red-900/30 rounded-lg p-3 text-center">
-            <p className="text-slate-500 text-xs uppercase tracking-wider mb-1">
-              {isSaleAboveBest ? 'Overpay' : 'Growth'}
-            </p>
-            <p className="text-red-300 font-bold text-sm">+{flag.rapGrowthPct.toFixed(1)}%</p>
+      {/* Stats bubbles */}
+      {(() => {
+        const latestPrice = flag.item.priceHistory.find(p => p.price != null)?.price ?? null;
+        return (
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-slate-700/50 border border-slate-600/40 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+              <p className="text-slate-300 text-sm uppercase tracking-wider font-bold whitespace-nowrap">{isSaleAboveBest ? 'New RAP' : 'RAP at Flag'}</p>
+              <p className="text-white font-bold text-base whitespace-nowrap">{fmt(flag.rapAtFlag)} R$</p>
+            </div>
+            <div className="bg-red-900/20 border border-red-500/20 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+              <p className="text-red-300 text-sm uppercase tracking-wider font-bold whitespace-nowrap">{isSaleAboveBest ? 'Overpay' : 'Growth'}</p>
+              <p className="text-red-200 font-bold text-base whitespace-nowrap">
+                {flag.rapGrowthPct != null ? `+${flag.rapGrowthPct.toFixed(1)}%` : '—'}
+              </p>
+            </div>
+            <div className="bg-blue-900/20 border border-blue-500/20 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-blue-300 text-sm uppercase tracking-wider font-bold leading-none">Best Price</p>
+                <p className="text-slate-500 text-[10px] mt-0.5">at time of flag</p>
+              </div>
+              <p className="text-blue-200 font-bold text-base whitespace-nowrap">
+                {latestPrice == null ? '—' : latestPrice === -1 ? 'No Sellers' : `${fmt(latestPrice)} R$`}
+              </p>
+            </div>
           </div>
-        )}
-
-        {/* Window — only for rap_growth */}
-        {isRapGrowth && flag.timeWindowHrs != null && (
-          <div className="bg-slate-800/60 rounded-lg p-3 text-center">
-            <p className="text-slate-500 text-xs uppercase tracking-wider mb-1">Window</p>
-            <p className="text-white font-bold text-sm">{flag.timeWindowHrs.toFixed(1)}h</p>
-          </div>
-        )}
-
-        {/* Marked At — for unmark suggestions */}
-        {flag.item.manipulatedRap != null && flag.flagType === 'unmark_suggestion' && (
-          <div className="bg-slate-800/60 rounded-lg p-3 text-center">
-            <p className="text-slate-500 text-xs uppercase tracking-wider mb-1">Marked At</p>
-            <p className="text-amber-300 font-bold text-sm">{fmt(flag.item.manipulatedRap)} R$</p>
-          </div>
-        )}
-      </div>
+        );
+      })()}
 
       {/* RAP sparkline */}
       <div>
@@ -166,18 +178,20 @@ function FlagCard({ flag, onAction, acting }: {
           <button
             onClick={() => onAction(flag.id, 'accept')}
             disabled={isActing}
-            className={`flex-1 py-2 rounded-xl font-semibold text-sm transition ${
+            className={`flex-1 py-2 rounded-xl font-semibold text-sm transition flex items-center justify-center gap-2 ${
               isManip
-                ? 'bg-red-500/20 hover:bg-red-500/40 text-red-200 border border-red-500/30 hover:border-red-400/60'
+                ? 'bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-200 border border-yellow-500/30 hover:border-yellow-400/60'
                 : 'bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-200 border border-emerald-500/30 hover:border-emerald-400/60'
             } disabled:opacity-40`}
           >
-            {isActing ? '...' : isManip ? '✓ Mark Manipulated' : '✓ Unmark Item'}
+            {isActing ? '...' : isManip ? (
+              <><img src="/Images/manipulated1.png" alt="" style={{ width: 15, height: 15, objectFit: 'contain' }} /> Mark Manipulated</>
+            ) : '✓ Unmark Item'}
           </button>
           <button
             onClick={() => onAction(flag.id, 'dismiss')}
             disabled={isActing}
-            className="flex-1 py-2 rounded-xl font-semibold text-sm bg-slate-700/40 hover:bg-slate-700/70 text-slate-300 border border-slate-600/30 hover:border-slate-500/50 transition disabled:opacity-40"
+            className="flex-1 py-2 rounded-xl font-semibold text-sm bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 hover:border-red-400/60 transition disabled:opacity-40"
           >
             {isActing ? '...' : '✕ Dismiss'}
           </button>
@@ -280,7 +294,11 @@ export default function ManipulationAdminPage() {
             onClick={() => setTab(t)}
             className={`px-4 py-1.5 rounded-full text-sm font-semibold capitalize transition border ${
               tab === t
-                ? 'bg-purple-600/30 border-purple-500/50 text-purple-200'
+                ? t === 'pending'
+                  ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-200'
+                  : t === 'accepted'
+                  ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-200'
+                  : 'bg-red-500/20 border-red-500/50 text-red-200'
                 : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -299,13 +317,20 @@ export default function ManipulationAdminPage() {
             <button
               key={t}
               onClick={() => setTypeFilter(t)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition border flex items-center gap-1.5 ${
                 typeFilter === t
-                  ? 'bg-slate-600 border-slate-500 text-white'
+                  ? t === 'all'
+                    ? 'bg-purple-600/30 border-purple-500/50 text-purple-200'
+                    : t === 'manipulation'
+                    ? 'bg-red-500/20 border-red-500/40 text-red-200'
+                    : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-200'
                   : 'bg-slate-800/60 border-slate-700 text-slate-500 hover:text-slate-300'
               }`}
             >
-              {t === 'all' ? 'All' : t === 'manipulation' ? '🚩 Flags' : '💡 Unmarks'}
+              {t === 'all' ? 'All' : t === 'manipulation'
+                ? <><FlagIcon size={16} /> Flags</>
+                : <><UnmarkIcon size={16} /> Unmarks</>
+              }
             </button>
           ))}
         </div>
@@ -324,7 +349,7 @@ export default function ManipulationAdminPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-4 max-w-3xl mx-auto">
           {flags.map(flag => (
             <FlagCard key={flag.id} flag={flag} onAction={handleAction} acting={acting} />
           ))}

@@ -94,7 +94,12 @@ export default function CreateNewsPage() {
                 published ? 'bg-green-600/30 border-green-500/40 text-green-300' : 'bg-white/5 border-white/10 text-slate-400'
               }`}
             >
-              {published ? '✓ Published' : 'Draft'}
+              {published ? (
+                <span className="flex items-center gap-1.5">
+                  <img src="/Images/verify.png" alt="" style={{ width: 14, height: 14, objectFit: 'contain' }} />
+                  Published
+                </span>
+              ) : 'Draft'}
             </button>
             <span className="text-slate-600 text-xs">{published ? 'Visible to everyone' : 'Only visible to you'}</span>
           </div>

@@ -27,9 +27,7 @@ export default function SnapshotModal({ isOpen, onClose, snapshotId, snapshotDat
   const [totalRapNow, setTotalRapNow] = useState(0);
 
   useEffect(() => {
-    if (isOpen && snapshotId) {
-      fetchSnapshotData();
-    }
+    if (isOpen && snapshotId) fetchSnapshotData();
   }, [isOpen, snapshotId]);
 
   const fetchSnapshotData = async () => {
@@ -53,32 +51,33 @@ export default function SnapshotModal({ isOpen, onClose, snapshotId, snapshotDat
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-slate-800 rounded-2xl border border-purple-500/20 max-w-6xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-[#1e1e1e] border border-white/10 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+
         {/* Header */}
-        <div className="p-6 border-b border-slate-700">
+        <div className="p-6 border-b border-white/10">
           <div className="flex justify-between items-start">
             <div>
               <h2 className="text-2xl font-bold text-white mb-2">Snapshot from {snapshotDate}</h2>
               <div className="flex gap-6 text-sm">
                 <div>
                   <span className="text-slate-400">RAP Then: </span>
-                  <span className="text-purple-400 font-semibold">{totalRapThen.toLocaleString()} R$</span>
+                  <span className="font-semibold" style={{ color: '#a259f7' }}>{totalRapThen.toLocaleString()} R$</span>
                 </div>
                 <div>
                   <span className="text-slate-400">RAP Now: </span>
-                  <span className="text-green-400 font-semibold">{totalRapNow.toLocaleString()} R$</span>
+                  <span className="font-semibold" style={{ color: '#43e97b' }}>{totalRapNow.toLocaleString()} R$</span>
                 </div>
                 {Math.abs(rapDifference) > 0.01 && (
                   <div>
                     <span className="text-slate-400">Change: </span>
-                    <span className={rapDifference > 0 ? 'text-green-400' : 'text-red-400'}>
+                    <span className={`font-semibold ${rapDifference > 0 ? 'text-green-400' : 'text-red-400'}`}>
                       {rapDifference > 0 ? '+' : ''}{rapDifference.toLocaleString()} R$ ({percentChange}%)
                     </span>
                   </div>
                 )}
               </div>
             </div>
-            <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl">×</button>
+            <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl transition">×</button>
           </div>
         </div>
 
@@ -93,31 +92,27 @@ export default function SnapshotModal({ isOpen, onClose, snapshotId, snapshotDat
                 const itemPercent = item.rapThen > 0 ? ((itemDiff / item.rapThen) * 100).toFixed(1) : '0';
 
                 return (
-                  <div key={idx} className="bg-slate-700/50 rounded-lg p-3 border border-slate-600/50 hover:border-purple-500/50 transition-colors">
-                    {/* Image with manipulated icon */}
+                  <div key={idx} className="bg-white/5 rounded-lg p-3 border border-white/10 hover:border-white/20 transition-colors">
                     <div className="relative">
                       <img src={item.imageUrl} alt={item.name} className="w-full aspect-square rounded mb-2 object-cover" />
                       {item.manipulated && (
-                        <img
-                          src="/Images/manipulated1.png"
-                          alt="Manipulated"
+                        <img src="/Images/manipulated1.png" alt="Manipulated"
                           title="This item's RAP may be manipulated"
-                          className="absolute top-1 left-1 w-5 h-5"
-                        />
+                          className="absolute top-1 left-1 w-5 h-5" />
                       )}
                     </div>
                     <h3 className="text-white text-sm font-semibold truncate mb-1">{item.name}</h3>
                     {item.count > 1 && (
-                      <div className="text-blue-400 text-xs mb-1">×{item.count}</div>
+                      <div className="text-xs mb-1" style={{ color: '#4fc3f7' }}>×{item.count}</div>
                     )}
                     <div className="text-xs space-y-1">
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Then:</span>
+                        <span className="text-slate-500">Then:</span>
                         <span className="text-slate-300">{(item.rapThen * item.count).toLocaleString()} R$</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Now:</span>
-                        <span className="text-green-300">{(item.rapNow * item.count).toLocaleString()} R$</span>
+                        <span className="text-slate-500">Now:</span>
+                        <span style={{ color: '#43e97b' }}>{(item.rapNow * item.count).toLocaleString()} R$</span>
                       </div>
                       {Math.abs(itemDiff) > 0.01 && (
                         <div className={`flex justify-between font-semibold ${itemDiff > 0 ? 'text-green-400' : 'text-red-400'}`}>

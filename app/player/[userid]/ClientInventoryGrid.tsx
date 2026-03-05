@@ -70,13 +70,13 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
 
   return (
     <>
-      <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8 shadow-lg min-h-[400px] flex flex-col justify-center">
+      <div className="bg-[#1e1e1e] rounded-xl border border-white/10 p-8 shadow-lg min-h-[400px] flex flex-col justify-center">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-white">Inventory</h2>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            className="bg-slate-700 text-white px-4 py-2 rounded-lg border border-purple-500/20 focus:border-purple-500/50 outline-none"
+            className="bg-[#1e1e1e] text-[#ccc] px-4 py-2 rounded-lg border border-white/10 focus:border-white/30 outline-none"
           >
             <option value="rap-high">RAP: High to Low</option>
             <option value="rap-low">RAP: Low to High</option>
@@ -96,7 +96,6 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
 
             const bestSerial: number | null = validSerials[0] ?? null;
 
-            // Ghost tier takes priority: LimitedU with no serial at all
             const hasNoSerialAtAll = !item.serialNumbers || item.serialNumbers.every((s: number | null) => s === null);
             const tier = getGhostTier(item.isLimitedUnique, hasNoSerialAtAll ? null : bestSerial)
                       ?? getSerialTier(bestSerial);
@@ -106,28 +105,18 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
             return (
               <div
                 key={item.assetId}
-                className="bg-slate-700 rounded-lg p-4 border border-purple-500/10 hover:border-purple-500/30 transition-all flex flex-col cursor-pointer"
+                className="bg-white/5 rounded-lg p-4 border border-white/10 hover:border-white/25 transition-all flex flex-col cursor-pointer"
                 onClick={() => router.push(`/item/${item.assetId}`)}
               >
-                {/* Image box with overlays */}
-                <div className="aspect-square bg-slate-600 rounded mb-2 overflow-hidden relative flex items-center justify-center">
-                  <img
-                    src={item.imageUrl}
-                    alt={item.name}
-                    className="w-full h-full object-cover"
-                  />
-                  {/* Manipulated icon — top left */}
+                <div className="aspect-square bg-white/5 rounded mb-2 overflow-hidden relative flex items-center justify-center">
+                  <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
                   {item.manipulated && (
-                    <img
-                      src="/Images/manipulated1.png"
-                      alt="Manipulated"
+                    <img src="/Images/manipulated1.png" alt="Manipulated"
                       title="This item's RAP may be manipulated"
-                      className="w-6 h-6 absolute top-1 left-1"
-                    />
+                      className="w-6 h-6 absolute top-1 left-1" />
                   )}
-                  {/* Serial badge — top right */}
                   {(hasSerials || isGhost) && (
-                    <div className="absolute top-1 right-1 bg-slate-900/80 backdrop-blur-sm px-2 py-0.5 rounded shadow-lg">
+                    <div className="absolute top-1 right-1 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded shadow-lg">
                       {isSpecial
                         ? <SpecialSerialText serial={bestSerial} tier={tier} variant="badge" />
                         : <span className="text-orange-400 text-xs font-bold">
@@ -138,21 +127,20 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                   )}
                 </div>
 
-                {/* Name */}
                 <p className="text-white text-sm font-semibold truncate hover:text-purple-400 transition-colors" title={item.name}>
                   {item.name}
                 </p>
 
                 <div className="flex justify-between items-center mt-1">
                   {item.count > 1 && (
-                    <p className="text-blue-400 text-xs font-bold">x{item.count}</p>
+                    <p className="text-xs font-bold" style={{ color: '#4fc3f7' }}>x{item.count}</p>
                   )}
-                  <p className="text-green-400 text-xs font-semibold ml-auto">
+                  <p className="text-xs font-semibold ml-auto" style={{ color: '#43e97b' }}>
                     {item.rap.toLocaleString()} R$
                   </p>
                 </div>
                 {item.count > 1 && (
-                  <p className="text-slate-400 text-xs mt-1">
+                  <p className="text-[#aaa] text-xs mt-1">
                     Total: {(item.rap * item.count).toLocaleString()} R$
                   </p>
                 )}
@@ -178,7 +166,7 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                     </a>
                   )}
                   {item.scannedAt && (
-                    <p className="text-slate-500 text-xs text-center mt-1">
+                    <p className="text-[#888] text-xs text-center mt-1">
                       Scanned {formatTimeSince(item.scannedAt)}
                     </p>
                   )}
@@ -191,34 +179,24 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
 
       {/* UAID Modal */}
       {showUAIDModal && selectedItem && (
-        <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-          onClick={closeModal}
-        >
-          <div
-            className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6 max-w-xl w-full max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={closeModal}>
+          <div className="bg-[#1e1e1e] border border-white/10 rounded-xl p-6 max-w-xl w-full max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="text-white font-bold text-lg">{selectedItem.name}</h3>
-                <p className="text-slate-400 text-sm">
+                <p className="text-[#aaa] text-sm">
                   {selectedItem.count} {selectedItem.count === 1 ? 'copy' : 'copies'} • {selectedItem?.rap?.toLocaleString()} R$ each
                 </p>
               </div>
-              <button
-                onClick={closeModal}
-                className="text-slate-400 hover:text-white transition-colors text-xl leading-none"
-              >
-                ×
-              </button>
+              <button onClick={closeModal} className="text-[#aaa] hover:text-white transition-colors text-xl leading-none">×</button>
             </div>
 
             <div className="mb-3">
               <select
                 value={uaidSortBy}
                 onChange={(e) => setUaidSortBy(e.target.value)}
-                className="bg-slate-700 text-white text-xs px-3 py-1.5 rounded-lg border border-purple-500/20 focus:border-purple-500/50 outline-none w-full"
+                className="bg-[#1e1e1e] text-[#ccc] text-xs px-3 py-1.5 rounded-lg border border-white/10 focus:border-white/30 outline-none w-full"
               >
                 <option value="uaid-low">Low to High</option>
                 <option value="uaid-high">High to Low</option>
@@ -229,9 +207,7 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1">
               {(() => {
                 const uaidData = selectedItem?.userAssetIds?.map((uaid, index) => ({
-                  uaid,
-                  index,
-                  serial: selectedItem?.serialNumbers?.[index],
+                  uaid, index, serial: selectedItem?.serialNumbers?.[index],
                 })) || [];
 
                 const sortedUaidData = [...uaidData].sort((a, b) => {
@@ -253,14 +229,11 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                   const isSpecialBtn = btnTier !== null;
 
                   return (
-                    <a
-                      key={uaid}
-                      href={`/uaid/${uaid}`}
+                    <a key={uaid} href={`/uaid/${uaid}`}
                       className={`py-2 rounded-lg text-center transition-colors truncate block
-                        bg-slate-700 hover:bg-slate-600 border
-                        ${isSpecialBtn ? getCardGlowClass(btnTier) : (serial ? 'border-orange-500/40' : 'border-slate-600')}`}
-                      title={`UAID: ${uaid}${serial ? ` • Serial: #${serial}` : ''}`}
-                    >
+                        bg-white/5 hover:bg-white/10 border
+                        ${isSpecialBtn ? getCardGlowClass(btnTier) : (serial ? 'border-orange-500/40' : 'border-white/10')}`}
+                      title={`UAID: ${uaid}${serial ? ` • Serial: #${serial}` : ''}`}>
                       {serial != null
                         ? isSpecialBtn
                           ? <SpecialSerialText serial={serial} tier={btnTier} variant="button" />

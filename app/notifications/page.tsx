@@ -32,6 +32,32 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+function getCardStyle(n: NotificationItem) {
+  const isValueChange = n.type === 'rap_change' || n.type === 'price_and_rap_change' || n.type === 'price_change';
+  if (isValueChange && n.oldValue != null && n.newValue != null) {
+    const isGain = n.newValue > n.oldValue;
+    if (n.read) {
+      return isGain
+        ? 'bg-green-500/[0.07] border-green-500/20 hover:border-green-500/30'
+        : 'bg-red-500/[0.07] border-red-500/20 hover:border-red-500/30';
+    }
+    return isGain
+      ? 'bg-green-500/10 border-green-500/30 hover:border-green-500/45'
+      : 'bg-red-500/10 border-red-500/30 hover:border-red-500/45';
+  }
+
+  return n.read
+    ? 'bg-slate-800/40 border-slate-700/50 hover:border-slate-600'
+    : 'bg-purple-500/5 border-purple-500/20 hover:border-purple-500/40';
+}
+
+function getArrowImage(n: NotificationItem): string | null {
+  if (n.read) return null;
+  const isValueChange = n.type === 'rap_change' || n.type === 'price_and_rap_change' || n.type === 'price_change';
+  if (!isValueChange || n.oldValue == null || n.newValue == null) return null;
+  return n.newValue > n.oldValue ? '/Images/gain.png' : '/Images/loss.png';
+}
+
 export default function NotificationsPage() {
   const router = useRouter();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -96,7 +122,6 @@ export default function NotificationsPage() {
     return (
       <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white -mt-20 pt-28 px-4 pb-12 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin text-4xl mb-4">⚙️</div>
           <p className="text-slate-400">Loading notifications...</p>
         </div>
       </div>
@@ -150,15 +175,12 @@ export default function NotificationsPage() {
           <div className="space-y-2">
             {notifications.map((n) => {
               const imgSrc = n.item.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${n.item.assetId}&width=80&height=80&format=png`;
+              const arrowSrc = getArrowImage(n);
               return (
                 <div
                   key={n.id}
                   onClick={() => handleClick(n)}
-                  className={`flex items-start gap-4 p-4 rounded-xl border cursor-pointer transition-all duration-150 ${
-                    !n.read
-                      ? 'bg-purple-500/5 border-purple-500/20 hover:border-purple-500/40'
-                      : 'bg-slate-800/40 border-slate-700/50 hover:border-slate-600'
-                  }`}
+                  className={`flex items-start gap-4 p-4 rounded-xl border cursor-pointer transition-all duration-150 ${getCardStyle(n)}`}
                 >
                   <img
                     src={imgSrc}
@@ -172,7 +194,18 @@ export default function NotificationsPage() {
                     </p>
                     <p className="text-xs text-slate-500 mt-1">{timeAgo(n.createdAt)}</p>
                   </div>
-                  {!n.read && <div className="flex-shrink-0 w-2 h-2 mt-2 rounded-full bg-purple-500" />}
+                  {!n.read && (
+                    <div className="flex items-center gap-1.5 flex-shrink-0 mt-1">
+                      {arrowSrc && (
+                        <img
+                          src={arrowSrc}
+                          alt=""
+                          style={{ width: 16, height: 16, objectFit: 'contain' }}
+                        />
+                      )}
+                      <div className="w-2 h-2 rounded-full bg-purple-500" />
+                    </div>
+                  )}
                 </div>
               );
             })}

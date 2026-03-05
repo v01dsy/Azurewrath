@@ -316,13 +316,16 @@ export default function ItemPage() {
   // ── Loading / error states ─────────────────────────────────────────────
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center text-white">
-      <div className="text-center"><div className="animate-spin text-4xl mb-4">⚙️</div><p className="text-slate-400">Loading item…</p></div>
+    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white p-32 -mt-20 flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mx-auto mb-4" />
+        <p className="text-[#aaa] text-sm">Loading item…</p>
+      </div>
     </div>
   );
 
   if (error || !item) return (
-    <div className="min-h-screen flex items-center justify-center text-white">
+    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white p-32 -mt-20 flex items-center justify-center">
       <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8 max-w-md w-full">
         <h1 className="text-3xl font-bold text-red-400 mb-4">Oops!</h1>
         <p className="text-slate-400">{error || 'Item not found'}</p>
@@ -333,7 +336,7 @@ export default function ItemPage() {
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white px-6 py-10 pt-28">
+    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white px-6 py-10 pt-28 ">
       <div className="max-w-5xl mx-auto space-y-6">
 
         {/* Back */}
@@ -428,8 +431,8 @@ export default function ItemPage() {
                   labelFormatter={formatTooltipLabel}
                   formatter={(value: number, name: string) => [`${fmt(value)} R$`, name === 'rap' ? 'RAP' : 'Price']}
                 />
-                {!hiddenLines.has('rap')   && <Line type="monotone" dataKey="rap"   stroke="#34d399" strokeWidth={2} dot={false} name="rap"   connectNulls={false} />}
-                {!hiddenLines.has('price') && <Line type="monotone" dataKey="price" stroke="#3b82f6" strokeWidth={2} dot={false} name="price" connectNulls={false} />}
+                {!hiddenLines.has('rap')   && <Line type="linear" dataKey="rap"   stroke="#34d399" strokeWidth={2} dot={false} name="rap"   connectNulls={false} />}
+                {!hiddenLines.has('price') && <Line type="linear" dataKey="price" stroke="#3b82f6" strokeWidth={2} dot={false} name="price" connectNulls={false} />}
               </LineChart>
             </ResponsiveContainer>
             <div className="flex justify-center gap-5 pt-3 mt-1 border-t border-slate-700/50">

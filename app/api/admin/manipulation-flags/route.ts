@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { hasRole } from '@/lib/roles';
 
-async function getSession(req: NextRequest) {
+async function getSession(req: NextRequest, bodyUserId?: string) {
   // Try cookie first
   const token = req.cookies.get('session')?.value;
   if (token) {
@@ -14,11 +14,11 @@ async function getSession(req: NextRequest) {
     if (s && s.expires > new Date()) return s;
   }
 
-  // Fall back to userId query param
-  const userId = req.nextUrl.searchParams.get('userId');
+  // Fall back to userId from query param OR body (PATCH sends it in body)
+  const userId = req.nextUrl.searchParams.get('userId') ?? bodyUserId;
   if (userId) {
     const user = await prisma.user.findUnique({
-      where: { robloxUserId: BigInt(userId) },  // ← BigInt, not string
+      where: { robloxUserId: BigInt(userId) },
     });
     if (user) return { user };
   }
@@ -33,8 +33,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const status  = req.nextUrl.searchParams.get('status') ?? 'pending';
-  const type    = req.nextUrl.searchParams.get('type');   // 'manipulation' | 'unmark_suggestion' | null=all
+  const status = req.nextUrl.searchParams.get('status') ?? 'pending';
+  const type   = req.nextUrl.searchParams.get('type');
 
   const flags = await prisma.manipulationFlag.findMany({
     where: {
@@ -66,6 +66,7 @@ export async function GET(req: NextRequest) {
     id: f.id,
     assetId: f.assetId.toString(),
     flagType: f.flagType,
+    detectionMethod: f.detectionMethod ?? null,
     status: f.status,
     reason: f.reason,
     rapAtFlag: f.rapAtFlag,
@@ -81,7 +82,6 @@ export async function GET(req: NextRequest) {
       manipulated: f.item.manipulated,
       manipulatedAt: f.item.manipulatedAt,
       manipulatedRap: f.item.manipulatedRap,
-      // last 14 days of history for the sparkline
       priceHistory: f.item.priceHistory
         .filter(p => new Date(p.timestamp) >= new Date(Date.now() - 14 * 86400_000))
         .map(p => ({ rap: p.rap, price: p.price, timestamp: p.timestamp })),
@@ -90,14 +90,18 @@ export async function GET(req: NextRequest) {
 }
 
 // PATCH /api/admin/manipulation-flags
-// body: { id, action: 'accept' | 'dismiss' }
+// body: { id, action: 'accept' | 'dismiss', userId }
 export async function PATCH(req: NextRequest) {
-  const session = await getSession(req);
+  // Must clone body — we need userId for auth AND id/action for the update
+  const body = await req.json();
+  const { id, action, userId } = body;
+
+  // Pass userId from body into getSession so auth works without a cookie
+  const session = await getSession(req, userId);
   if (!session || !hasRole(session.user.role, 'admin')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { id, action } = await req.json();
   if (!id || !['accept', 'dismiss'].includes(action)) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
@@ -108,7 +112,6 @@ export async function PATCH(req: NextRequest) {
   });
   if (!flag) return NextResponse.json({ error: 'Flag not found' }, { status: 404 });
 
-  // Update the flag status
   await prisma.manipulationFlag.update({
     where: { id },
     data: {
@@ -118,10 +121,8 @@ export async function PATCH(req: NextRequest) {
     },
   });
 
-  // Apply the real effect if accepted
   if (action === 'accept') {
     if (flag.flagType === 'manipulation') {
-      // Mark item as manipulated, record when + at what RAP
       await prisma.item.update({
         where: { assetId: flag.assetId },
         data: {
@@ -131,7 +132,6 @@ export async function PATCH(req: NextRequest) {
         },
       });
     } else if (flag.flagType === 'unmark_suggestion') {
-      // Unmark the item and clear the tracking fields
       await prisma.item.update({
         where: { assetId: flag.assetId },
         data: {

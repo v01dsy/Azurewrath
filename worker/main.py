@@ -632,7 +632,6 @@ def save_results_to_db(results, current_time):
         # ── 4. Snipe events ────────────────────────────────────────────────
         fire_snipe_events(cursor, results)
         
-        detect_manipulation(cursor)
         conn.commit()
         logger.info(f"💾 Database commit successful!")
 
@@ -786,7 +785,19 @@ def update_item_prices():
 
         results = process_items_data(items, rolimons_data, previous_raps, previous_prices)
 
-        save_results_to_db(results, current_time)
+        ssave_results_to_db(results, current_time)
+
+        conn2 = get_db_connection()
+        cursor2 = conn2.cursor()
+        try:
+            detect_manipulation(cursor2)
+            conn2.commit()
+        except Exception as e:
+            logger.error(f"❌ Error in manipulation detection: {e}")
+            conn2.rollback()
+        finally:
+            cursor2.close()
+            return_db_connection(conn2)
 
         logger.info("=" * 80)
         logger.info("✅ Price update cycle complete!")

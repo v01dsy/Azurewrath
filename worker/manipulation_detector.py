@@ -204,20 +204,32 @@ def _suggest_unmarks(cursor):
             FROM "PriceHistory"
             WHERE rap IS NOT NULL
             ORDER BY "itemId", timestamp DESC
+        ),
+        pre_spike AS (
+            SELECT DISTINCT ON (i."assetId") i."assetId",
+                ph.rap AS pre_rap
+            FROM "Item" i
+            JOIN "PriceHistory" ph ON ph."itemId" = i."assetId"
+            WHERE i.manipulated = TRUE
+              AND i."manipulatedAt" IS NOT NULL
+              AND ph.timestamp <= i."manipulatedAt" - INTERVAL '48 hours'
+              AND ph.rap IS NOT NULL
+            ORDER BY i."assetId", ph.timestamp DESC
         )
-        SELECT i."assetId", i.name, i."manipulatedRap", l.rap AS current_rap
+        SELECT i."assetId", i.name, i."manipulatedRap", l.rap AS current_rap, p.pre_rap
         FROM "Item" i
         JOIN latest l ON l."itemId" = i."assetId"
+        LEFT JOIN pre_spike p ON p."assetId" = i."assetId"
         WHERE i.manipulated = TRUE
           AND i."manipulatedRap" IS NOT NULL
-          AND l.rap <= i."manipulatedRap"
+          AND l.rap <= COALESCE(p.pre_rap * 1.1, i."manipulatedRap" * 0.75)
     """)
 
     rows = cursor.fetchall()
     if not rows:
         return
 
-    for asset_id, name, manipulated_rap, current_rap in rows:
+    for asset_id, name, manipulated_rap, current_rap, pre_rap in rows:
         cursor.execute("""
             SELECT 1 FROM "ManipulationFlag"
             WHERE "assetId" = %s AND "flagType" = 'unmark_suggestion' AND status = 'pending'
@@ -226,9 +238,20 @@ def _suggest_unmarks(cursor):
         if cursor.fetchone():
             continue
 
+        cursor.execute("""
+            SELECT 1 FROM "ManipulationFlag"
+            WHERE "assetId" = %s AND "flagType" = 'unmark_suggestion'
+              AND status IN ('accepted', 'dismissed')
+              AND "createdAt" >= NOW() - INTERVAL '7 days'
+            LIMIT 1
+        """, (asset_id,))
+        if cursor.fetchone():
+            continue
+
+        baseline = pre_rap if pre_rap else manipulated_rap * 0.75
         reason = (
-            f"RAP has returned to or below the manipulated RAP "
-            f"(marked at: {int(manipulated_rap):,} R$, current: {int(current_rap):,} R$)"
+            f"RAP has returned near pre-manipulation levels "
+            f"(pre-spike: {int(baseline):,} R$, current: {int(current_rap):,} R$, flagged at: {int(manipulated_rap):,} R$)"
         )
 
         cursor.execute("""

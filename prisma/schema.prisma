@@ -251,6 +251,7 @@ model ManipulationFlag {
   flagType      String    @default("manipulation") // "manipulation" | "unmark_suggestion"
   status        String    @default("pending")       // "pending" | "accepted" | "dismissed"
   reason        String
+  detectionMethod String?  // "rap_growth" | "sale_above_best" | "unmark_suggestion"
   rapAtFlag     Float
   rapGrowthPct  Float?
   timeWindowHrs Float?

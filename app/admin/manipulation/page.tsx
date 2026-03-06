@@ -121,7 +121,6 @@ function FlagCard({ flag, onAction, acting }: {
           >
             {flag.item.name}
           </Link>
-          <p className="text-slate-400 text-sm mt-0.5">{flag.reason}</p>
 
           {/* Stats inline */}
           <div className="flex items-center gap-4 mt-3 flex-wrap">
@@ -141,10 +140,8 @@ function FlagCard({ flag, onAction, acting }: {
       {/* Stats bubbles */}
       {(() => {
         const latestRap = [...flag.item.priceHistory].reverse().find(p => p.rap != null)?.rap ?? null;
-        const latestPrice = flag.item.priceHistory.find(p => p.price != null)?.price ?? null;
 
         if (!isManip) {
-          // Last PriceHistory rap entry strictly before manipulatedAt = pre-manipulation RAP
           const preManipRap = flag.item.manipulatedAt
             ? [...flag.item.priceHistory]
                 .filter(p => p.rap != null && new Date(p.timestamp) < new Date(flag.item.manipulatedAt!))
@@ -173,25 +170,62 @@ function FlagCard({ flag, onAction, acting }: {
           );
         }
 
+        if (isSaleAboveBest) {
+          // Parse implied sale price and best price at flag from the reason string
+          // Format: "Sale implied X% above best price (best: N R$ → implied sale: M R$, new RAP: P R$)"
+          const bestPriceAtFlagMatch = flag.reason.match(/best:\s*([\d,]+)\s*R\$/);
+          const impliedSaleMatch = flag.reason.match(/implied sale:\s*([\d,]+)\s*R\$/);
+          const bestPriceAtFlag = bestPriceAtFlagMatch ? parseInt(bestPriceAtFlagMatch[1].replace(/,/g, '')) : null;
+          const impliedSalePrice = impliedSaleMatch ? parseInt(impliedSaleMatch[1].replace(/,/g, '')) : null;
+
+          return (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-slate-700/50 border border-slate-600/40 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                <p className="text-slate-300 text-sm uppercase tracking-wider font-bold whitespace-nowrap">New RAP</p>
+                <p className="text-white font-bold text-base whitespace-nowrap">{fmt(flag.rapAtFlag)} R$</p>
+              </div>
+              <div className="bg-red-900/20 border border-red-500/20 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                <p className="text-red-300 text-sm uppercase tracking-wider font-bold whitespace-nowrap">Overpay</p>
+                <p className="text-red-200 font-bold text-base whitespace-nowrap">
+                  {flag.rapGrowthPct != null ? `+${flag.rapGrowthPct.toFixed(1)}%` : '—'}
+                </p>
+              </div>
+              <div className="bg-blue-900/20 border border-blue-500/20 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-blue-300 text-sm uppercase tracking-wider font-bold leading-none">Best Price</p>
+                  <p className="text-slate-500 text-[10px] mt-0.5">at time of flag</p>
+                </div>
+                <p className="text-blue-200 font-bold text-base whitespace-nowrap">
+                  {bestPriceAtFlag != null ? `${fmt(bestPriceAtFlag)} R$` : '—'}
+                </p>
+              </div>
+              <div className="bg-purple-900/20 border border-purple-500/20 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                <p className="text-purple-300 text-sm uppercase tracking-wider font-bold whitespace-nowrap">Implied Sale</p>
+                <p className="text-purple-200 font-bold text-base whitespace-nowrap">
+                  {impliedSalePrice != null ? `${fmt(impliedSalePrice)} R$` : '—'}
+                </p>
+              </div>
+            </div>
+          );
+        }
+
+        // rap_growth: 3 bubbles
         return (
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-slate-700/50 border border-slate-600/40 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-              <p className="text-slate-300 text-sm uppercase tracking-wider font-bold whitespace-nowrap">{isSaleAboveBest ? 'New RAP' : 'RAP at Flag'}</p>
+              <p className="text-slate-300 text-sm uppercase tracking-wider font-bold whitespace-nowrap">RAP at Flag</p>
               <p className="text-white font-bold text-base whitespace-nowrap">{fmt(flag.rapAtFlag)} R$</p>
             </div>
             <div className="bg-red-900/20 border border-red-500/20 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-              <p className="text-red-300 text-sm uppercase tracking-wider font-bold whitespace-nowrap">{isSaleAboveBest ? 'Overpay' : 'Growth'}</p>
+              <p className="text-red-300 text-sm uppercase tracking-wider font-bold whitespace-nowrap">Growth</p>
               <p className="text-red-200 font-bold text-base whitespace-nowrap">
                 {flag.rapGrowthPct != null ? `+${flag.rapGrowthPct.toFixed(1)}%` : '—'}
               </p>
             </div>
             <div className="bg-blue-900/20 border border-blue-500/20 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-blue-300 text-sm uppercase tracking-wider font-bold leading-none">Best Price</p>
-                <p className="text-slate-500 text-[10px] mt-0.5">at time of flag</p>
-              </div>
+              <p className="text-blue-300 text-sm uppercase tracking-wider font-bold whitespace-nowrap">RAP Now</p>
               <p className="text-blue-200 font-bold text-base whitespace-nowrap">
-                {latestPrice == null ? '—' : latestPrice === -1 ? 'No Sellers' : `${fmt(latestPrice)} R$`}
+                {latestRap != null ? `${fmt(latestRap)} R$` : '—'}
               </p>
             </div>
           </div>

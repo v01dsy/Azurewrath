@@ -29,44 +29,46 @@ export default function MoreDropdown() {
   const [unreadNews, setUnreadNews] = useState(0);
   const [userRole, setUserRole] = useState<string>('user');
   const [pendingFlags, setPendingFlags] = useState(0);
-  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const session = getUserSession();
     if (!session) return;
-    setUserId(session.robloxUserId);
+    const uid = session.robloxUserId;
 
-    // Fetch role
-    fetch(`/api/user/role?userId=${session.robloxUserId}`)
-      .then(r => r.json())
-      .then(d => setUserRole(d.role ?? 'user'))
-      .catch(() => {});
+    Promise.all([
+      fetch(`/api/user/role?userId=${uid}`).then(r => r.json()),
+      fetch(`/api/news/unread?userId=${uid}`).then(r => r.json()),
+    ]).then(([roleData, newsData]) => {
+      const role = roleData.role ?? 'user';
+      setUserRole(role);
+      setUnreadNews(newsData.unread ?? 0);
+      if (hasRole(role, 'admin')) {
+        fetch(`/api/admin/manipulation-flags?status=pending&userId=${uid}&skip=0&take=1`)
+          .then(r => r.json())
+          .then(d => setPendingFlags(d.total ?? 0))
+          .catch(() => {});
+      }
+    }).catch(() => {});
 
-    // Fetch unread news
-    const checkNews = () => {
-      fetch(`/api/news/unread?userId=${session.robloxUserId}`)
+    const newsInterval = setInterval(() => {
+      fetch(`/api/news/unread?userId=${uid}`)
         .then(r => r.json())
         .then(d => setUnreadNews(d.unread ?? 0))
         .catch(() => {});
-    };
-    checkNews();
-    const interval = setInterval(checkNews, 120_000);
-    return () => clearInterval(interval);
-  }, []);
+    }, 120_000);
 
-  // Poll pending flags for admins+
-  useEffect(() => {
-    if (!userId || !hasRole(userRole, 'admin')) return;
-    const checkFlags = () => {
-      fetch(`/api/admin/manipulation-flags?status=pending&userId=${userId}`)
-        .then(r => r.json())
-        .then(data => setPendingFlags(Array.isArray(data) ? data.length : 0))
-        .catch(() => {});
-    };
-    checkFlags();
-    const interval = setInterval(checkFlags, 60_000);
-    return () => clearInterval(interval);
-  }, [userId, userRole]);
+    const flagsInterval = setInterval(() => {
+      fetch(`/api/user/role?userId=${uid}`).then(r => r.json()).then(d => {
+        if (!hasRole(d.role, 'admin')) return;
+        fetch(`/api/admin/manipulation-flags?status=pending&userId=${uid}&skip=0&take=1`)
+          .then(r => r.json())
+          .then(data => setPendingFlags(data.total ?? 0))
+          .catch(() => {});
+      });
+    }, 60_000);
+
+    return () => { clearInterval(newsInterval); clearInterval(flagsInterval); };
+  }, []);
 
   const isAdmin = hasRole(userRole, 'admin');
 
@@ -85,7 +87,6 @@ export default function MoreDropdown() {
             draggable="false"
             style={{ height: 40, width: 'auto', objectFit: 'contain', userSelect: 'none' } as React.CSSProperties}
           />
-          {/* Badge: show news OR pending flags, whichever is higher priority */}
           {(unreadNews > 0 || pendingFlags > 0) && (
             <span style={{
               position: 'absolute', top: -2, right: -4,
@@ -167,7 +168,6 @@ export default function MoreDropdown() {
             </Link>
           ))}
 
-          {/* Admin section — only for admins+ */}
           {isAdmin && (
             <>
               <div className="mx-3 my-1 border-t border-slate-700/60" />

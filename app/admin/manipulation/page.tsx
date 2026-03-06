@@ -143,6 +143,7 @@ function FlagCard({ flag, onAction, acting }: {
   const isAccepted = flag.status === 'accepted';
   const isRapGrowth = flag.detectionMethod === 'rap_growth';
   const isSaleAboveBest = flag.detectionMethod === 'sale_above_best';
+  const isAids = (flag.detectionMethod as string) === 'AIDS';
 
   return (
     <div className="rounded-2xl border border-white/10 bg-[#0d0d0f] p-3 space-y-2 transition-all duration-200 hover:border-purple-500/30 hover:shadow-lg hover:shadow-purple-900/20 relative"
@@ -179,6 +180,11 @@ function FlagCard({ flag, onAction, acting }: {
             {isSaleAboveBest && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-yellow-500/15 text-yellow-300 border border-yellow-500/25 uppercase tracking-wide">
                 Sale Above Best Price
+              </span>
+            )}
+            {isAids && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-600/20 text-red-400 border border-red-600/30 uppercase tracking-wide">
+                I&apos;m currently suffering from aids, plaes help me
               </span>
             )}
             {!isManip && (

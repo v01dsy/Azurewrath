@@ -34,14 +34,17 @@ export async function GET(req: NextRequest) {
   const sortDir = (req.nextUrl.searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc';
 
   const where = { status, ...(type ? { flagType: type } : {}) };
-  const secondSort = sortBy === 'overpay'
-    ? { rapGrowthPct: sortDir }
-    : { createdAt: sortDir };
-  const orderBy = [
-    { flagType: 'asc' as const },
-    sortBy === 'overpay' ? { rapGrowthPct: sortDir } : { createdAt: sortDir },
 
-  ] as any;
+  // Only push unmarks to the back when sorting by overpay (or when a specific type filter is active).
+  // When sorting by recency with "All" selected, show everything purely by time.
+  const orderBy = sortBy === 'overpay'
+    ? [
+        { flagType: 'asc' as const }, // unmark_suggestion sorts after manipulation alphabetically
+        { rapGrowthPct: sortDir },
+      ] as any
+    : [
+        { createdAt: sortDir },
+      ] as any;
 
   const [flags, total] = await Promise.all([
     prisma.manipulationFlag.findMany({

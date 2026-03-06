@@ -52,19 +52,56 @@ interface PlayerData {
   isPrivate?: boolean;
 }
 
+interface Ranks {
+  rapRank: number | null;
+  itemsRank: number | null;
+  uniqueRank: number | null;
+}
+
 function getRankTier(rank: number): { color: string; label: string; glow: boolean } {
-  if (rank === 1)      return { color: '#c2b506', label: '👑',       glow: true  };
-  if (rank === 2)      return { color: '#f3f3f3', label: `#${rank}`, glow: true  };
-  if (rank === 3)      return { color: '#cf7500', label: `#${rank}`, glow: true  };
-  if (rank <= 10)      return { color: '#49e0ff', label: `#${rank}`, glow: true  };
-  if (rank <= 50)      return { color: '#ff6dff', label: `#${rank}`, glow: true  };
-  if (rank <= 100)     return { color: '#9ff400', label: `#${rank}`, glow: true  };
-  if (rank <= 250)     return { color: '#ffa121', label: `#${rank}`, glow: true  };
-  if (rank <= 500)     return { color: '#9d66f3', label: `#${rank}`, glow: false };
-  if (rank <= 1000)    return { color: '#17c7b4', label: `#${rank}`, glow: false };
-  if (rank <= 5000)    return { color: '#ff7967', label: `#${rank}`, glow: false };
-  if (rank <= 10000)   return { color: '#979797', label: `#${rank}`, glow: false };
-  return                 { color: '#666666', label: `#${rank}`, glow: false };
+  if (rank === 1)    return { color: '#c2b506', label: '👑',       glow: true  };
+  if (rank === 2)    return { color: '#f3f3f3', label: `#${rank}`, glow: true  };
+  if (rank === 3)    return { color: '#cf7500', label: `#${rank}`, glow: true  };
+  if (rank <= 10)    return { color: '#49e0ff', label: `#${rank}`, glow: true  };
+  if (rank <= 50)    return { color: '#ff6dff', label: `#${rank}`, glow: true  };
+  if (rank <= 100)   return { color: '#9ff400', label: `#${rank}`, glow: true  };
+  if (rank <= 250)   return { color: '#ffa121', label: `#${rank}`, glow: true  };
+  if (rank <= 500)   return { color: '#9d66f3', label: `#${rank}`, glow: false };
+  if (rank <= 1000)  return { color: '#17c7b4', label: `#${rank}`, glow: false };
+  if (rank <= 5000)  return { color: '#ff7967', label: `#${rank}`, glow: false };
+  if (rank <= 10000) return { color: '#979797', label: `#${rank}`, glow: false };
+  return               { color: '#666666',  label: `#${rank}`, glow: false };
+}
+
+function RankTooltip({ rank, label }: { rank: number; label: string }) {
+  const tier = getRankTier(rank);
+  return (
+    <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20
+      opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex flex-col items-end">
+      <div
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap"
+        style={{
+          backgroundColor: '#1a1a1a',
+          border: `1px solid ${tier.color}55`,
+          color: tier.color,
+          boxShadow: tier.glow ? `0 0 10px ${tier.color}33` : 'none',
+        }}
+      >
+        <span className="opacity-60">{label}</span>
+        <span>{tier.label}</span>
+      </div>
+      {/* Arrow anchored to right side to align with value */}
+      <div
+        className="w-2 h-2 rotate-45 mr-2 -mt-1"
+        style={{
+          backgroundColor: '#1a1a1a',
+          border: `1px solid ${tier.color}55`,
+          borderTop: 'none',
+          borderLeft: 'none',
+        }}
+      />
+    </div>
+  );
 }
 
 function timeAgo(dateString: string): string {
@@ -87,7 +124,7 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<PlayerData | null>(null);
-  const [rank, setRank] = useState<number | null>(null);
+  const [ranks, setRanks] = useState<Ranks>({ rapRank: null, itemsRank: null, uniqueRank: null });
   const [showModal, setShowModal] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<{ id: string; date: string } | null>(null);
   const [showDescriptionModal, setShowDescriptionModal] = useState(false);
@@ -98,21 +135,25 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`/api/player/${params.userid}`);
+
+      // Fire both requests in parallel
+      const [response, rankRes] = await Promise.all([
+        fetch(`/api/player/${params.userid}`),
+        fetch(`/api/player/${params.userid}/rank`),
+      ]);
+
       if (!response.ok) {
         setError(response.status === 404 ? 'User not found in database' : 'Failed to fetch player data');
         return;
       }
-      const playerData: PlayerData = await response.json();
-      setData(playerData);
 
-      // Fetch rank
-      try {
-        const rankRes = await fetch(`/api/players?sort=rap&page=1&limit=99999`);
-        const rankData = await rankRes.json();
-        const found = rankData.players?.find((p: any) => p.robloxUserId === playerData.user.robloxUserId);
-        if (found) setRank(found.rank);
-      } catch { /* rank stays null */ }
+      const [playerData, rankData] = await Promise.all([
+        response.json(),
+        rankRes.ok ? rankRes.json() : Promise.resolve({ rapRank: null, itemsRank: null, uniqueRank: null }),
+      ]);
+
+      setData(playerData);
+      setRanks(rankData);
     } catch {
       setError('Failed to load player data');
     } finally {
@@ -167,7 +208,6 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
   );
 
   const { user, inventory, stats, graphData, isPrivate } = data;
-  const rankTier = rank ? getRankTier(rank) : null;
 
   return (
     <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white p-4 -mt-20 pt-24">
@@ -254,32 +294,40 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
 
                 {!isPrivate && (
                   <div className="space-y-2 pt-4 border-t border-white/10">
-                    <div className="flex justify-between items-center">
+
+                    {/* Total Items */}
+                    <div className="group relative flex justify-between items-center cursor-default">
                       <span className="text-[#aaa] text-sm">Total Items</span>
-                      <span className="font-semibold text-sm" style={{ color: '#4fc3f7' }}>{stats.totalItems}</span>
+                      <span className="font-semibold text-sm" style={{ color: '#4fc3f7' }}>
+                        {stats.totalItems}
+                      </span>
+                      {ranks.itemsRank != null && (
+                        <RankTooltip rank={ranks.itemsRank} label="Items rank" />
+                      )}
                     </div>
-                    <div className="flex justify-between items-center">
+
+                    {/* Unique Items */}
+                    <div className="group relative flex justify-between items-center cursor-default">
                       <span className="text-[#aaa] text-sm">Unique Items</span>
-                      <span className="font-semibold text-sm" style={{ color: '#a259f7' }}>{stats.uniqueItems}</span>
+                      <span className="font-semibold text-sm" style={{ color: '#a259f7' }}>
+                        {stats.uniqueItems}
+                      </span>
+                      {ranks.uniqueRank != null && (
+                        <RankTooltip rank={ranks.uniqueRank} label="Unique rank" />
+                      )}
                     </div>
-                    <div className="flex justify-between items-center">
+
+                    {/* Total RAP */}
+                    <div className="group relative flex justify-between items-center cursor-default">
                       <span className="text-[#aaa] text-sm">Total RAP</span>
-                      <span className="font-semibold text-sm" style={{ color: '#43e97b' }}>{stats.totalRAP.toLocaleString()} R$</span>
+                      <span className="font-semibold text-sm" style={{ color: '#43e97b' }}>
+                        {stats.totalRAP.toLocaleString()} R$
+                      </span>
+                      {ranks.rapRank != null && (
+                        <RankTooltip rank={ranks.rapRank} label="RAP rank" />
+                      )}
                     </div>
-                    {rankTier && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-[#aaa] text-sm">Rank</span>
-                        <span className="font-bold text-sm px-2 py-0.5 rounded-full border"
-                          style={{
-                            color: rankTier.color,
-                            borderColor: rankTier.color + '66',
-                            backgroundColor: rankTier.color + '18',
-                            boxShadow: rankTier.glow ? `0 0 8px ${rankTier.color}44` : 'none',
-                          }}>
-                          {rankTier.label}
-                        </span>
-                      </div>
-                    )}
+
                   </div>
                 )}
               </div>

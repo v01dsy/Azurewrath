@@ -785,7 +785,7 @@ def update_item_prices():
 
         results = process_items_data(items, rolimons_data, previous_raps, previous_prices)
 
-        ssave_results_to_db(results, current_time)
+        save_results_to_db(results, current_time)
 
         conn2 = get_db_connection()
         cursor2 = conn2.cursor()

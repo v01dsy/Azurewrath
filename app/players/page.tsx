@@ -47,7 +47,7 @@ function getRankTier(rank: number): {
   if (rank === 3)    return { color: '#cf7500', label: `#${rank}`, glow: true,  name: 'Sunstone',  glowLevel: 3 };
   if (rank <= 10)    return { color: '#5eff00', label: `#${rank}`, glow: true,  name: 'Uranium',   glowLevel: 3 };
   if (rank <= 50)    return { color: '#05daff', label: `#${rank}`, glow: true,  name: 'Diamond',   glowLevel: 3 };
-  if (rank <= 100)   return { color: '#13b92f', label: `#${rank}`, glow: true,  name: 'Emerald',   glowLevel: 2 };
+  if (rank <= 100)   return { color: '#13b92f', label: `#${rank}`, glow: true,  name: 'Emerald',   glowLevel: 3 };
   if (rank <= 250)   return { color: '#ff3d3d', label: `#${rank}`, glow: true,  name: 'Ruby',      glowLevel: 2 };
   if (rank <= 500)   return { color: '#2e54ff', label: `#${rank}`, glow: true,  name: 'Sapphire',  glowLevel: 2 };
   if (rank <= 1000)  return { color: '#af66f3', label: `#${rank}`, glow: true,  name: 'Amethyst',  glowLevel: 2 };

@@ -119,9 +119,20 @@ export async function PATCH(req: NextRequest) {
 
   if (action === 'accept') {
     if (flag.flagType === 'manipulation') {
-      await prisma.item.update({ where: { assetId: flag.assetId }, data: { manipulated: true, manipulatedAt: new Date(), manipulatedRap: flag.rapAtFlag } });
+      await prisma.item.update({
+        where: { assetId: flag.assetId },
+        data: { manipulated: true, manipulatedAt: new Date(), manipulatedRap: flag.rapAtFlag },
+      });
+      // Dismiss any other pending manipulation flags for this asset — it's already marked now
+      await prisma.manipulationFlag.updateMany({
+        where: { assetId: flag.assetId, flagType: 'manipulation', status: 'pending', id: { not: flag.id } },
+        data: { status: 'dismissed', reviewedBy: session.user.robloxUserId, reviewedAt: new Date() },
+      });
     } else if (flag.flagType === 'unmark_suggestion') {
-      await prisma.item.update({ where: { assetId: flag.assetId }, data: { manipulated: false, manipulatedAt: null, manipulatedRap: null } });
+      await prisma.item.update({
+        where: { assetId: flag.assetId },
+        data: { manipulated: false, manipulatedAt: null, manipulatedRap: null },
+      });
     }
   }
   return NextResponse.json({ ok: true });

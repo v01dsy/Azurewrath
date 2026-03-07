@@ -132,7 +132,8 @@ def _flag_rap_growth(cursor):
             INSERT INTO "ManipulationFlag"
               (id, "assetId", "flagType", status, reason, "rapAtFlag", "rapGrowthPct", "timeWindowHrs", "detectionMethod", "createdAt")
             VALUES (%s, %s, 'manipulation', 'pending', %s, %s, %s, %s, 'rap_growth', NOW())
-        """, (str(uuid.uuid4()), int(asset_id), reason, float(rap_end), float(growth_pct), float(hrs)))
+        """, (str(uuid.uuid4()), int(asset_id), reason, float(rap_start), float(growth_pct), float(hrs)))
+        #                                                                   ^^^ pre-spike baseline, not rap_end
 
         logger.info(f"[manip_detector] 🚩 Flagged '{name}' (RAP growth) — {reason}")
 
@@ -165,6 +166,7 @@ def _flag_sale_above_best_price(cursor):
             rs."itemId",
             i.name,
             i.manipulated,
+            rs."oldRap",
             rs."newRap",
             rs.implied_sale_price,
             rs.best_price_at_sale,
@@ -183,7 +185,7 @@ def _flag_sale_above_best_price(cursor):
     if not rows:
         return
 
-    for asset_id, name, _, new_rap, implied_price, best_price, overpay_pct, sale_date in rows:
+    for asset_id, name, _, old_rap, new_rap, implied_price, best_price, overpay_pct, sale_date in rows:
 
         # Skip if already a pending flag for this item
         cursor.execute("""
@@ -226,7 +228,8 @@ def _flag_sale_above_best_price(cursor):
             INSERT INTO "ManipulationFlag"
               (id, "assetId", "flagType", status, reason, "rapAtFlag", "rapGrowthPct", "timeWindowHrs", "detectionMethod", "createdAt")
             VALUES (%s, %s, 'manipulation', 'pending', %s, %s, %s, %s, 'sale_above_best', NOW())
-        """, (str(uuid.uuid4()), int(asset_id), reason, float(new_rap), float(overpay_pct), float(TIME_WINDOW_HRS)))
+        """, (str(uuid.uuid4()), int(asset_id), reason, float(old_rap), float(overpay_pct), float(TIME_WINDOW_HRS)))
+        #                                                                  ^^^ pre-spike baseline, not new_rap
 
         logger.info(f"[manip_detector] 🚩 Flagged '{name}' (sale above best price) — {reason}")
 

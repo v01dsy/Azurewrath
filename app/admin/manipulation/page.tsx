@@ -201,9 +201,6 @@ function FlagCard({ flag, onAction, acting }: {
           >
             {flag.item.name}
           </Link>
-          {flag.item.manipulatedRap != null && flag.flagType === 'unmark_suggestion' && (
-            <p className="text-amber-400/80 text-[10px] mt-0.5">Marked at {fmt(flag.item.manipulatedRap)} R$</p>
-          )}
         </div>
       </div>
 
@@ -212,28 +209,29 @@ function FlagCard({ flag, onAction, acting }: {
         const latestRap = [...flag.item.priceHistory].reverse().find(p => p.rap != null)?.rap ?? null;
 
         if (!isManip) {
-          const preManipRap = flag.item.manipulatedAt
-            ? [...flag.item.priceHistory]
-                .filter(p => p.rap != null && new Date(p.timestamp) < new Date(flag.item.manipulatedAt!))
-                .at(-1)?.rap ?? null
+          const markedAt = flag.item.manipulatedRap;
+          const dropPct = markedAt && latestRap != null
+            ? (((latestRap - markedAt) / markedAt) * 100).toFixed(1)
             : null;
 
           return (
             <div className="grid grid-cols-3 gap-2">
-              <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 flex flex-col gap-0.5">
-                <p className="text-slate-300 text-[10px] uppercase tracking-wider font-bold">RAP at Flag</p>
-                <p className="text-white font-bold text-sm">{fmt(flag.rapAtFlag)} R$</p>
-              </div>
               <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 flex flex-col gap-0.5">
-                <p className="text-amber-300 text-[10px] uppercase tracking-wider font-bold">Pre-Manip RAP</p>
+                <p className="text-amber-300 text-[10px] uppercase tracking-wider font-bold">Marked At</p>
                 <p className="text-amber-200 font-bold text-sm">
-                  {preManipRap != null ? `${fmt(preManipRap)} R$` : '—'}
+                  {markedAt != null ? `${fmt(markedAt)} R$` : '—'}
                 </p>
               </div>
               <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 flex flex-col gap-0.5">
                 <p className="text-emerald-300 text-[10px] uppercase tracking-wider font-bold">RAP Now</p>
                 <p className="text-emerald-200 font-bold text-sm">
                   {latestRap != null ? `${fmt(latestRap)} R$` : '—'}
+                </p>
+              </div>
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg px-3 py-2 flex flex-col gap-0.5">
+                <p className="text-blue-300 text-[10px] uppercase tracking-wider font-bold">Change</p>
+                <p className="text-blue-200 font-bold text-sm">
+                  {dropPct != null ? `${parseFloat(dropPct) > 0 ? '+' : ''}${dropPct}%` : '—'}
                 </p>
               </div>
             </div>

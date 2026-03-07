@@ -9,7 +9,7 @@ Rules:
                                           the item's best listed price at the time of sale.
                                           Implied sale price = oldRap + ((newRap - oldRap) * 10)
   UNMARK SUGGESTION                     : Item is marked manipulated AND current RAP has fallen
-                                          back to or below the RAP when it was originally marked.
+                                          back to within 10% of manipulatedRap (the pre-spike baseline).
 
 Dismissal behaviour:
   When a flag is dismissed, the rapAtFlag of that dismissed flag becomes a permanent
@@ -133,7 +133,6 @@ def _flag_rap_growth(cursor):
               (id, "assetId", "flagType", status, reason, "rapAtFlag", "rapGrowthPct", "timeWindowHrs", "detectionMethod", "createdAt")
             VALUES (%s, %s, 'manipulation', 'pending', %s, %s, %s, %s, 'rap_growth', NOW())
         """, (str(uuid.uuid4()), int(asset_id), reason, float(rap_start), float(growth_pct), float(hrs)))
-        #                                                                   ^^^ pre-spike baseline, not rap_end
 
         logger.info(f"[manip_detector] 🚩 Flagged '{name}' (RAP growth) — {reason}")
 
@@ -229,48 +228,35 @@ def _flag_sale_above_best_price(cursor):
               (id, "assetId", "flagType", status, reason, "rapAtFlag", "rapGrowthPct", "timeWindowHrs", "detectionMethod", "createdAt")
             VALUES (%s, %s, 'manipulation', 'pending', %s, %s, %s, %s, 'sale_above_best', NOW())
         """, (str(uuid.uuid4()), int(asset_id), reason, float(old_rap), float(overpay_pct), float(TIME_WINDOW_HRS)))
-        #                                                                  ^^^ pre-spike baseline, not new_rap
 
         logger.info(f"[manip_detector] 🚩 Flagged '{name}' (sale above best price) — {reason}")
 
 
 # ── Rule 3: unmark suggestions ───────────────────────────────────────────────
 def _suggest_unmarks(cursor):
+    # manipulatedRap is the pre-spike baseline RAP stored when the item was first flagged.
+    # Suggest an unmark once current RAP drops back to within 10% of that baseline.
     cursor.execute("""
         WITH latest AS (
             SELECT DISTINCT ON ("itemId") "itemId", rap
             FROM "PriceHistory"
             WHERE rap IS NOT NULL
             ORDER BY "itemId", timestamp DESC
-        ),
-        pre_spike AS (
-            -- Last PriceHistory RAP entry strictly before the item was marked.
-            -- No arbitrary time offset — items marked quickly after being added still get a baseline.
-            SELECT DISTINCT ON (i."assetId") i."assetId",
-                ph.rap AS pre_rap
-            FROM "Item" i
-            JOIN "PriceHistory" ph ON ph."itemId" = i."assetId"
-            WHERE i.manipulated = TRUE
-              AND i."manipulatedAt" IS NOT NULL
-              AND ph.timestamp < i."manipulatedAt"
-              AND ph.rap IS NOT NULL
-            ORDER BY i."assetId", ph.timestamp DESC
         )
-        SELECT i."assetId", i.name, i."manipulatedRap", i."manipulatedAt", l.rap AS current_rap, p.pre_rap
+        SELECT i."assetId", i.name, i."manipulatedRap", i."manipulatedAt", l.rap AS current_rap
         FROM "Item" i
         JOIN latest l ON l."itemId" = i."assetId"
-        LEFT JOIN pre_spike p ON p."assetId" = i."assetId"
         WHERE i.manipulated = TRUE
           AND i."manipulatedRap" IS NOT NULL
           AND i."manipulatedAt" IS NOT NULL
-          AND l.rap <= COALESCE(p.pre_rap * 1.1, i."manipulatedRap" * 0.75)
+          AND l.rap <= i."manipulatedRap" * 1.1
     """)
 
     rows = cursor.fetchall()
     if not rows:
         return
 
-    for asset_id, name, manipulated_rap, manipulated_at, current_rap, pre_rap in rows:
+    for asset_id, name, manipulated_rap, manipulated_at, current_rap in rows:
 
         # Skip if already a pending unmark suggestion
         cursor.execute("""
@@ -283,8 +269,8 @@ def _suggest_unmarks(cursor):
 
         # Skip if already accepted or dismissed AFTER the current manipulatedAt.
         # This means it's already been handled for this manipulation event.
-        # If RAP changes again (new spike + new drop), manipulatedAt updates and
-        # suggestions fire fresh.
+        # If RAP spikes again and the item gets re-marked, manipulatedAt updates
+        # and suggestions can fire fresh.
         cursor.execute("""
             SELECT 1 FROM "ManipulationFlag"
             WHERE "assetId" = %s AND "flagType" = 'unmark_suggestion'
@@ -295,10 +281,9 @@ def _suggest_unmarks(cursor):
         if cursor.fetchone():
             continue
 
-        baseline = pre_rap if pre_rap else manipulated_rap * 0.75
         reason = (
             f"RAP has returned near pre-manipulation levels "
-            f"(pre-spike: {int(baseline):,} R$, current: {int(current_rap):,} R$, flagged at: {int(manipulated_rap):,} R$)"
+            f"(marked at: {int(manipulated_rap):,} R$, current: {int(current_rap):,} R$)"
         )
 
         cursor.execute("""

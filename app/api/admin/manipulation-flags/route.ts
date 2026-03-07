@@ -35,11 +35,11 @@ export async function GET(req: NextRequest) {
 
   const where = { status, ...(type ? { flagType: type } : {}) };
 
-  // Only push unmarks to the back when sorting by overpay (or when a specific type filter is active).
+  // Only push unmarks to the back when sorting by overpay.
   // When sorting by recency with "All" selected, show everything purely by time.
   const orderBy = sortBy === 'overpay'
     ? [
-        { flagType: 'asc' as const }, // unmark_suggestion sorts after manipulation alphabetically
+        { flagType: 'asc' as const },
         { rapGrowthPct: sortDir },
       ] as any
     : [
@@ -119,9 +119,17 @@ export async function PATCH(req: NextRequest) {
 
   if (action === 'accept') {
     if (flag.flagType === 'manipulation') {
+      // Only set manipulatedAt if the item isn't already marked — resetting it would
+      // invalidate all previously dismissed unmark suggestions, causing them to re-fire
+      // every worker cycle indefinitely.
+      const alreadyManipulated = flag.item.manipulated;
       await prisma.item.update({
         where: { assetId: flag.assetId },
-        data: { manipulated: true, manipulatedAt: new Date(), manipulatedRap: flag.rapAtFlag },
+        data: {
+          manipulated: true,
+          manipulatedRap: flag.rapAtFlag,
+          ...(!alreadyManipulated && { manipulatedAt: new Date() }),
+        },
       });
       // Dismiss any other pending manipulation flags for this asset — it's already marked now
       await prisma.manipulationFlag.updateMany({

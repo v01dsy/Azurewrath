@@ -3,6 +3,7 @@
 
 import { use, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import ClientInventoryGrid from './ClientInventoryGrid';
 import InventoryGraph from './InventoryGraph';
 import SnapshotModal from './SnapshotModal';
@@ -90,7 +91,6 @@ function RankTooltip({ rank, label }: { rank: number; label: string }) {
         <span className="opacity-60">{label}</span>
         <span>{tier.label}</span>
       </div>
-      {/* Arrow anchored to right side to align with value */}
       <div
         className="w-2 h-2 rotate-45 mr-2 -mt-1"
         style={{
@@ -136,7 +136,6 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
       setLoading(true);
       setError(null);
 
-      // Fire both requests in parallel
       const [response, rankRes] = await Promise.all([
         fetch(`/api/player/${params.userid}`),
         fetch(`/api/player/${params.userid}/rank`),
@@ -166,7 +165,6 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
     setShowModal(true);
   };
 
-  // ── Loading ──────────────────────────────────────────────────────────
   if (loading && !data) return (
     <div className="min-h-screen w-full text-white -mt-20 pt-24 flex items-center justify-center">
       <div className="text-center">
@@ -176,7 +174,6 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
     </div>
   );
 
-  // ── User not found ───────────────────────────────────────────────────
   if (error === 'User not found in database') return (
     <div className="min-h-screen w-full text-white -mt-20 pt-24 flex items-center justify-center">
       <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-8 text-center max-w-md">
@@ -197,7 +194,6 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
     </div>
   );
 
-  // ── Generic error ────────────────────────────────────────────────────
   if (error || !data) return (
     <div className="min-h-screen w-full text-white -mt-20 pt-24 flex items-center justify-center">
       <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-8 max-w-md w-full">
@@ -264,8 +260,6 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
                   <h1 className="text-2xl font-bold text-white">{user.displayName || user.username}</h1>
                   <p className="text-[#aaa] text-sm">@{user.username}</p>
                 </div>
-
-                <DevLoginButton robloxUserId={user.robloxUserId} username={user.username} />
 
                 {user.description && (
                   <div>
@@ -336,9 +330,9 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
 
           {/* Graph */}
           <div className="flex-1 min-h-[400px]">
-            <div className="bg-[#1e1e1e] rounded-xl border border-white/10 p-6 h-full">
+            <div className="bg-[#1e1e1e] rounded-xl border border-white/10 p-6 h-full flex flex-col relative">
               {isPrivate ? (
-                <div className="flex items-center justify-center h-full">
+                <div className="flex items-center justify-center flex-1">
                   <div className="text-center">
                     <div className="text-6xl mb-4">🔒</div>
                     <h3 className="text-white text-2xl font-semibold mb-2">Inventory is Private</h3>
@@ -346,8 +340,19 @@ export default function PlayerPage({ params: paramsPromise }: { params: Promise<
                   </div>
                 </div>
               ) : (
-                <InventoryGraph data={graphData} onPointClick={handleGraphPointClick} />
+                <div className="flex-1 min-h-0">
+                  <InventoryGraph data={graphData} onPointClick={handleGraphPointClick} />
+                </div>
               )}
+              <div className="absolute bottom-4 left-4">
+                <DevLoginButton robloxUserId={user.robloxUserId} username={user.username} />
+              </div>
+              <Link
+                href={`/history/${user.robloxUserId}`}
+                className="absolute bottom-4 right-4 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all bg-[#a78bfa]/10 hover:bg-[#a78bfa]/20 border-[#a78bfa]/30 text-[#a78bfa]"
+              >
+                View History →
+              </Link>
             </div>
           </div>
         </div>

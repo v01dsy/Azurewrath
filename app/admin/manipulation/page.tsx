@@ -412,7 +412,11 @@ export default function ManipulationAdminPage() {
         const params = new URLSearchParams({ status: tab, userId, skip: String(replacementSkip), take: '1', sortBy, sortDir });
         if (typeFilter !== 'all') params.set('type', typeFilter);
         const data = await fetch(`/api/admin/manipulation-flags?${params}`).then(r => r.json());
-        setFlags(prev => [...prev.filter(f => f.id !== id), ...(data.flags ?? [])]);
+        setFlags(prev => {
+          const existing = prev.filter(f => f.id !== id);
+          const newFlags = (data.flags ?? []).filter((f: Flag) => !existing.some(e => e.id === f.id));
+          return [...existing, ...newFlags];
+        });
       } else {
         setFlags(prev => {
           const next = prev.filter(f => f.id !== id);

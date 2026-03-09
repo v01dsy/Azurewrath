@@ -12,14 +12,10 @@ async function canViewInventory(robloxUserId: string): Promise<boolean> {
     const response = await fetch(
       `https://inventory.roblox.com/v1/users/${robloxUserId}/can-view-inventory`
     );
-    if (!response.ok) {
-      console.warn(`canViewInventory returned ${response.status} for ${robloxUserId} — assuming public`);
-      return true;
-    }
+    if (!response.ok) return true;
     const data = await response.json();
     return data.canView !== false;
-  } catch (error) {
-    console.error('Error checking inventory visibility — assuming public:', error);
+  } catch {
     return true;
   }
 }
@@ -41,20 +37,6 @@ export async function GET(
 
     const robloxUserIdString = user.robloxUserId.toString();
 
-    // Fetch avatar
-    let avatarUrl: string | null = null;
-    try {
-      const avatarResponse = await fetch(
-        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${robloxUserIdString}&size=420x420&format=Png&isCircular=false`
-      );
-      if (avatarResponse.ok) {
-        const avatarData = await avatarResponse.json();
-        avatarUrl = avatarData.data?.[0]?.imageUrl || null;
-      }
-    } catch (error) {
-      console.warn('Failed to fetch avatar:', error);
-    }
-
     // Scan logic
     if (ongoingScans.has(robloxUserIdString)) {
       console.log(`⏳ Scan already in progress for ${user.username}, skipping...`);
@@ -74,13 +56,14 @@ export async function GET(
               robloxUserId: robloxUserIdString,
               username: user.username,
               displayName: user.displayName,
-              avatarUrl: avatarUrl || user.avatarUrl,
+              avatarUrl: user.avatarUrl,
               description: user.description,
               role: user.role ?? 'user',
             },
             inventory: [],
             stats: { totalRAP: 0, totalItems: 0, uniqueItems: 0, lastScanned: null },
             graphData: [],
+            ranks: { rapRank: null, itemsRank: null, uniqueRank: null },
             isPrivate: true
           });
         }
@@ -116,94 +99,101 @@ export async function GET(
       }
     }
 
-    // Latest snapshot inventory
-    const inventoryData = await prisma.$queryRaw<Array<{
-      assetId: bigint;
-      userAssetId: bigint;
-      name: string;
-      imageUrl: string | null;
-      manipulated: boolean;
-      isLimitedUnique: boolean | null;
-      rap: number | null;
-      itemCount: number;
-      serialNumbers: (number | null)[];
-      userAssetIds: bigint[];
-      scannedAt: Date;
-    }>>`
-      WITH LatestSnapshot AS (
-        SELECT id, "createdAt"
+    // Run inventory, graph, avatar, and ranks in parallel
+    const [inventoryData, graphData, avatarResult, rankRes] = await Promise.all([
+      prisma.$queryRaw<Array<{
+        assetId: bigint;
+        userAssetId: bigint;
+        name: string;
+        imageUrl: string | null;
+        manipulated: boolean;
+        isLimitedUnique: boolean | null;
+        rap: number | null;
+        itemCount: number;
+        serialNumbers: (number | null)[];
+        userAssetIds: bigint[];
+        scannedAt: Date;
+      }>>`
+        WITH LatestSnapshot AS (
+          SELECT id, "createdAt"
+          FROM "InventorySnapshot"
+          WHERE "userId" = ${user.robloxUserId}
+          ORDER BY "createdAt" DESC
+          LIMIT 1
+        ),
+        InventoryWithPrices AS (
+          SELECT 
+            ii."assetId",
+            ii."userAssetId",
+            ii."serialNumber",
+            ii."scannedAt",
+            i.name,
+            i."imageUrl",
+            i.manipulated,
+            i."isLimitedUnique",
+            ph.rap,
+            ARRAY_AGG(ii."userAssetId") OVER (PARTITION BY ii."assetId") as user_asset_ids,
+            ARRAY_AGG(ii."serialNumber") OVER (PARTITION BY ii."assetId") as serial_numbers,
+            ARRAY_AGG(ii."scannedAt") OVER (PARTITION BY ii."assetId") as scanned_at_array,
+            COUNT(*) OVER (PARTITION BY ii."assetId") as item_count
+          FROM "InventoryItem" ii
+          INNER JOIN LatestSnapshot ls ON ii."snapshotId" = ls.id
+          LEFT JOIN "Item" i ON ii."assetId" = i."assetId"
+          LEFT JOIN LATERAL (
+            SELECT rap
+            FROM "PriceHistory"
+            WHERE "itemId" = i."assetId"
+            ORDER BY timestamp DESC
+            LIMIT 1
+          ) ph ON true
+        )
+        SELECT DISTINCT ON ("assetId")
+          "assetId",
+          "userAssetId",
+          COALESCE(name, 'Unknown Item') as name,
+          "imageUrl",
+          COALESCE(manipulated, false) as manipulated,
+          "isLimitedUnique",
+          COALESCE(rap, 0) as rap,
+          item_count::int as "itemCount",
+          serial_numbers as "serialNumbers",
+          user_asset_ids as "userAssetIds",
+          (scanned_at_array[1]) as "scannedAt"
+        FROM InventoryWithPrices
+        ORDER BY "assetId", rap DESC NULLS LAST
+      `,
+      prisma.$queryRaw<Array<{
+        snapshotId: string;
+        createdAt: Date;
+        totalRap: number;
+        itemCount: number;
+        uniqueCount: number;
+      }>>`
+        SELECT
+          id as "snapshotId",
+          "createdAt",
+          "totalRAP" as "totalRap",
+          "totalItems" as "itemCount",
+          "uniqueItems" as "uniqueCount"
         FROM "InventorySnapshot"
         WHERE "userId" = ${user.robloxUserId}
-        ORDER BY "createdAt" DESC
-        LIMIT 1
-      ),
-      InventoryWithPrices AS (
-        SELECT 
-          ii."assetId",
-          ii."userAssetId",
-          ii."serialNumber",
-          ii."scannedAt",
-          i.name,
-          i."imageUrl",
-          i.manipulated,
-          i."isLimitedUnique",
-          ph.rap,
-          ARRAY_AGG(ii."userAssetId") OVER (PARTITION BY ii."assetId") as user_asset_ids,
-          ARRAY_AGG(ii."serialNumber") OVER (PARTITION BY ii."assetId") as serial_numbers,
-          ARRAY_AGG(ii."scannedAt") OVER (PARTITION BY ii."assetId") as scanned_at_array,
-          COUNT(*) OVER (PARTITION BY ii."assetId") as item_count
-        FROM "InventoryItem" ii
-        INNER JOIN LatestSnapshot ls ON ii."snapshotId" = ls.id
-        LEFT JOIN "Item" i ON ii."assetId" = i."assetId"
-        LEFT JOIN LATERAL (
-          SELECT rap
-          FROM "PriceHistory"
-          WHERE "itemId" = i."assetId"
-          ORDER BY timestamp DESC
-          LIMIT 1
-        ) ph ON true
-      )
-      SELECT DISTINCT ON ("assetId")
-        "assetId",
-        "userAssetId",
-        COALESCE(name, 'Unknown Item') as name,
-        "imageUrl",
-        COALESCE(manipulated, false) as manipulated,
-        "isLimitedUnique",
-        COALESCE(rap, 0) as rap,
-        item_count::int as "itemCount",
-        serial_numbers as "serialNumbers",
-        user_asset_ids as "userAssetIds",
-        (scanned_at_array[1]) as "scannedAt"
-      FROM InventoryWithPrices
-      ORDER BY "assetId", rap DESC NULLS LAST
-    `;
+        ORDER BY "createdAt" ASC
+        LIMIT 30
+      `,
+      fetch(
+        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${robloxUserIdString}&size=420x420&format=Png&isCircular=false`
+      ).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(
+        `${process.env.NEXT_PUBLIC_APP_URL}/api/player/${robloxUserIdString}/rank`,
+        { cache: 'no-store' }
+      ).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]);
 
-    // Graph data from stored snapshot values
-    const graphData = await prisma.$queryRaw<Array<{
-      snapshotId: string;
-      createdAt: Date;
-      totalRap: number;
-      itemCount: number;
-      uniqueCount: number;
-    }>>`
-      SELECT
-        id as "snapshotId",
-        "createdAt",
-        "totalRAP" as "totalRap",
-        "totalItems" as "itemCount",
-        "uniqueItems" as "uniqueCount"
-      FROM "InventorySnapshot"
-      WHERE "userId" = ${user.robloxUserId}
-      ORDER BY "createdAt" ASC
-      LIMIT 30
-    `;
-
-    const totalRAP = inventoryData.reduce((sum, item) => sum + ((item.rap || 0) * item.itemCount), 0);
-    const totalItems = inventoryData.reduce((sum, item) => sum + item.itemCount, 0);
+    const avatarUrl = avatarResult?.data?.[0]?.imageUrl || user.avatarUrl;
+    const totalRAP = inventoryData.reduce((sum, item) => sum + (Number(item.rap) || 0) * Number(item.itemCount), 0);
+    const totalItems = inventoryData.reduce((sum, item) => sum + Number(item.itemCount), 0);
     const latestSnapshot = graphData.length > 0 ? graphData[graphData.length - 1] : null;
 
-    // Deduplicate: keep only the latest snapshot per calendar day
     const dedupedGraphData = (() => {
       const byDay = new Map<string, typeof graphData[0]>();
       for (const snap of graphData) {
@@ -217,7 +207,7 @@ export async function GET(
       return Array.from(byDay.entries()).map(([day, snap]) => ({
         snapshotId: snap.snapshotId,
         date: day,
-        timestamp: new Date(snap.createdAt).getTime(), // unix ms for time-gap-aware charting
+        timestamp: new Date(snap.createdAt).getTime(),
         rap: Number(snap.totalRap),
         itemCount: Number(snap.itemCount),
         uniqueCount: Number(snap.uniqueCount),
@@ -229,7 +219,7 @@ export async function GET(
         robloxUserId: robloxUserIdString,
         username: user.username,
         displayName: user.displayName,
-        avatarUrl: avatarUrl || user.avatarUrl,
+        avatarUrl,
         description: user.description,
         role: user.role ?? 'user',
       },
@@ -239,8 +229,8 @@ export async function GET(
         imageUrl: item.imageUrl,
         manipulated: item.manipulated ?? false,
         isLimitedUnique: item.isLimitedUnique ?? null,
-        rap: item.rap || 0,
-        count: item.itemCount,
+        rap: Number(item.rap) || 0,
+        count: Number(item.itemCount),
         userAssetIds: item.userAssetIds.map(id => id.toString()),
         serialNumbers: item.serialNumbers,
         scannedAt: item.scannedAt
@@ -249,10 +239,15 @@ export async function GET(
         totalRAP,
         totalItems,
         uniqueItems: inventoryData.length,
-        lastScanned: latestSnapshot?.createdAt
+        lastScanned: latestSnapshot?.createdAt ?? null,
       },
       graphData: dedupedGraphData,
-      isPrivate: false
+      ranks: {
+        rapRank:    rankRes?.rapRank    ?? null,
+        itemsRank:  rankRes?.itemsRank  ?? null,
+        uniqueRank: rankRes?.uniqueRank ?? null,
+      },
+      isPrivate: false,
     });
 
   } catch (error) {

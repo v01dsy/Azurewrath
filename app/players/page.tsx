@@ -309,45 +309,58 @@ function RankGuideModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function Pagination({ page, totalPages, onChange }: {
-  page: number; totalPages: number; onChange: (p: number) => void;
+function Pagination({ page, total, pageSize, onChange }: {
+  page: number; total: number; pageSize: number; onChange: (p: number) => void;
 }) {
-  if (totalPages <= 1) return null;
+  if (total <= pageSize) return null;
+  const totalPages = Math.ceil(total / pageSize);
+  const [jumpLeft, setJumpLeft] = useState(false);
+  const [jumpRight, setJumpRight] = useState(false);
+  const [jumpVal, setJumpVal] = useState('');
 
-  const pages: (number | '...')[] = [];
+  const pages: (number | 'left-dot' | 'right-dot')[] = [];
   if (totalPages <= 7) {
     for (let i = 1; i <= totalPages; i++) pages.push(i);
   } else {
     pages.push(1);
-    if (page > 3) pages.push('...');
+    if (page > 3) pages.push('left-dot');
     for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pages.push(i);
-    if (page < totalPages - 2) pages.push('...');
+    if (page < totalPages - 2) pages.push('right-dot');
     pages.push(totalPages);
   }
 
+  const commit = (val: string, close: () => void) => {
+    const n = parseInt(val);
+    if (!isNaN(n) && n >= 1 && n <= totalPages) onChange(n);
+    close();
+    setJumpVal('');
+  };
+
+  const JumpInput = ({ onClose }: { onClose: () => void }) => (
+    <input autoFocus type="number" min={1} max={totalPages} value={jumpVal}
+      onChange={e => setJumpVal(e.target.value)}
+      onKeyDown={e => { if (e.key === 'Enter') commit(jumpVal, onClose); if (e.key === 'Escape') { onClose(); setJumpVal(''); } }}
+      onBlur={() => commit(jumpVal, onClose)}
+      className="w-12 h-8 rounded-lg text-sm text-center font-semibold bg-slate-700 border border-purple-500/60 text-white focus:outline-none"
+    />
+  );
+
+  const btn = "px-3 py-1.5 rounded-lg text-sm font-semibold bg-slate-800 border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 transition disabled:opacity-30 disabled:cursor-not-allowed";
+
   return (
-    <div className="flex items-center justify-center gap-1">
-      <button onClick={() => onChange(page - 1)} disabled={page === 1}
-        className="px-3 py-1.5 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition">
-        ← Prev
-      </button>
-      {pages.map((p, i) =>
-        p === '...' ? (
-          <span key={`e-${i}`} className="px-2 text-slate-600">…</span>
-        ) : (
-          <button key={p} onClick={() => onChange(p)}
-            className="w-8 h-8 rounded-lg text-sm font-semibold transition-all border"
-            style={p === page
-              ? { background: 'rgba(139,92,246,0.2)', color: '#a78bfa', borderColor: '#8b5cf6' }
-              : { background: 'transparent', color: '#64748b', borderColor: 'transparent' }}>
-            {p}
-          </button>
-        )
-      )}
-      <button onClick={() => onChange(page + 1)} disabled={page === totalPages}
-        className="px-3 py-1.5 rounded-lg text-sm text-slate-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition">
-        Next →
-      </button>
+    <div className="flex items-center justify-center gap-2 py-1">
+      <button onClick={() => onChange(Math.max(1, page - 1))} disabled={page === 1} className={btn}>← Prev</button>
+      {pages.map((p, i) => {
+        if (p === 'left-dot') return jumpLeft
+          ? <JumpInput key="left-dot" onClose={() => setJumpLeft(false)} />
+          : <button key="left-dot" onClick={() => setJumpLeft(true)} className="text-slate-400 hover:text-white px-1 transition">...</button>;
+        if (p === 'right-dot') return jumpRight
+          ? <JumpInput key="right-dot" onClose={() => setJumpRight(false)} />
+          : <button key="right-dot" onClick={() => setJumpRight(true)} className="text-slate-400 hover:text-white px-1 transition">...</button>;
+        return <button key={p} onClick={() => onChange(p as number)} className={`w-8 h-8 rounded-lg text-sm font-semibold transition border ${p === page ? 'bg-purple-600/40 border-purple-500/60 text-purple-200' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'}`}>{p}</button>;
+      })}
+      <button onClick={() => onChange(Math.min(totalPages, page + 1))} disabled={page === totalPages} className={btn}>Next →</button>
+      <span className="text-slate-500 text-xs ml-2">{(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}</span>
     </div>
   );
 }
@@ -483,7 +496,12 @@ export default function PlayersPage() {
         )}
 
         {!search && (
-          <Pagination page={page} totalPages={totalPages} onChange={p => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />
+          <Pagination 
+            page={page} 
+            total={total} 
+            pageSize={50} 
+            onChange={p => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); }} 
+          />
         )}
 
         {!isLoading && displayed.length > 0 && (

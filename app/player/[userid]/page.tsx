@@ -1,30 +1,13 @@
 // app/player/[userid]/page.tsx
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import prisma from '@/lib/prisma';
 import ClientInventoryGrid from './ClientInventoryGrid';
 import PlayerInteractive from './PlayerInteractive';
 import DescriptionButton from './DescriptionButton';
+import RankBadge from '@/components/RankBadge';
 
 interface PageProps {
   params: Promise<{ userid: string }>;
-}
-
-// ─── Rank tier helper ──────────────────────────────────────────────────────
-
-function getRankTier(rank: number): { color: string; label: string; glow: boolean } {
-  if (rank === 1)    return { color: '#c2b506', label: '👑',       glow: true  };
-  if (rank === 2)    return { color: '#f3f3f3', label: `#${rank}`, glow: true  };
-  if (rank === 3)    return { color: '#cf7500', label: `#${rank}`, glow: true  };
-  if (rank <= 10)    return { color: '#49e0ff', label: `#${rank}`, glow: true  };
-  if (rank <= 50)    return { color: '#ff6dff', label: `#${rank}`, glow: true  };
-  if (rank <= 100)   return { color: '#9ff400', label: `#${rank}`, glow: true  };
-  if (rank <= 250)   return { color: '#ffa121', label: `#${rank}`, glow: true  };
-  if (rank <= 500)   return { color: '#9d66f3', label: `#${rank}`, glow: false };
-  if (rank <= 1000)  return { color: '#17c7b4', label: `#${rank}`, glow: false };
-  if (rank <= 5000)  return { color: '#ff7967', label: `#${rank}`, glow: false };
-  if (rank <= 10000) return { color: '#979797', label: `#${rank}`, glow: false };
-  return               { color: '#666666',  label: `#${rank}`, glow: false };
 }
 
 // ─── generateMetadata ─────────────────────────────────────────────────────
@@ -67,86 +50,119 @@ async function fetchPlayerData(userid: string) {
   if (!user) return null;
 
   const robloxUserIdString = user.robloxUserId.toString();
-  const isPrivate = !(await canViewInventory(robloxUserIdString));
 
-  // Fetch fresh avatar
-  let avatarUrl = user.avatarUrl;
-  try {
-    const avatarRes = await fetch(
+  const [
+    isPrivateResult,
+    avatarResult,
+    inventoryData,
+    allSnapshots,
+    rankRes,
+  ] = await Promise.all([
+    canViewInventory(robloxUserIdString).then(v => !v),
+    fetch(
       `https://thumbnails.roblox.com/v1/users/avatar?userIds=${robloxUserIdString}&size=420x420&format=Png&isCircular=false`,
       { next: { revalidate: 300 } }
-    );
-    if (avatarRes.ok) {
-      const avatarData = await avatarRes.json();
-      avatarUrl = avatarData.data?.[0]?.imageUrl || avatarUrl;
-    }
-  } catch {}
+    ).then(r => r.ok ? r.json() : null).catch(() => null),
+    prisma.$queryRaw<Array<{
+      assetId: bigint;
+      userAssetId: bigint;
+      name: string;
+      imageUrl: string | null;
+      manipulated: boolean;
+      isLimitedUnique: boolean | null;
+      rap: number | null;
+      itemCount: number;
+      serialNumbers: (number | null)[];
+      userAssetIds: bigint[];
+      scannedAt: Date;
+    }>>`
+      WITH LatestSnapshot AS (
+        SELECT id, "createdAt"
+        FROM "InventorySnapshot"
+        WHERE "userId" = ${user.robloxUserId}
+        ORDER BY "createdAt" DESC
+        LIMIT 1
+      ),
+      InventoryWithPrices AS (
+        SELECT 
+          ii."assetId",
+          ii."userAssetId",
+          ii."serialNumber",
+          ii."scannedAt",
+          i.name,
+          i."imageUrl",
+          i.manipulated,
+          i."isLimitedUnique",
+          ph.rap,
+          ARRAY_AGG(ii."userAssetId") OVER (PARTITION BY ii."assetId") as user_asset_ids,
+          ARRAY_AGG(ii."serialNumber") OVER (PARTITION BY ii."assetId") as serial_numbers,
+          ARRAY_AGG(ii."scannedAt") OVER (PARTITION BY ii."assetId") as scanned_at_array,
+          COUNT(*) OVER (PARTITION BY ii."assetId") as item_count
+        FROM "InventoryItem" ii
+        INNER JOIN LatestSnapshot ls ON ii."snapshotId" = ls.id
+        LEFT JOIN "Item" i ON ii."assetId" = i."assetId"
+        LEFT JOIN LATERAL (
+          SELECT rap
+          FROM "PriceHistory"
+          WHERE "itemId" = i."assetId"
+          ORDER BY timestamp DESC
+          LIMIT 1
+        ) ph ON true
+      )
+      SELECT DISTINCT ON ("assetId")
+        "assetId",
+        "userAssetId",
+        COALESCE(name, 'Unknown Item') as name,
+        "imageUrl",
+        COALESCE(manipulated, false) as manipulated,
+        "isLimitedUnique",
+        COALESCE(rap, 0) as rap,
+        item_count::int as "itemCount",
+        serial_numbers as "serialNumbers",
+        user_asset_ids as "userAssetIds",
+        (scanned_at_array[1]) as "scannedAt"
+      FROM InventoryWithPrices
+      ORDER BY "assetId", rap DESC NULLS LAST
+    `,
+    prisma.inventorySnapshot.findMany({
+      where: { userId: user.robloxUserId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, createdAt: true, totalRAP: true, totalItems: true, uniqueItems: true },
+    }),
+    fetch(
+  `${process.env.NEXT_PUBLIC_APP_URL}/api/player/${user.robloxUserId.toString()}/rank`,
+    { cache: 'no-store' }
+  ).then(r => r.ok ? r.json() : null).catch(() => null),
+  ]);
 
-  // Latest snapshot + items
-  const latestSnapshot = await prisma.inventorySnapshot.findFirst({
-    where: { userId: user.robloxUserId },
-    orderBy: { createdAt: 'desc' },
-    include: {
-      items: {
-        include: {
-          item: { include: { priceHistory: { orderBy: { timestamp: 'desc' }, take: 1 } } },
-        },
-      },
-    },
-  });
+  const isPrivate = isPrivateResult;
+  const avatarUrl = avatarResult?.data?.[0]?.imageUrl || user.avatarUrl;
 
-  // Build inventory
-  const inventoryMap = new Map<string, any>();
-  for (const invItem of latestSnapshot?.items ?? []) {
-    const key = invItem.assetId.toString();
-    const rap = invItem.item?.priceHistory?.[0]?.rap ?? 0;
-    const existing = inventoryMap.get(key);
-    if (existing) {
-      existing.count += 1;
-      existing.userAssetIds.push(invItem.userAssetId.toString());
-      existing.serialNumbers.push(invItem.serialNumber);
-    } else {
-      inventoryMap.set(key, {
-        assetId: key,
-        name: invItem.item?.name ?? 'Unknown',
-        imageUrl: invItem.item?.imageUrl ?? null,
-        manipulated: invItem.item?.manipulated ?? false,
-        isLimitedUnique: invItem.item?.isLimitedUnique ?? null,
-        rap,
-        count: 1,
-        userAssetIds: [invItem.userAssetId.toString()],
-        serialNumbers: [invItem.serialNumber],
-        scannedAt: invItem.scannedAt.toISOString(),
-      });
-    }
-  }
+  const inventory = inventoryData.map(item => ({
+    assetId: item.assetId.toString(),
+    name: item.name,
+    imageUrl: item.imageUrl,
+    manipulated: item.manipulated ?? false,
+    isLimitedUnique: item.isLimitedUnique ?? null,
+    rap: item.rap || 0,
+    count: item.itemCount,
+    userAssetIds: item.userAssetIds.map((id: bigint) => id.toString()),
+    serialNumbers: item.serialNumbers,
+    scannedAt: item.scannedAt,
+  }));
 
-  const inventory = Array.from(inventoryMap.values());
-  const totalRAP = inventory.reduce((sum, item) => sum + item.rap * item.count, 0);
+  const totalRAP = inventory.reduce((sum, item) => sum + (item.rap * item.count), 0);
   const totalItems = inventory.reduce((sum, item) => sum + item.count, 0);
   const uniqueItems = inventory.length;
 
-// Graph data — read stored values directly, never recalculate
-const allSnapshots = await prisma.inventorySnapshot.findMany({
-  where: { userId: user.robloxUserId },
-  orderBy: { createdAt: 'asc' },
-  select: {
-    id: true,
-    createdAt: true,
-    totalRAP: true,
-    totalItems: true,
-    uniqueItems: true,
-  },
-});
-
-const graphData = allSnapshots.map(snapshot => ({
-  snapshotId: snapshot.id,
-  date: snapshot.createdAt.toISOString(),
-  timestamp: snapshot.createdAt.getTime(),
-  rap: snapshot.totalRAP ?? 0,
-  itemCount: snapshot.totalItems ?? 0,
-  uniqueCount: snapshot.uniqueItems ?? 0,
-}));
+  const graphData = allSnapshots.map(snapshot => ({
+    snapshotId: snapshot.id,
+    date: snapshot.createdAt.toISOString(),
+    timestamp: snapshot.createdAt.getTime(),
+    rap: snapshot.totalRAP ?? 0,
+    itemCount: snapshot.totalItems ?? 0,
+    uniqueCount: snapshot.uniqueItems ?? 0,
+  }));
 
   return {
     user: {
@@ -158,28 +174,15 @@ const graphData = allSnapshots.map(snapshot => ({
       role: user.role,
     },
     inventory,
-    stats: { totalRAP, totalItems, uniqueItems, lastScanned: latestSnapshot?.createdAt.toISOString() ?? null },
+    stats: { totalRAP, totalItems, uniqueItems, lastScanned: allSnapshots[allSnapshots.length - 1]?.createdAt.toISOString() ?? null },
     graphData,
     isPrivate,
-    ranks: { rapRank: null as number | null, itemsRank: null as number | null, uniqueRank: null as number | null },
+    ranks: {
+      rapRank:    rankRes?.rapRank    ?? null,
+      itemsRank:  rankRes?.itemsRank  ?? null,
+      uniqueRank: rankRes?.uniqueRank ?? null,
+    },
   };
-}
-
-// ─── Rank badge ───────────────────────────────────────────────────────────
-
-function RankBadge({ rank, label }: { rank: number; label: string }) {
-  const tier = getRankTier(rank);
-  return (
-    <div className="pointer-events-none absolute right-0 bottom-full mb-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex flex-col items-end">
-      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap"
-        style={{ backgroundColor: '#1a1a1a', border: `1px solid ${tier.color}55`, color: tier.color, boxShadow: tier.glow ? `0 0 10px ${tier.color}33` : 'none' }}>
-        <span className="opacity-60">{label}</span>
-        <span>{tier.label}</span>
-      </div>
-      <div className="w-2 h-2 rotate-45 mr-2 -mt-1"
-        style={{ backgroundColor: '#1a1a1a', border: `1px solid ${tier.color}55`, borderTop: 'none', borderLeft: 'none' }} />
-    </div>
-  );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────

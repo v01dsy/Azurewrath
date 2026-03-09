@@ -18,6 +18,10 @@ export const metadata: Metadata = {
   other: {
     'google-adsense-account': 'ca-pub-5901846749996606',
   },
+    icons: {
+    icon: '/Images/icon.png',           // transparent - for browser tab
+    shortcut: '/Images/icon-black.png', // black bg - for search results
+  },
 };
 
 export default function RootLayout({
@@ -29,6 +33,7 @@ export default function RootLayout({
     <html lang="en" role="document">
       <head>
         <link rel="icon" type="image/png" href="/Images/icon.png" />
+        <link rel="shortcut icon" type="image/png" href="/Images/icon-black.png" />
         <style>{`
           /* Custom Scrollbar */
           ::-webkit-scrollbar {

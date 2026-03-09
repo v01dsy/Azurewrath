@@ -22,3 +22,7 @@ export async function generateMetadata({ params }: { params: Promise<{ uaid: str
     };
   }
 }
+
+export default function Layout({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}

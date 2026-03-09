@@ -58,13 +58,16 @@ export default function MoreDropdown() {
     }, 120_000);
 
     const flagsInterval = setInterval(() => {
-      fetch(`/api/user/role?userId=${uid}`).then(r => r.json()).then(d => {
-        if (!hasRole(d.role, 'admin')) return;
-        fetch(`/api/admin/manipulation-flags?status=pending&userId=${uid}&skip=0&take=1`)
-          .then(r => r.json())
-          .then(data => setPendingFlags(data.total ?? 0))
-          .catch(() => {});
-      });
+      if (document.hidden) return; // don't fetch when tab is hidden
+      fetch(`/api/user/role?userId=${uid}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (!d || !hasRole(d.role, 'admin')) return;
+          return fetch(`/api/admin/manipulation-flags?status=pending&userId=${uid}&skip=0&take=1`)
+            .then(r => r.ok ? r.json() : null)
+            .then(data => { if (data) setPendingFlags(data.total ?? 0); });
+        })
+        .catch(() => {});
     }, 60_000);
 
     return () => { clearInterval(newsInterval); clearInterval(flagsInterval); };

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import prisma from '@/lib/prisma';
 import ClientInventoryGrid from './ClientInventoryGrid';
 import PlayerInteractive from './PlayerInteractive';
+import DescriptionButton from './DescriptionButton';
 
 interface PageProps {
   params: Promise<{ userid: string }>;
@@ -254,9 +255,7 @@ export default async function PlayerPage({ params }: PageProps) {
                 </div>
 
                 {user.description && (
-                  <div>
-                    <p className="text-[#888] text-sm truncate">{user.description}</p>
-                  </div>
+                  <DescriptionButton description={user.description} name={user.displayName || user.username} />
                 )}
 
                 <div className="text-[#777] text-xs">Roblox ID: {user.robloxUserId}</div>

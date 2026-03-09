@@ -38,16 +38,6 @@ export default function PlayerInteractive({ graphData, user, isPrivate }: Player
 
   return (
     <>
-      {/* Description "View more" button */}
-      {user.description && user.description.length > 40 && (
-        <button
-          onClick={() => setShowDescriptionModal(true)}
-          className="text-purple-400 hover:text-purple-300 text-xs mt-1 transition"
-        >
-          View more
-        </button>
-      )}
-
       {/* Graph */}
       <div className="flex-1 min-h-[400px]">
         <div className="bg-[#1e1e1e] rounded-xl border border-white/10 p-6 h-full flex flex-col relative">
@@ -83,25 +73,6 @@ export default function PlayerInteractive({ graphData, user, isPrivate }: Player
         snapshotId={selectedSnapshot?.id || null}
         snapshotDate={selectedSnapshot?.date || ''}
       />
-
-      {/* Description modal */}
-      {showDescriptionModal && (
-        <div
-          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowDescriptionModal(false)}
-        >
-          <div
-            className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-start mb-4">
-              <h3 className="text-white text-xl font-semibold">About {user.displayName || user.username}</h3>
-              <button onClick={() => setShowDescriptionModal(false)} className="text-[#aaa] hover:text-white transition text-2xl leading-none">×</button>
-            </div>
-            <p className="text-[#ccc] whitespace-pre-wrap">{user.description}</p>
-          </div>
-        </div>
-      )}
     </>
   );
 }

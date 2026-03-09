@@ -207,6 +207,10 @@ export default async function PlayerPage({ params }: PageProps) {
     );
   }
 
+  if (data && data.inventory.length === 0 && !data.isPrivate) {
+    fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/player/${userid}`, { cache: 'no-store' }).catch(() => {});
+  }
+
   const { user, inventory, stats, graphData, isPrivate, ranks } = data;
 
   const roleStyles: Record<string, { bg: string; border: string; text: string }> = {
@@ -296,7 +300,7 @@ export default async function PlayerPage({ params }: PageProps) {
           </div>
 
           {/* ── Graph + modals (client component) ─────────────────── */}
-          <PlayerInteractive graphData={graphData} user={user} isPrivate={isPrivate} />
+          <PlayerInteractive graphData={graphData} user={user} isPrivate={isPrivate} hasInventory={inventory.length > 0} />
 
         </div>
 

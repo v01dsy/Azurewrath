@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { saveInventorySnapshot } from '@/lib/inventoryTracker';
 
-export const revalidate = 300;
+export const dynamic = 'force-dynamic';
 
 const ongoingScans = new Set<string>();
 

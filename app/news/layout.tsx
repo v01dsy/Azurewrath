@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Players",
-  description: "Browse and search Roblox traders tracked on Azurewrath — view RAP, inventory, and trade history.",
+  title: "News",
+  description: "Stay updated with the latest news and updates from Azurewrath.",
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {

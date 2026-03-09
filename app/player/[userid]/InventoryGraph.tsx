@@ -32,6 +32,12 @@ const niceMax = (dataMax: number): number => {
 const buildTicks = (max: number, count = 5) =>
   Array.from({ length: count }, (_, i) => Math.round(i * max / (count-1)));
 
+// Normalize a timestamp to midnight UTC of that day (date-only spacing)
+const toDateOnly = (ts: number) => {
+  const d = new Date(ts);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+};
+
 const LEGEND = [
   { dataKey: 'rap',         name: 'Total RAP',       color: '#43e97b' },
   { dataKey: 'itemCount',   name: 'Total Items',     color: '#4fc3f7' },
@@ -41,7 +47,6 @@ const LEGEND = [
 const AXIS_STYLE = { fill: '#b0b0b0', fontSize: 11, fontWeight: 700 } as const;
 const TICK_LINE  = { stroke: '#666666' };
 
-// Custom tooltip with bold date + bold values
 function CustomTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const ts = payload[0]?.payload?.timestamp;
@@ -89,9 +94,29 @@ export default function InventoryGraph({ data, onPointClick }: InventoryGraphPro
   const itemNice  = niceMax(itemMax);
   const itemTicks = buildTicks(itemNice);
 
-  const chartData = data.map(d => ({
+  // Deduplicate by date — keep last snapshot per day
+  const dedupedByDay = (() => {
+    const byDay = new Map<number, DataPoint>();
+    for (const d of data) {
+      const dayKey = toDateOnly(d.timestamp);
+      byDay.set(dayKey, d); // last one wins
+    }
+    return Array.from(byDay.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([dayTs, d]) => ({ ...d, dayTs }));
+  })();
+
+  // Build x-axis ticks from actual day timestamps
+  const allDayTs = dedupedByDay.map(d => d.dayTs);
+  const xTicks = (() => {
+    if (allDayTs.length <= 6) return allDayTs;
+    const min = allDayTs[0], max = allDayTs[allDayTs.length - 1];
+    const step = (max - min) / 5;
+    return Array.from({ length: 6 }, (_, i) => Math.round(min + i * step));
+  })();
+
+  const chartData = dedupedByDay.map(d => ({
     ...d,
-    dateLabel:   new Date(d.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     rap:         rapHidden                 ? null : d.rap,
     itemCount:   hidden.has('itemCount')   ? null : d.itemCount,
     uniqueCount: hidden.has('uniqueCount') ? null : d.uniqueCount,
@@ -118,48 +143,53 @@ export default function InventoryGraph({ data, onPointClick }: InventoryGraphPro
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 8 }} onClick={handleClick}>
             <CartesianGrid strokeDasharray="0" stroke="rgba(255,255,255,0.06)" />
-            <XAxis dataKey="dateLabel" type="category" stroke="#666666"
-              tick={{ fill: '#b0b0b0', fontSize: 11 }} tickLine={TICK_LINE}
-              interval={Math.floor(chartData.length/5)-1} height={24} />
 
-            {/* Left RAP axis — collapses fully when RAP is toggled off */}
+            {/* ✅ Numeric time axis — spaces by actual date gaps */}
+            <XAxis
+              dataKey="dayTs"
+              type="number"
+              scale="time"
+              domain={['dataMin', 'dataMax']}
+              ticks={xTicks}
+              tickFormatter={(ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              stroke="#666666"
+              tick={{ fill: '#b0b0b0', fontSize: 11 }}
+              tickLine={TICK_LINE}
+              height={24}
+            />
+
+            {/* Left RAP axis */}
             <YAxis yAxisId="left" orientation="left" ticks={rapTicks} domain={[0, rapNice]}
               tickFormatter={fmtRap} stroke="#666666" tick={AXIS_STYLE} tickLine={TICK_LINE}
               axisLine={false} width={rapHidden ? 0 : 52} hide={rapHidden} />
 
-            <YAxis key={`right-${itemNice}`} yAxisId="right" orientation="right" ticks={itemTicks} domain={[0, itemNice]}
-              stroke="#666666" tick={AXIS_STYLE} tickLine={TICK_LINE} axisLine={false} width={36}
-              hide={itemHidden} />
+            {/* Right item count axis */}
+            <YAxis yAxisId="right" orientation="right" ticks={itemTicks} domain={[0, itemNice]}
+              stroke="#666666" tick={AXIS_STYLE} tickLine={TICK_LINE}
+              axisLine={false} width={itemHidden ? 0 : 40} hide={itemHidden} />
 
             <Tooltip content={<CustomTooltip />} />
 
-            {[
-              { key: 'rap',         yId: 'left',  stroke: '#43e97b', width: 2.5, name: 'Total RAP' },
-              { key: 'itemCount',   yId: 'right', stroke: '#4fc3f7', width: 2,   name: 'Total Items' },
-              { key: 'uniqueCount', yId: 'right', stroke: '#a259f7', width: 2,   name: 'Unique Limiteds' },
-            ].map(({ key, yId, stroke, width, name }) => (
-              <Line
-                key={hidden.has(key) ? `${key}-hidden` : key}
-                yAxisId={yId} type="linear" dataKey={key}
-                stroke={hidden.has(key) ? 'transparent' : stroke}
-                strokeWidth={width} name={name} dot={false}
-                activeDot={hidden.has(key) ? false : { r: 5, cursor: key === 'rap' && onPointClick ? 'pointer' : 'default' }}
-                connectNulls={false} isAnimationActive={!hidden.has(key)}
-              />
-            ))}
+            <Line yAxisId="left"  type="linear" dataKey="rap"         stroke="#43e97b" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
+            <Line yAxisId="right" type="linear" dataKey="itemCount"   stroke="#4fc3f7" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
+            <Line yAxisId="right" type="linear" dataKey="uniqueCount" stroke="#a259f7" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="flex justify-center gap-5 pt-3 mt-2 border-t border-white/10 flex-shrink-0">
-        {LEGEND.map(({ dataKey, name, color }) => (
-          <button key={dataKey} onClick={() => toggle(dataKey)}
-            className={`flex items-center gap-2 px-3 py-1 rounded-lg transition-all text-sm ${hidden.has(dataKey) ? 'opacity-30 hover:opacity-60' : 'hover:opacity-80'}`}>
-            <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-            <span className="text-[#b0b0b0]">{name}</span>
-          </button>
-        ))}
-      </div>
+      {/* Legend */}
+        <div className="flex justify-center gap-5 pt-3 mt-2 border-t border-white/10 flex-shrink-0">
+          {LEGEND.map(({ dataKey, name, color }) => (
+            <button
+              key={dataKey}
+              onClick={() => toggle(dataKey)}
+              className={`flex items-center gap-2 px-3 py-1 rounded-lg transition-all text-sm ${hidden.has(dataKey) ? 'opacity-30 hover:opacity-60' : 'hover:opacity-80'}`}
+            >
+              <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+              <span className="text-[#b0b0b0]">{name}</span>
+            </button>
+          ))}
+        </div>
     </div>
   );
 }

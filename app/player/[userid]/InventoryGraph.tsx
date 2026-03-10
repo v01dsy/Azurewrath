@@ -170,9 +170,9 @@ export default function InventoryGraph({ data, onPointClick }: InventoryGraphPro
 
             <Tooltip content={<CustomTooltip />} />
 
-            <Line yAxisId="left"  type="linear" dataKey="rap"         stroke="#43e97b" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
-            <Line yAxisId="right" type="linear" dataKey="itemCount"   stroke="#4fc3f7" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
-            <Line yAxisId="right" type="linear" dataKey="uniqueCount" stroke="#a259f7" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
+            <Line yAxisId="left"  type="linear" dataKey="RAP"         stroke="#43e97b" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
+            <Line yAxisId="right" type="linear" dataKey="Item Count"   stroke="#4fc3f7" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
+            <Line yAxisId="right" type="linear" dataKey="Unique Count" stroke="#a259f7" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>

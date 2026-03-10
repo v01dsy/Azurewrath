@@ -254,7 +254,6 @@ model ManipulationFlag {
   detectionMethod String?   // "rap_growth" | "sale_above_best" | "unmark_suggestion"
   rapAtFlag       Float
   rapGrowthPct    Float?
-  timeWindowHrs   Float?
   saleDate        DateTime? // for sale_above_best: the exact sale date, used for deduplication
   reviewedBy      BigInt?
   reviewedAt      DateTime?

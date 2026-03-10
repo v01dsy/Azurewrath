@@ -279,17 +279,17 @@ export default async function PlayerPage({ params }: PageProps) {
                 {!isPrivate && (
                   <div className="space-y-2 pt-4 border-t border-white/10">
                     <div className="group relative flex justify-between items-center cursor-default">
-                      <span className="text-[#aaa] text-sm">Total Items</span>
+                      <span className="text-[#aaa] text-sm">Items</span>
                       <span className="font-semibold text-sm" style={{ color: '#4fc3f7' }}>{stats.totalItems}</span>
                       {ranks.itemsRank != null && <RankBadge rank={ranks.itemsRank} label="Items rank" />}
                     </div>
                     <div className="group relative flex justify-between items-center cursor-default">
-                      <span className="text-[#aaa] text-sm">Unique Items</span>
+                      <span className="text-[#aaa] text-sm">Uniques</span>
                       <span className="font-semibold text-sm" style={{ color: '#a259f7' }}>{stats.uniqueItems}</span>
                       {ranks.uniqueRank != null && <RankBadge rank={ranks.uniqueRank} label="Unique rank" />}
                     </div>
                     <div className="group relative flex justify-between items-center cursor-default">
-                      <span className="text-[#aaa] text-sm">Total RAP</span>
+                      <span className="text-[#aaa] text-sm">RAP</span>
                       <span className="font-semibold text-sm" style={{ color: '#4ade80' }}>{stats.totalRAP.toLocaleString()} R$</span>
                       {ranks.rapRank != null && <RankBadge rank={ranks.rapRank} label="RAP rank" />}
                     </div>

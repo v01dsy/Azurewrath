@@ -39,13 +39,19 @@ const toDateOnly = (ts: number) => {
 };
 
 const LEGEND = [
-  { dataKey: 'rap',         name: 'Total RAP',       color: '#43e97b' },
-  { dataKey: 'itemCount',   name: 'Total Items',     color: '#4fc3f7' },
-  { dataKey: 'uniqueCount', name: 'Unique Limiteds', color: '#a259f7' },
+  { dataKey: 'rap',         name: 'RAP',       color: '#43e97b' },
+  { dataKey: 'itemCount',   name: 'Items',     color: '#4fc3f7' },
+  { dataKey: 'uniqueCount', name: 'Uniques', color: '#a259f7' },
 ];
 
 const AXIS_STYLE = { fill: '#b0b0b0', fontSize: 11, fontWeight: 700 } as const;
 const TICK_LINE  = { stroke: '#666666' };
+
+const TOOLTIP_LABELS: Record<string, string> = {
+  rap: 'RAP',
+  itemCount: 'Items',
+  uniqueCount: 'Uniques',
+};
 
 function CustomTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null;
@@ -59,7 +65,7 @@ function CustomTooltip({ active, payload }: any) {
       <p style={{ fontWeight: 700, marginBottom: 6, color: '#e2e8f0' }}>{dateStr}</p>
       {payload.map((entry: any) => (
         <p key={entry.dataKey} style={{ color: entry.color, fontWeight: 400, marginBottom: 2 }}>
-          {entry.name} : <strong>{entry.name === 'Total RAP'
+          {TOOLTIP_LABELS[entry.dataKey] ?? entry.dataKey} : <strong>{entry.dataKey === 'rap'
             ? `${Number(entry.value).toLocaleString()} R$`
             : Number(entry.value).toLocaleString()}</strong>
         </p>
@@ -170,9 +176,9 @@ export default function InventoryGraph({ data, onPointClick }: InventoryGraphPro
 
             <Tooltip content={<CustomTooltip />} />
 
-            <Line yAxisId="left"  type="linear" dataKey="RAP"         stroke="#43e97b" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
-            <Line yAxisId="right" type="linear" dataKey="Item Count"   stroke="#4fc3f7" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
-            <Line yAxisId="right" type="linear" dataKey="Unique Count" stroke="#a259f7" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
+            <Line yAxisId="left"  type="linear" dataKey="rap"         name="RAP"              stroke="#43e97b" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
+            <Line yAxisId="right" type="linear" dataKey="itemCount"   name="Items"       stroke="#4fc3f7" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
+            <Line yAxisId="right" type="linear" dataKey="uniqueCount" name="Uniques" stroke="#a259f7" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>

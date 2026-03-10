@@ -290,7 +290,6 @@ export default async function PlayerPage({ params }: PageProps) {
                     </div>
                     <div className="group relative flex justify-between items-center cursor-default">
                       <span className="text-[#aaa] text-sm">Total RAP</span>
-                      <span className="font-semibold text-sm" style={{ color: '#43e97b' }}>{stats.totalRAP.toLocaleString()} R$</span>
                       {ranks.rapRank != null && <RankBadge rank={ranks.rapRank} label="RAP rank" />}
                     </div>
                   </div>

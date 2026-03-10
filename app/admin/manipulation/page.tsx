@@ -239,8 +239,6 @@ function FlagCard({ flag, onAction, acting }: {
         }
 
         if (isSaleAboveBest) {
-          // Parse implied sale price and best price at flag from the reason string
-          // Format: "Sale implied X% above best price (best: N R$ → implied sale: M R$, new RAP: P R$)"
           const bestPriceAtFlagMatch = flag.reason.match(/best:\s*([\d,]+)\s*R\$/);
           const impliedSaleMatch = flag.reason.match(/implied sale:\s*([\d,]+)\s*R\$/);
           const bestPriceAtFlag = bestPriceAtFlagMatch ? parseInt(bestPriceAtFlagMatch[1].replace(/,/g, '')) : null;
@@ -277,7 +275,6 @@ function FlagCard({ flag, onAction, acting }: {
           );
         }
 
-        // rap_growth: 3 bubbles
         return (
           <div className="grid grid-cols-3 gap-2">
             <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 flex flex-col gap-0.5">
@@ -393,9 +390,12 @@ export default function ManipulationAdminPage() {
 
   useEffect(() => { setPage(1); loadPage(1); }, [tab, typeFilter, sortBy, sortDir, authorized, userId]);
 
-  const handlePageChange = (p: number) => { setPage(p); loadPage(p); };
+  const handlePageChange = useCallback((p: number) => {
+    setPage(p);
+    loadPage(p);
+  }, [loadPage]);
 
-  const handleAction = async (id: string, action: 'accept' | 'dismiss') => {
+  const handleAction = useCallback(async (id: string, action: 'accept' | 'dismiss') => {
     if (!userId) return;
     setActing(id);
     try {
@@ -404,31 +404,24 @@ export default function ManipulationAdminPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, action, userId }),
       });
-      setTotal(t => t - 1);
-      // Remove card locally and fetch one replacement from the next slot
-      const newTotal = total - 1;
-      const replacementSkip = (page - 1) * PAGE_SIZE + flags.length;
-      if (replacementSkip <= newTotal) {
-        const params = new URLSearchParams({ status: tab, userId, skip: String(replacementSkip), take: '1', sortBy, sortDir });
-        if (typeFilter !== 'all') params.set('type', typeFilter);
-        const data = await fetch(`/api/admin/manipulation-flags?${params}`).then(r => r.json());
-        setFlags(prev => {
-          const existing = prev.filter(f => f.id !== id);
-          const newFlags = (data.flags ?? []).filter((f: Flag) => !existing.some(e => e.id === f.id));
-          return [...existing, ...newFlags];
+      // Cleanly reload from server — no stale closure issues with skip math.
+      // Read latest flags/page via functional updater to decide target page.
+      setFlags(currentFlags => {
+        const remaining = currentFlags.filter(f => f.id !== id);
+        setPage(currentPage => {
+          const targetPage = remaining.length === 0 && currentPage > 1
+            ? currentPage - 1
+            : currentPage;
+          // loadPage is stable (useCallback), safe to call here
+          setTimeout(() => loadPage(targetPage), 0);
+          return targetPage;
         });
-      } else {
-        setFlags(prev => {
-          const next = prev.filter(f => f.id !== id);
-          // If page is now empty, go back one
-          if (next.length === 0 && page > 1) setPage(p => p - 1);
-          return next;
-        });
-      }
+        return remaining; // optimistically remove card while reload is in-flight
+      });
     } finally {
       setActing(null);
     }
-  };
+  }, [userId, loadPage]);
 
   if (!authorized) return null;
 

@@ -14,13 +14,8 @@ Rules:
 Dismissal behaviour:
   rap_growth      : dismissed floor is the highest rapAtFlag ever dismissed. Only re-flag if
                     current RAP is >= DISMISSED_FLOOR_REGROWTH_PCT% above that floor.
-  sale_above_best : a flag for a specific sale (identified by newRap value in the reason) is
-                    only ever created once. If it's been flagged before (pending, accepted, or
-                    dismissed), that exact sale is never re-flagged. A genuinely new sale on a
-                    different date with a different newRap can still trigger a new flag.
-
-Neither acts automatically — both create pending ManipulationFlag rows
-for an admin to Accept or Dismiss in /admin/manipulation.
+  sale_above_best : saleDate is stored on the flag row. A sale is never re-flagged if any flag
+                    (pending, accepted, or dismissed) already exists for that exact assetId + saleDate.
 """
 
 import uuid, logging, traceback
@@ -28,11 +23,9 @@ import uuid, logging, traceback
 logger = logging.getLogger(__name__)
 
 # ── Thresholds ────────────────────────────────────────────────────────────────
-RAP_GROWTH_PCT               = 25.0   # % RAP growth within window = suspicious
-PRICE_ABOVE_BEST_PCT         = 5.0    # % implied sale above best price = suspicious
-TIME_WINDOW_HRS              = 48.0   # look-back window in hours
-
-# How much further above a dismissed floor the RAP must climb before we flag again.
+RAP_GROWTH_PCT               = 25.0
+PRICE_ABOVE_BEST_PCT         = 5.0
+TIME_WINDOW_HRS              = 48.0
 DISMISSED_FLOOR_REGROWTH_PCT = 25.0
 
 
@@ -99,7 +92,7 @@ def _flag_rap_growth(cursor):
         if cursor.fetchone():
             continue
 
-        # Get the highest RAP at which a flag was ever dismissed for this item.
+        # Get the highest RAP at which a flag was ever dismissed for this item
         cursor.execute("""
             SELECT MAX("rapAtFlag")
             FROM "ManipulationFlag"
@@ -193,23 +186,19 @@ def _flag_sale_above_best_price(cursor):
         if cursor.fetchone():
             continue
 
-        # Skip if this exact sale has already been flagged at any status
-        # (pending, accepted, or dismissed). We identify the sale by matching
-        # the newRap fingerprint in the reason string — same sale = same newRap.
-        # This prevents re-flagging a dismissed sale every worker cycle for its
-        # entire 48hr window.
+        # Skip if this exact sale has already been flagged at any status.
+        # saleDate is stored directly on the flag row — exact match, no string parsing.
         cursor.execute("""
             SELECT 1 FROM "ManipulationFlag"
             WHERE "assetId" = %s
-              AND "flagType" = 'manipulation'
               AND "detectionMethod" = 'sale_above_best'
-              AND reason LIKE %s
+              AND "saleDate" = %s
             LIMIT 1
-        """, (asset_id, f"%new RAP: {int(new_rap):,} R$%"))
+        """, (asset_id, sale_date))
         if cursor.fetchone():
             logger.debug(
                 f"[manip_detector] Skipping sale flag '{name}' — "
-                f"sale with newRap={int(new_rap):,} already flagged/dismissed"
+                f"sale at {sale_date} already flagged/dismissed"
             )
             continue
 
@@ -220,17 +209,15 @@ def _flag_sale_above_best_price(cursor):
 
         cursor.execute("""
             INSERT INTO "ManipulationFlag"
-              (id, "assetId", "flagType", status, reason, "rapAtFlag", "rapGrowthPct", "timeWindowHrs", "detectionMethod", "createdAt")
-            VALUES (%s, %s, 'manipulation', 'pending', %s, %s, %s, %s, 'sale_above_best', NOW())
-        """, (str(uuid.uuid4()), int(asset_id), reason, float(old_rap), float(overpay_pct), float(TIME_WINDOW_HRS)))
+              (id, "assetId", "flagType", status, reason, "rapAtFlag", "rapGrowthPct", "timeWindowHrs", "detectionMethod", "saleDate", "createdAt")
+            VALUES (%s, %s, 'manipulation', 'pending', %s, %s, %s, %s, 'sale_above_best', %s, NOW())
+        """, (str(uuid.uuid4()), int(asset_id), reason, float(old_rap), float(overpay_pct), float(TIME_WINDOW_HRS), sale_date))
 
         logger.info(f"[manip_detector] 🚩 Flagged '{name}' (sale above best price) — {reason}")
 
 
 # ── Rule 3: unmark suggestions ───────────────────────────────────────────────
 def _suggest_unmarks(cursor):
-    # manipulatedRap is the pre-spike baseline RAP stored when the item was first flagged.
-    # Suggest an unmark once current RAP drops back to within 10% of that baseline.
     cursor.execute("""
         WITH latest AS (
             SELECT DISTINCT ON ("itemId") "itemId", rap
@@ -262,10 +249,7 @@ def _suggest_unmarks(cursor):
         if cursor.fetchone():
             continue
 
-        # Skip if already accepted or dismissed AFTER the current manipulatedAt.
-        # This means it's already been handled for this manipulation event.
-        # If RAP spikes again and the item gets re-marked, manipulatedAt updates
-        # and suggestions can fire fresh.
+        # Skip if already accepted or dismissed AFTER the current manipulatedAt
         cursor.execute("""
             SELECT 1 FROM "ManipulationFlag"
             WHERE "assetId" = %s AND "flagType" = 'unmark_suggestion'

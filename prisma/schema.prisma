@@ -246,22 +246,24 @@ model NewsRead {
 }
 
 model ManipulationFlag {
-  id            String    @id @default(cuid())
-  assetId       BigInt
-  flagType      String    @default("manipulation") // "manipulation" | "unmark_suggestion"
-  status        String    @default("pending")       // "pending" | "accepted" | "dismissed"
-  reason        String
-  detectionMethod String?  // "rap_growth" | "sale_above_best" | "unmark_suggestion"
-  rapAtFlag     Float
-  rapGrowthPct  Float?
-  timeWindowHrs Float?
-  reviewedBy    BigInt?
-  reviewedAt    DateTime?
-  createdAt     DateTime  @default(now())
-  item          Item      @relation(fields: [assetId], references: [assetId], onDelete: Cascade)
-  reviewer      User?     @relation(fields: [reviewedBy], references: [robloxUserId])
+  id              String    @id @default(cuid())
+  assetId         BigInt
+  flagType        String    @default("manipulation") // "manipulation" | "unmark_suggestion"
+  status          String    @default("pending")       // "pending" | "accepted" | "dismissed"
+  reason          String
+  detectionMethod String?   // "rap_growth" | "sale_above_best" | "unmark_suggestion"
+  rapAtFlag       Float
+  rapGrowthPct    Float?
+  timeWindowHrs   Float?
+  saleDate        DateTime? // for sale_above_best: the exact sale date, used for deduplication
+  reviewedBy      BigInt?
+  reviewedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  item            Item      @relation(fields: [assetId], references: [assetId], onDelete: Cascade)
+  reviewer        User?     @relation(fields: [reviewedBy], references: [robloxUserId])
 
   @@index([assetId, status])
   @@index([flagType, status])
   @@index([createdAt])
+  @@index([assetId, detectionMethod, saleDate])
 }

@@ -392,6 +392,7 @@ export default function ManipulationAdminPage() {
       .then(r => r.json())
       .then(data => { setFlags(data.flags ?? []); setTotal(data.total ?? 0); })
       .finally(() => setLoading(false));
+
   }, [authorized, userId, tab, typeFilter, sortBy, sortDir]);
 
   useEffect(() => { setPage(1); loadPage(1); }, [tab, typeFilter, sortBy, sortDir, authorized, userId]);
@@ -411,12 +412,16 @@ export default function ManipulationAdminPage() {
         body: JSON.stringify({ id, action, userId }),
       });
       if (!res.ok) return;
-      // Use refs to read actual current values — no stale closure
+      // Just remove from local state — no refetch, so nothing can come back
+      setFlags(prev => prev.filter(f => f.id !== id));
+      setTotal(prev => Math.max(0, prev - 1));
+      // If that emptied the page and we're not on page 1, go back
       const remaining = flagsRef.current.filter(f => f.id !== id).length;
-      const currentPage = pageRef.current;
-      const targetPage = remaining === 0 && currentPage > 1 ? currentPage - 1 : currentPage;
-      setPage(targetPage);
-      loadPage(targetPage);
+      if (remaining === 0 && pageRef.current > 1) {
+        const targetPage = pageRef.current - 1;
+        setPage(targetPage);
+        loadPage(targetPage);
+      }
     } finally {
       setActing(null);
     }

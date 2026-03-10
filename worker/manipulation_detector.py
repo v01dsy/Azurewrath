@@ -19,8 +19,13 @@ Dismissal behaviour:
 """
 
 import uuid, logging, traceback
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
+
+# Tracks when the detector last ran — sale_above_best only looks at sales
+# newer than this so we never re-process old sales.
+_last_run: datetime = datetime.now(timezone.utc)
 
 # ── Thresholds ────────────────────────────────────────────────────────────────
 RAP_GROWTH_PCT               = 25.0
@@ -30,9 +35,12 @@ DISMISSED_FLOOR_REGROWTH_PCT = 25.0
 
 
 def detect_manipulation(cursor):
+    global _last_run
+    since = _last_run
+    _last_run = datetime.now(timezone.utc)
     try:
         _flag_rap_growth(cursor)
-        _flag_sale_above_best_price(cursor)
+        _flag_sale_above_best_price(cursor, since)
         _suggest_unmarks(cursor)
     except Exception as e:
         logger.error(f"[manip_detector] {e}\n{traceback.format_exc()}")
@@ -123,13 +131,13 @@ def _flag_rap_growth(cursor):
             INSERT INTO "ManipulationFlag"
               (id, "assetId", "flagType", status, reason, "rapAtFlag", "rapGrowthPct", "timeWindowHrs", "detectionMethod", "createdAt")
             VALUES (%s, %s, 'manipulation', 'pending', %s, %s, %s, %s, 'rap_growth', NOW())
-        """, (str(uuid.uuid4()), int(asset_id), reason, float(rap_start), float(growth_pct), float(hrs)))
+        """, (str(uuid.uuid4()), int(asset_id), reason, float(rap_end), float(growth_pct), float(hrs)))
 
         logger.info(f"[manip_detector] 🚩 Flagged '{name}' (RAP growth) — {reason}")
 
 
 # ── Rule 2: sale implied above best price ────────────────────────────────────
-def _flag_sale_above_best_price(cursor):
+def _flag_sale_above_best_price(cursor, since: datetime):
     cursor.execute("""
         WITH recent_sales AS (
             SELECT
@@ -149,7 +157,7 @@ def _flag_sale_above_best_price(cursor):
                     LIMIT 1
                 ) AS best_price_at_sale
             FROM "Sale" s
-            WHERE s."saleDate" >= NOW() - INTERVAL '%s hours'
+            WHERE s."saleDate" > %s
               AND s."newRap" > s."oldRap"
         )
         SELECT
@@ -169,7 +177,7 @@ def _flag_sale_above_best_price(cursor):
             AND rs.implied_sale_price > rs.best_price_at_sale
             AND ((rs.implied_sale_price - rs.best_price_at_sale) / NULLIF(rs.best_price_at_sale, 0)) * 100 >= %s
             AND NOT i.manipulated
-    """, (TIME_WINDOW_HRS, PRICE_ABOVE_BEST_PCT))
+    """, (since, PRICE_ABOVE_BEST_PCT))
 
     rows = cursor.fetchall()
     if not rows:

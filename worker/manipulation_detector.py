@@ -12,11 +12,12 @@ Rules:
                                           back to within 10% of manipulatedRap (the pre-spike baseline).
 
 Dismissal behaviour:
-  When a flag is dismissed, the rapAtFlag of that dismissed flag becomes a permanent
-  "normal floor" for that item.  A new flag is only raised if the current RAP has grown
-  >= DISMISSED_FLOOR_REGROWTH_PCT% above the highest previously-dismissed rapAtFlag.
-  There is NO time-based expiry — dismissed means "this is normal now" until something
-  meaningfully new happens.
+  rap_growth      : dismissed floor is the highest rapAtFlag ever dismissed. Only re-flag if
+                    current RAP is >= DISMISSED_FLOOR_REGROWTH_PCT% above that floor.
+  sale_above_best : a flag for a specific sale (identified by newRap value in the reason) is
+                    only ever created once. If it's been flagged before (pending, accepted, or
+                    dismissed), that exact sale is never re-flagged. A genuinely new sale on a
+                    different date with a different newRap can still trigger a new flag.
 
 Neither acts automatically — both create pending ManipulationFlag rows
 for an admin to Accept or Dismiss in /admin/manipulation.
@@ -27,12 +28,11 @@ import uuid, logging, traceback
 logger = logging.getLogger(__name__)
 
 # ── Thresholds ────────────────────────────────────────────────────────────────
-RAP_GROWTH_PCT              = 25.0  # % RAP growth within window = suspicious
-PRICE_ABOVE_BEST_PCT        = 5.0   # % implied sale above best price = suspicious
-TIME_WINDOW_HRS             = 48.0  # look-back window in hours
+RAP_GROWTH_PCT               = 25.0   # % RAP growth within window = suspicious
+PRICE_ABOVE_BEST_PCT         = 5.0    # % implied sale above best price = suspicious
+TIME_WINDOW_HRS              = 48.0   # look-back window in hours
 
 # How much further above a dismissed floor the RAP must climb before we flag again.
-# e.g. dismissed at 10,000 RAP → only re-flag if RAP hits 12,500+ (25% above floor).
 DISMISSED_FLOOR_REGROWTH_PCT = 25.0
 
 
@@ -100,8 +100,6 @@ def _flag_rap_growth(cursor):
             continue
 
         # Get the highest RAP at which a flag was ever dismissed for this item.
-        # That dismissed RAP is the permanent "normal floor".
-        # Only re-flag if current RAP is >= DISMISSED_FLOOR_REGROWTH_PCT% above that floor.
         cursor.execute("""
             SELECT MAX("rapAtFlag")
             FROM "ManipulationFlag"
@@ -195,33 +193,30 @@ def _flag_sale_above_best_price(cursor):
         if cursor.fetchone():
             continue
 
-        # Same dismissed-floor logic — only re-flag if RAP is meaningfully above
-        # the highest RAP that was previously dismissed.
+        # Skip if this exact sale has already been flagged at any status
+        # (pending, accepted, or dismissed). We identify the sale by matching
+        # the newRap fingerprint in the reason string — same sale = same newRap.
+        # This prevents re-flagging a dismissed sale every worker cycle for its
+        # entire 48hr window.
         cursor.execute("""
-            SELECT MAX("rapAtFlag")
-            FROM "ManipulationFlag"
+            SELECT 1 FROM "ManipulationFlag"
             WHERE "assetId" = %s
               AND "flagType" = 'manipulation'
-              AND status = 'dismissed'
-        """, (asset_id,))
-        row = cursor.fetchone()
-        dismissed_floor = row[0] if row and row[0] is not None else None
-
-        if dismissed_floor is not None:
-            required_rap = dismissed_floor * (1 + DISMISSED_FLOOR_REGROWTH_PCT / 100)
-            if new_rap < required_rap:
-                logger.debug(
-                    f"[manip_detector] Skipping sale flag '{name}' — RAP {int(new_rap):,} is below "
-                    f"re-flag threshold {int(required_rap):,} (floor: {int(dismissed_floor):,})"
-                )
-                continue
+              AND "detectionMethod" = 'sale_above_best'
+              AND reason LIKE %s
+            LIMIT 1
+        """, (asset_id, f"%new RAP: {int(new_rap):,} R$%"))
+        if cursor.fetchone():
+            logger.debug(
+                f"[manip_detector] Skipping sale flag '{name}' — "
+                f"sale with newRap={int(new_rap):,} already flagged/dismissed"
+            )
+            continue
 
         reason = (
             f"Sale implied {overpay_pct:.1f}% above best price "
             f"(best: {int(best_price):,} R$ → implied sale: {int(implied_price):,} R$, new RAP: {int(new_rap):,} R$)"
         )
-        if dismissed_floor is not None:
-            reason += f" [previously dismissed at {int(dismissed_floor):,} R$]"
 
         cursor.execute("""
             INSERT INTO "ManipulationFlag"

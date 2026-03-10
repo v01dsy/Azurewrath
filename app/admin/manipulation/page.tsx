@@ -1,7 +1,7 @@
 // app/admin/manipulation/page.tsx
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getUserSession } from '@/lib/userSession';
@@ -354,6 +354,8 @@ export default function ManipulationAdminPage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [flags, setFlags] = useState<Flag[]>([]);
+  const flagsRef = useRef<Flag[]>([]);
+  const pageRef = useRef(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'pending' | 'accepted' | 'dismissed'>('pending');
@@ -364,6 +366,10 @@ export default function ManipulationAdminPage() {
   const [authorized, setAuthorized] = useState(false);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
+
+  // Keep refs in sync so async callbacks always read latest values
+  useEffect(() => { flagsRef.current = flags; }, [flags]);
+  useEffect(() => { pageRef.current = page; }, [page]);
 
   useEffect(() => {
     const session = getUserSession();
@@ -399,25 +405,18 @@ export default function ManipulationAdminPage() {
     if (!userId) return;
     setActing(id);
     try {
-      await fetch('/api/admin/manipulation-flags', {
+      const res = await fetch('/api/admin/manipulation-flags', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, action, userId }),
       });
-      // Cleanly reload from server — no stale closure issues with skip math.
-      // Read latest flags/page via functional updater to decide target page.
-      setFlags(currentFlags => {
-        const remaining = currentFlags.filter(f => f.id !== id);
-        setPage(currentPage => {
-          const targetPage = remaining.length === 0 && currentPage > 1
-            ? currentPage - 1
-            : currentPage;
-          // loadPage is stable (useCallback), safe to call here
-          setTimeout(() => loadPage(targetPage), 0);
-          return targetPage;
-        });
-        return remaining; // optimistically remove card while reload is in-flight
-      });
+      if (!res.ok) return;
+      // Use refs to read actual current values — no stale closure
+      const remaining = flagsRef.current.filter(f => f.id !== id).length;
+      const currentPage = pageRef.current;
+      const targetPage = remaining === 0 && currentPage > 1 ? currentPage - 1 : currentPage;
+      setPage(targetPage);
+      loadPage(targetPage);
     } finally {
       setActing(null);
     }

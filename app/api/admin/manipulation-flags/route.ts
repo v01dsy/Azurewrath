@@ -80,7 +80,6 @@ export async function GET(req: NextRequest) {
       reason: f.reason,
       rapAtFlag: f.rapAtFlag,
       rapGrowthPct: f.rapGrowthPct,
-      timeWindowHrs: f.timeWindowHrs,
       reviewedBy: f.reviewer?.username ?? null,
       reviewedAt: f.reviewedAt,
       createdAt: f.createdAt,

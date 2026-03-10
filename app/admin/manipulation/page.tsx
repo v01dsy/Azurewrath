@@ -29,7 +29,6 @@ interface Flag {
   reason: string;
   rapAtFlag: number;
   rapGrowthPct: number | null;
-  timeWindowHrs: number | null;
   reviewedBy: string | null;
   reviewedAt: string | null;
   createdAt: string;

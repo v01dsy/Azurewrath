@@ -41,13 +41,12 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
         setIsLoading(true);
         try {
           const endpoint = mode === 'player'
-            ? '/api/players/search'
-            : '/api/items/search';
-
-          const response = await axios.get(endpoint, {
-            params: { q: query },
-          });
-          setResults(response.data);
+            ? `/api/players/search?q=${encodeURIComponent(query)}`
+            : `/api/items/search?q=${encodeURIComponent(query)}`;
+          const res = await fetch(endpoint);
+          const data = await res.json();
+          const list: SearchResult[] = Array.isArray(data) ? data : (data.items ?? []);
+          setResults(list);
           setSelectedIndex(-1);
         } catch (error) {
           console.error('Search error:', error);

@@ -58,6 +58,7 @@ interface SearchResult {
   name: string;
   imageUrl: string | null;
   isLimitedUnique?: boolean | null;
+  manipulated?: boolean;
   priceHistory?: { rap?: number | null }[];
 }
 
@@ -117,6 +118,7 @@ function InventoryCard({
   disabled,
   isLimitedUnique,
   serialNumbers,
+  manipulated,
   onClick,
 }: {
   name: string;
@@ -127,6 +129,7 @@ function InventoryCard({
   disabled: boolean;
   isLimitedUnique?: boolean | null;
   serialNumbers: (number | null)[];
+  manipulated?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -159,6 +162,10 @@ function InventoryCard({
         )}
         {/* Serial badge — top-right of image, exactly like player inventory */}
         <SerialBadge serialNumbers={serialNumbers} isLimitedUnique={isLimitedUnique} />
+        {/* Manipulated badge */}
+        {manipulated && (
+          <img src="/Images/manipulated1.png" alt="Manipulated" title="This item's RAP may be manipulated" className="absolute top-1 left-1 w-5 h-5 z-10" />
+        )}
       </div>
 
       <p className="text-white text-xs font-medium leading-tight text-center w-full truncate px-1">
@@ -354,7 +361,6 @@ export default function NewTradePage() {
   // Single effect: debounce search changes (reset page), immediate on page change
   useEffect(() => {
     let cancelled = false;
-    const isSearchChange = true; // page resets happen via setRequestPage before this runs
 
     const run = async () => {
       setRequestSearching(true);
@@ -618,7 +624,6 @@ export default function NewTradePage() {
                     : 'border-white/10 bg-white/[0.03] text-slate-500 hover:text-slate-300 hover:border-white/20'
                   }`}
               >
-                {/* 2×2 grid icon */}
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="flex-shrink-0">
                   <rect x="0.5" y="0.5" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
                   <rect x="7" y="0.5" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
@@ -747,6 +752,7 @@ export default function NewTradePage() {
                               disabled={disabled}
                               isLimitedUnique={null}
                               serialNumbers={[]}
+                              manipulated={item.manipulated}
                               onClick={() => toggleRequestItem(item)}
                             />
                             {selectedCount > 1 && (

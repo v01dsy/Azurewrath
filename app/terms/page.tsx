@@ -22,8 +22,8 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold text-white mb-3">2. Description of Service</h2>
             <p>
-              Azurewrath is a third-party Roblox limited item tracking platform. We provide inventory
-              tracking, RAP history, price analytics, and watchlist notifications. We are not affiliated
+              Azurewrath is a third-party Roblox limited item tracking platform. I provide inventory
+              tracking, RAP history, price analytics, and watchlist notifications. I am not affiliated
               with, endorsed by, or sponsored by Roblox Corporation.
             </p>
           </section>
@@ -40,7 +40,7 @@ export default function TermsPage() {
             <h2 className="text-xl font-semibold text-white mb-3">4. User Accounts</h2>
             <p>
               Accounts are authenticated via your Roblox account. You are responsible for maintaining
-              the security of your account. We reserve the right to suspend or terminate accounts that
+              the security of your account. I reserve the right to suspend or terminate accounts that
               violate these terms.
             </p>
           </section>
@@ -61,7 +61,7 @@ export default function TermsPage() {
             <h2 className="text-xl font-semibold text-white mb-3">6. Data Accuracy</h2>
             <p>
               All item data, RAP values, and price information displayed on the Site is sourced from
-              third-party APIs and may not always be accurate or up to date. We make no guarantees
+              third-party APIs and may not always be accurate or up to date. I make no guarantees
               about the accuracy of this data and it should not be used as the sole basis for trading
               decisions.
             </p>
@@ -79,7 +79,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold text-white mb-3">8. Disclaimers</h2>
             <p>
-              The Site is provided "as is" without warranties of any kind. We are not responsible for
+              The Site is provided "as is" without warranties of any kind. I am not responsible for
               any losses, damages, or trading decisions made based on information provided by the Site.
             </p>
           </section>
@@ -87,7 +87,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold text-white mb-3">9. Termination</h2>
             <p>
-              We reserve the right to suspend or terminate your access to the Site at any time, for any
+              I reserve the right to suspend or terminate your access to the Site at any time, for any
               reason, without notice.
             </p>
           </section>
@@ -95,7 +95,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold text-white mb-3">10. Changes to Terms</h2>
             <p>
-              We may update these Terms at any time. Continued use of the Site after changes constitutes
+              I may update these Terms at any time. Continued use of the Site after changes constitutes
               acceptance of the new terms.
             </p>
           </section>
@@ -103,7 +103,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold text-white mb-3">11. Contact</h2>
             <p>
-              For questions about these Terms, contact us at{' '}
+              For questions about these Terms, contact me at{' '}
               <a href="mailto:contact@azurewrath.lol" className="text-purple-400 hover:text-purple-300 transition">
                 contact@azurewrath.lol
               </a>.

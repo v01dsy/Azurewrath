@@ -12,10 +12,12 @@ interface InventoryItemDisplay {
   rap: number;
   count: number;
   manipulated: boolean;
+  isOnHold?: boolean | null;
   isLimitedUnique?: boolean | null;
   serialNumbers?: (number | null)[];
   userAssetIds?: string[];
   scannedAt: Date;
+  scannedAts?: (Date | null)[];
 }
 
 export default function ClientInventoryGrid({ items }: { items: InventoryItemDisplay[] }) {
@@ -23,7 +25,7 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
   const [sortBy, setSortBy] = useState('rap-high');
   const [showUAIDModal, setShowUAIDModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItemDisplay | null>(null);
-  const [uaidSortBy, setUaidSortBy] = useState('uaid-low');
+  const [uaidSortBy, setUaidSortBy] = useState('index-reverse');
 
   const formatTimeSince = (date: Date | string) => {
     const now = new Date();
@@ -34,10 +36,10 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
     const diffDays = Math.floor(diffHours / 24);
 
     if (diffMinutes < 1) return 'just now';
-    if (diffMinutes < 60) return `${diffMinutes} ${diffMinutes === 1 ? 'minute' : 'minutes'} ago`;
-    if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays === 1) return 'yesterday';
-    return `${diffDays} days ago`;
+    return `${diffDays}d ago`;
   };
 
   const sortedItems = [...items].sort((a: any, b: any) => {
@@ -110,10 +112,21 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
               >
                 <div className="aspect-square bg-white/5 rounded mb-2 overflow-hidden relative flex items-center justify-center">
                   <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                  {/* Manipulated — top-left */}
                   {item.manipulated && (
-                    <img src="/Images/manipulated1.png" alt="Manipulated"
-                      title="This item's RAP may be manipulated"
-                      className="w-6 h-6 absolute top-1 left-1" />
+                    <div className="absolute top-1 left-1">
+                      <img src="/Images/manipulated1.png" alt="Manipulated"
+                        title="This item's RAP may be manipulated"
+                        className="w-6 h-6" />
+                    </div>
+                  )}
+                  {/* On Hold — bottom-right */}
+                  {item.isOnHold === true && (
+                    <div className="absolute bottom-1 right-1">
+                      <img src="/Images/hold.png" alt="On Hold"
+                        title="This item is on hold and cannot be traded"
+                        className="w-6 h-6" />
+                    </div>
                   )}
                   {(hasSerials || isGhost) && (
                     <div className="absolute top-1 right-1 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded shadow-lg">
@@ -200,19 +213,30 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
               >
                 <option value="uaid-low">Low to High</option>
                 <option value="uaid-high">High to Low</option>
-                <option value="index">Order Acquired</option>
+                <option value="index">Order Acquired (Oldest First)</option>
+                <option value="index-reverse">Order Acquired (Newest First)</option>
               </select>
             </div>
 
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1">
               {(() => {
                 const uaidData = selectedItem?.userAssetIds?.map((uaid, index) => ({
-                  uaid, index, serial: selectedItem?.serialNumbers?.[index],
+                  uaid,
+                  index,
+                  serial: selectedItem?.serialNumbers?.[index],
+                  scannedAt: selectedItem?.scannedAts?.[index],
                 })) || [];
 
                 const sortedUaidData = [...uaidData].sort((a, b) => {
                   switch (uaidSortBy) {
-                    case 'index': return a.index - b.index;
+                    case 'index':
+                      const aTime = a.scannedAt ? new Date(a.scannedAt).getTime() : 0;
+                      const bTime = b.scannedAt ? new Date(b.scannedAt).getTime() : 0;
+                      return aTime - bTime;
+                    case 'index-reverse':
+                      const aTimeR = a.scannedAt ? new Date(a.scannedAt).getTime() : 0;
+                      const bTimeR = b.scannedAt ? new Date(b.scannedAt).getTime() : 0;
+                      return bTimeR - aTimeR;
                     case 'uaid-low':
                       if (a.serial && b.serial) return a.serial - b.serial;
                       return (parseInt(a.uaid) || 0) - (parseInt(b.uaid) || 0);

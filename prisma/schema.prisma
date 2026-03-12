@@ -25,6 +25,7 @@ model Item {
   manipulatedAt     DateTime?
   manipulatedRap    Float?
   flags             ManipulationFlag[]
+  tradeAdItems      TradeAdItem[]
 
   @@index([assetId])
 }
@@ -77,6 +78,7 @@ model User {
   posts                Post[]
   newsReads            NewsRead[]
   flagReviews          ManipulationFlag[]
+  tradeAds             TradeAd[]
 }
 
 model InventorySnapshot {
@@ -91,22 +93,27 @@ model InventorySnapshot {
 
   @@index([userId, createdAt])
   @@index([createdAt])
+  // DB-level unique index on (userId, DATE(createdAt)) applied manually — prevents duplicate daily snapshots
+  // Created with: CREATE UNIQUE INDEX "InventorySnapshot_userId_date_unique" ON "InventorySnapshot" ("userId", DATE("createdAt"))
 }
 
 model InventoryItem {
-  snapshotId   String
-  assetId      BigInt
-  userAssetId  BigInt
-  scannedAt    DateTime          @default(now())
-  serialNumber Int?
-  item         Item              @relation(fields: [assetId], references: [assetId])
-  snapshot     InventorySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  snapshotId    String
+  assetId       BigInt
+  userAssetId   BigInt
+  scannedAt     DateTime          @default(now())
+  uaidCreatedAt DateTime?         // When this UAID was created (from Roblox API)
+  isOnHold      Boolean?          // From Roblox API, null = not yet scanned
+  serialNumber  Int?
+  item          Item              @relation(fields: [assetId], references: [assetId])
+  snapshot      InventorySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
 
   @@id([snapshotId, userAssetId])
   @@index([snapshotId])
   @@index([assetId])
   @@index([userAssetId])
   @@index([serialNumber])
+  @@index([uaidCreatedAt])
 }
 
 model Session {
@@ -265,4 +272,36 @@ model ManipulationFlag {
   @@index([flagType, status])
   @@index([createdAt])
   @@index([assetId, detectionMethod, saleDate])
+}
+
+model TradeAd {
+  id           Int           @id @default(autoincrement())
+  userId       BigInt
+  note         String?
+  active       Boolean       @default(true)
+  offerRobux   Int           @default(0)
+  requestRobux Int           @default(0)
+  deletedAt    DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  user         User          @relation(fields: [userId], references: [robloxUserId], onDelete: Cascade)
+  items        TradeAdItem[]
+
+  @@index([userId, active])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model TradeAdItem {
+  id           String   @id @default(cuid())
+  tradeAdId    Int
+  side         String   // "offer" | "request"
+  assetId      BigInt
+  userAssetId  BigInt?  // offer only, null = any copy
+  serialNumber Int?     // offer only, denormalized for display
+  tradeAd      TradeAd  @relation(fields: [tradeAdId], references: [id], onDelete: Cascade)
+  item         Item     @relation(fields: [assetId], references: [assetId])
+
+  @@index([tradeAdId])
+  @@index([assetId])
 }

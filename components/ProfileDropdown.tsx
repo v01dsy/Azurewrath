@@ -194,6 +194,11 @@ export default function ProfileDropdown() {
                 <span>Profile</span>
               </DropdownLink>
 
+              <DropdownLink href="/trade" onClick={() => setOpen(false)}>
+                <img src="/Images/trade.png" alt="" style={iconStyle} draggable="false" />
+                <span>Trade Ads</span>
+              </DropdownLink>
+
               <DropdownLink href="/watchlist" onClick={() => setOpen(false)}>
                 <img src="/Images/watchlist.png" alt="" style={iconStyle} draggable="false" />
                 <span>Watchlist</span>

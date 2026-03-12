@@ -159,7 +159,8 @@ export async function scanFullInventory(userId: string, maxRetries = 3) {
         serialNumber: item.serialNumber ?? null,
         name: item.name || `Unknown Item ${item.assetId}`,
         assetType: item.assetType || null,
-        created: item.created || null
+        created: item.created || null,
+        isOnHold: item.isOnHold ?? null,
       };
     }).filter(Boolean); // Remove null entries
 
@@ -362,5 +363,27 @@ export async function canViewInventory(robloxUserId: string): Promise<boolean> {
   } catch (error) {
     console.error('Error checking inventory visibility:', error);
     return false;
+  }
+}
+
+/**
+ * Fetch full details for a single user asset (UAID) including `created` and `isOnHold`.
+ * The bulk collectibles list endpoint does NOT return these fields — this is required.
+ */
+export async function fetchUserAssetDetails(userId: string, userAssetId: string): Promise<{
+  created: string | null;
+  isOnHold: boolean | null;
+} | null> {
+  try {
+    const res = await axios.get(
+      `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles/${userAssetId}`
+    );
+    return {
+      created: res.data.created ?? null,
+      isOnHold: res.data.isOnHold ?? null,
+    };
+  } catch (err: any) {
+    console.warn(`Failed to fetch asset details for UAID ${userAssetId}:`, err.message);
+    return null;
   }
 }

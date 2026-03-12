@@ -65,7 +65,6 @@ async function fetchPlayerData(userid: string) {
     ).then(r => r.ok ? r.json() : null).catch(() => null),
     prisma.$queryRaw<Array<{
       assetId: bigint;
-      userAssetId: bigint;
       name: string;
       imageUrl: string | null;
       manipulated: boolean;
@@ -74,55 +73,50 @@ async function fetchPlayerData(userid: string) {
       itemCount: number;
       serialNumbers: (number | null)[];
       userAssetIds: bigint[];
-      scannedAt: Date;
+      scannedAts: Date[];
+      isOnHold: boolean;
     }>>`
       WITH LatestSnapshot AS (
-        SELECT id, "createdAt"
+        SELECT id
         FROM "InventorySnapshot"
         WHERE "userId" = ${user.robloxUserId}
         ORDER BY "createdAt" DESC
         LIMIT 1
       ),
-      InventoryWithPrices AS (
-        SELECT 
+      Aggregated AS (
+        SELECT
           ii."assetId",
-          ii."userAssetId",
-          ii."serialNumber",
-          ii."scannedAt",
-          i.name,
-          i."imageUrl",
-          i.manipulated,
-          i."isLimitedUnique",
-          ph.rap,
-          ARRAY_AGG(ii."userAssetId") OVER (PARTITION BY ii."assetId") as user_asset_ids,
-          ARRAY_AGG(ii."serialNumber") OVER (PARTITION BY ii."assetId") as serial_numbers,
-          ARRAY_AGG(ii."scannedAt") OVER (PARTITION BY ii."assetId") as scanned_at_array,
-          COUNT(*) OVER (PARTITION BY ii."assetId") as item_count
+          COUNT(*) as item_count,
+          ARRAY_AGG(ii."userAssetId" ORDER BY ii."scannedAt" ASC) as user_asset_ids,
+          ARRAY_AGG(ii."serialNumber" ORDER BY ii."scannedAt" ASC) as serial_numbers,
+          ARRAY_AGG(ii."scannedAt" ORDER BY ii."scannedAt" ASC) as scanned_ats,
+          COALESCE(BOOL_OR(ii."isOnHold"), false) as is_on_hold
         FROM "InventoryItem" ii
         INNER JOIN LatestSnapshot ls ON ii."snapshotId" = ls.id
-        LEFT JOIN "Item" i ON ii."assetId" = i."assetId"
-        LEFT JOIN LATERAL (
-          SELECT rap
-          FROM "PriceHistory"
-          WHERE "itemId" = i."assetId"
-          ORDER BY timestamp DESC
-          LIMIT 1
-        ) ph ON true
+        GROUP BY ii."assetId"
       )
-      SELECT DISTINCT ON ("assetId")
-        "assetId",
-        "userAssetId",
-        COALESCE(name, 'Unknown Item') as name,
-        "imageUrl",
-        COALESCE(manipulated, false) as manipulated,
-        "isLimitedUnique",
-        COALESCE(rap, 0) as rap,
-        item_count::int as "itemCount",
-        serial_numbers as "serialNumbers",
-        user_asset_ids as "userAssetIds",
-        (scanned_at_array[1]) as "scannedAt"
-      FROM InventoryWithPrices
-      ORDER BY "assetId", rap DESC NULLS LAST
+      SELECT
+        a."assetId",
+        COALESCE(i.name, 'Unknown Item') as name,
+        i."imageUrl",
+        COALESCE(i.manipulated, false) as manipulated,
+        i."isLimitedUnique",
+        COALESCE(ph.rap, 0) as rap,
+        a.item_count::int as "itemCount",
+        a.serial_numbers as "serialNumbers",
+        a.user_asset_ids as "userAssetIds",
+        a.scanned_ats as "scannedAts",
+        a.is_on_hold as "isOnHold"
+      FROM Aggregated a
+      LEFT JOIN "Item" i ON a."assetId" = i."assetId"
+      LEFT JOIN LATERAL (
+        SELECT rap
+        FROM "PriceHistory"
+        WHERE "itemId" = a."assetId"
+        ORDER BY timestamp DESC
+        LIMIT 1
+      ) ph ON true
+      ORDER BY ph.rap DESC NULLS LAST
     `,
     prisma.inventorySnapshot.findMany({
       where: { userId: user.robloxUserId },
@@ -130,9 +124,9 @@ async function fetchPlayerData(userid: string) {
       select: { id: true, createdAt: true, totalRAP: true, totalItems: true, uniqueItems: true },
     }),
     fetch(
-  `${process.env.NEXT_PUBLIC_APP_URL}/api/player/${user.robloxUserId.toString()}/rank`,
-    { cache: 'no-store' }
-  ).then(r => r.ok ? r.json() : null).catch(() => null),
+      `${process.env.NEXT_PUBLIC_APP_URL}/api/player/${user.robloxUserId.toString()}/rank`,
+      { cache: 'no-store' }
+    ).then(r => r.ok ? r.json() : null).catch(() => null),
   ]);
 
   const isPrivate = isPrivateResult;
@@ -143,12 +137,14 @@ async function fetchPlayerData(userid: string) {
     name: item.name,
     imageUrl: item.imageUrl,
     manipulated: item.manipulated ?? false,
+    isOnHold: item.isOnHold ?? null,
     isLimitedUnique: item.isLimitedUnique ?? null,
     rap: item.rap || 0,
     count: item.itemCount,
     userAssetIds: item.userAssetIds.map((id: bigint) => id.toString()),
     serialNumbers: item.serialNumbers,
-    scannedAt: item.scannedAt,
+    scannedAt: item.scannedAts?.[0] ?? null,
+    scannedAts: item.scannedAts,
   }));
 
   const totalRAP = inventory.reduce((sum, item) => sum + (item.rap * item.count), 0);
@@ -205,10 +201,6 @@ export default async function PlayerPage({ params }: PageProps) {
         </div>
       </div>
     );
-  }
-
-  if (data && data.inventory.length === 0 && !data.isPrivate) {
-    fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/player/${userid}`, { cache: 'no-store' }).catch(() => {});
   }
 
   const { user, inventory, stats, graphData, isPrivate, ranks } = data;

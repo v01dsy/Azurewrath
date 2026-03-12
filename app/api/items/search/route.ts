@@ -1,100 +1,99 @@
+// app/api/items/search/route.ts
 import prisma from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
+
+const PAGE_SIZE = 24;
+
+type ItemRow = {
+  assetId: bigint;
+  name: string;
+  imageUrl: string | null;
+  manipulated: boolean;
+  isLimitedUnique: boolean | null;
+  rap: number | null;
+};
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const query = searchParams.get('q') || '';
+    const query = searchParams.get('q') ?? '';
+    const page  = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
+    const skip  = (page - 1) * PAGE_SIZE;
 
-    let items;
-    if (query.length < 1) {
-      // No query: return all items (up to 2500)
-      items = await prisma.item.findMany({
-        include: {
-          priceHistory: {
-            select: {
-              id: true,
-              itemId: true,
-              price: true,
-              rap: true,
-              salesVolume: true,
-              timestamp: true,
-            },
-            orderBy: { timestamp: 'desc' },
-            take: 1,
-          },
-        },
-        take: 2500,
-        orderBy: {
-          assetId: 'asc', // Sort numerically by assetId
-        },
-      });
+    const trimmed   = query.trim();
+    const isNumeric = /^\d+$/.test(trimmed);
+
+    let items: ItemRow[];
+    let total: number;
+
+    if (trimmed.length === 0) {
+      [items, total] = await Promise.all([
+        prisma.$queryRaw<ItemRow[]>`
+          SELECT i."assetId", i.name, i."imageUrl", i.manipulated, i."isLimitedUnique", ph.rap
+          FROM "Item" i
+          LEFT JOIN LATERAL (
+            SELECT rap FROM "PriceHistory"
+            WHERE "itemId" = i."assetId"
+            ORDER BY timestamp DESC LIMIT 1
+          ) ph ON true
+          WHERE i."assetId" != 1
+          ORDER BY COALESCE(ph.rap, 0) DESC
+          LIMIT ${PAGE_SIZE} OFFSET ${skip}
+        `,
+        prisma.item.count({ where: { assetId: { not: 1n } } }),
+      ]);
+    } else if (isNumeric) {
+      const assetId = BigInt(trimmed);
+      [items, total] = await Promise.all([
+        prisma.$queryRaw<ItemRow[]>`
+          SELECT i."assetId", i.name, i."imageUrl", i.manipulated, i."isLimitedUnique", ph.rap
+          FROM "Item" i
+          LEFT JOIN LATERAL (
+            SELECT rap FROM "PriceHistory"
+            WHERE "itemId" = i."assetId"
+            ORDER BY timestamp DESC LIMIT 1
+          ) ph ON true
+          WHERE i."assetId" = ${assetId} AND i."assetId" != 1
+          ORDER BY COALESCE(ph.rap, 0) DESC
+          LIMIT ${PAGE_SIZE} OFFSET ${skip}
+        `,
+        prisma.item.count({ where: { assetId } }),
+      ]);
     } else {
-      // Check if query is purely numeric
-      const isNumeric = /^\d+$/.test(query);
-      
-      if (isNumeric) {
-        // If numeric, search by exact assetId match
-        items = await prisma.item.findMany({
-          where: {
-            assetId: BigInt(query), // Convert string to BigInt
-          },
-          include: {
-            priceHistory: {
-              select: {
-                id: true,
-                itemId: true,
-                price: true,
-                rap: true,
-                salesVolume: true,
-                timestamp: true,
-              },
-              orderBy: { timestamp: 'desc' },
-              take: 1,
-            },
-          },
-          take: 20,
-        });
-      } else {
-        // If text, search by name only
-        items = await prisma.item.findMany({
-          where: {
-            name: {
-              contains: query,
-              mode: 'insensitive',
-            },
-          },
-          include: {
-            priceHistory: {
-              select: {
-                id: true,
-                itemId: true,
-                price: true,
-                rap: true,
-                salesVolume: true,
-                timestamp: true,
-              },
-              orderBy: { timestamp: 'desc' },
-              take: 1,
-            },
-          },
-          take: 20,
-        });
-      }
+      const pattern = `%${trimmed}%`;
+      [items, total] = await Promise.all([
+        prisma.$queryRaw<ItemRow[]>`
+          SELECT i."assetId", i.name, i."imageUrl", i.manipulated, i."isLimitedUnique", ph.rap
+          FROM "Item" i
+          LEFT JOIN LATERAL (
+            SELECT rap FROM "PriceHistory"
+            WHERE "itemId" = i."assetId"
+            ORDER BY timestamp DESC LIMIT 1
+          ) ph ON true
+          WHERE i.name ILIKE ${pattern} AND i."assetId" != 1
+          ORDER BY COALESCE(ph.rap, 0) DESC
+          LIMIT ${PAGE_SIZE} OFFSET ${skip}
+        `,
+        prisma.item.count({ where: { name: { contains: trimmed, mode: 'insensitive' }, assetId: { not: 1n } } }),
+      ]);
     }
 
-    // Convert BigInt to string for JSON serialization
     const serializedItems = items.map(item => ({
-      ...item,
       assetId: item.assetId.toString(),
-      priceHistory: item.priceHistory.map(ph => ({
-        ...ph,
-        itemId: ph.itemId.toString(),
-      })),
+      name: item.name,
+      imageUrl: item.imageUrl,
+      manipulated: item.manipulated,
+      isLimitedUnique: item.isLimitedUnique,
+      priceHistory: item.rap != null ? [{ rap: Number(item.rap) }] : [],
     }));
 
-    console.log(`Search query: "${query}", found: ${serializedItems.length} items`);
-    return NextResponse.json(serializedItems);
+    return NextResponse.json({
+      items: serializedItems,
+      total,
+      page,
+      pageSize: PAGE_SIZE,
+      totalPages: Math.ceil(Number(total) / PAGE_SIZE),
+    });
   } catch (error) {
     console.error('Search error:', error);
     return NextResponse.json(

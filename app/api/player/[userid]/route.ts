@@ -20,6 +20,50 @@ async function canViewInventory(robloxUserId: string): Promise<boolean> {
   }
 }
 
+// ── Inlined rank query — no self-HTTP call needed ─────────────────────────────
+async function getRank(robloxUserId: bigint) {
+  try {
+    const result = await prisma.$queryRaw<Array<{
+      rap_rank: bigint;
+      items_rank: bigint;
+      unique_rank: bigint;
+      rap: number | null;
+    }>>`
+      WITH latest_snaps AS (
+        SELECT DISTINCT ON ("userId")
+          "userId",
+          "totalRAP",
+          "totalItems",
+          "uniqueItems"
+        FROM "InventorySnapshot"
+        WHERE "totalRAP" IS NOT NULL
+        ORDER BY "userId", "createdAt" DESC
+      ),
+      target AS (
+        SELECT "totalRAP", "totalItems", "uniqueItems"
+        FROM latest_snaps
+        WHERE "userId" = ${robloxUserId}
+      )
+      SELECT
+        (SELECT COUNT(*) FROM latest_snaps, target WHERE latest_snaps."totalRAP"    > target."totalRAP")    + 1 AS rap_rank,
+        (SELECT COUNT(*) FROM latest_snaps, target WHERE latest_snaps."totalItems"  > target."totalItems")  + 1 AS items_rank,
+        (SELECT COUNT(*) FROM latest_snaps, target WHERE latest_snaps."uniqueItems" > target."uniqueItems") + 1 AS unique_rank,
+        (SELECT "totalRAP" FROM target) AS rap
+    `;
+
+    const row = result[0];
+    if (!row || row.rap === null) return { rapRank: null, itemsRank: null, uniqueRank: null };
+
+    return {
+      rapRank:    Number(row.rap_rank),
+      itemsRank:  Number(row.items_rank),
+      uniqueRank: Number(row.unique_rank),
+    };
+  } catch {
+    return { rapRank: null, itemsRank: null, uniqueRank: null };
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ userid: string }> }
@@ -109,7 +153,7 @@ export async function GET(
       }
     }
 
-    // Run inventory, graph, avatar, and ranks in parallel
+    // Run inventory, graph, avatar, and ranks in parallel — rank is now a direct DB call
     const [inventoryData, graphData, avatarResult, rankRes] = await Promise.all([
       prisma.$queryRaw<Array<{
         assetId: bigint;
@@ -187,10 +231,7 @@ export async function GET(
       fetch(
         `https://thumbnails.roblox.com/v1/users/avatar?userIds=${robloxUserIdString}&size=420x420&format=Png&isCircular=false`
       ).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(
-        `${process.env.NEXT_PUBLIC_APP_URL}/api/player/${robloxUserIdString}/rank`,
-        { cache: 'no-store' }
-      ).then(r => r.ok ? r.json() : null).catch(() => null),
+      getRank(user.robloxUserId), // ✅ direct DB call — no NEXT_PUBLIC_APP_URL needed
     ]);
 
     const avatarUrl = avatarResult?.data?.[0]?.imageUrl || user.avatarUrl;
@@ -248,11 +289,7 @@ export async function GET(
         lastScanned: latestSnapshot?.createdAt ?? null,
       },
       graphData: dedupedGraphData,
-      ranks: {
-        rapRank: rankRes?.rapRank ?? null,
-        itemsRank: rankRes?.itemsRank ?? null,
-        uniqueRank: rankRes?.uniqueRank ?? null,
-      },
+      ranks: rankRes,
       isPrivate: false,
     });
 

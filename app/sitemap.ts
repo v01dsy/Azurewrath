@@ -3,13 +3,17 @@
 import { MetadataRoute } from 'next';
 import prisma from '@/lib/prisma';
 
+function toSlug(name: string) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = 'https://azurewrath.lol';
 
   const [items, players, posts, tradeAds] = await Promise.all([
     prisma.item.findMany({
       where: { assetId: { not: 1n } },
-      select: { assetId: true, updatedAt: true },
+      select: { assetId: true, name: true, updatedAt: true },
     }),
     prisma.user.findMany({
       select: { robloxUserId: true, updatedAt: true },
@@ -82,32 +86,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   const itemPages: MetadataRoute.Sitemap = items.map(item => ({
-    url: `${baseUrl}/item/${item.assetId.toString()}`,
+    url: `${baseUrl}/item/${item.assetId.toString()}/${toSlug(item.name)}`,
     lastModified: item.updatedAt,
     changeFrequency: 'daily' as const,
     priority: 0.7,
   }));
 
-  const playerPages: MetadataRoute.Sitemap = players.map(player => ({
-    url: `${baseUrl}/player/${player.robloxUserId.toString()}`,
-    lastModified: player.updatedAt,
-    changeFrequency: 'daily' as const,
-    priority: 0.8,
-  }));
 
-  const newsPages: MetadataRoute.Sitemap = posts.map(post => ({
-    url: `${baseUrl}/news/${post.slug}`,
-    lastModified: post.updatedAt,
-    changeFrequency: 'weekly' as const,
-    priority: 0.5,
-  }));
 
-  const tradePages: MetadataRoute.Sitemap = tradeAds.map(ad => ({
-    url: `${baseUrl}/trade/${ad.id}`,
-    lastModified: ad.updatedAt,
-    changeFrequency: 'daily' as const,
-    priority: 0.5,
-  }));
-
-  return [...staticPages, ...playerPages, ...itemPages, ...newsPages, ...tradePages];
+  return [...staticPages, ...itemPages, ];
 }

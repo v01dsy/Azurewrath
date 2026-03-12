@@ -21,7 +21,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }),
   ]);
 
-  const maxSales = Math.max(...saleCounts.map(s => s._count.id), 1);
+  // Build a Map keyed by BigInt string so === comparisons are reliable
+  const saleCountMap = new Map<string, number>(
+    saleCounts.map(s => [s.itemId.toString(), s._count.id])
+  );
+
+  // maxSales must reflect the actual maximum across items that HAVE sales.
+  // Fall back to 1 so we never divide by zero.
+  const maxSales = saleCountMap.size > 0
+    ? Math.max(...saleCountMap.values())
+    : 1;
 
   const staticPages: MetadataRoute.Sitemap = [
     {
@@ -81,8 +90,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   const itemPages: MetadataRoute.Sitemap = items.map(item => {
-    const sales = saleCounts.find(s => s.itemId === item.assetId)?._count.id ?? 0;
-    const priority = Math.round((0.1 + (sales / maxSales) * 0.6) * 10) / 10;
+    const sales = saleCountMap.get(item.assetId.toString()) ?? 0;
+    // priority range: 0.1 (no sales) → 0.7 (most sold item)
+    const rawPriority = 0.1 + (sales / maxSales) * 0.6;
+    const priority = Math.round(rawPriority * 10) / 10;
     return {
       url: `${baseUrl}/item/${item.assetId.toString()}/${toSlug(item.name)}`,
       lastModified: item.updatedAt,

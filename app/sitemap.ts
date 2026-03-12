@@ -3,6 +3,8 @@
 import { MetadataRoute } from 'next';
 import { getPool } from '@/lib/db';
 
+export const revalidate = 3600; // revalidate every hour
+
 function toSlug(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }

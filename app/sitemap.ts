@@ -10,23 +10,18 @@ function toSlug(name: string) {
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = 'https://azurewrath.lol';
 
-  const [items, players, posts, tradeAds] = await Promise.all([
+  const [items, saleCounts] = await Promise.all([
     prisma.item.findMany({
       where: { assetId: { not: 1n } },
       select: { assetId: true, name: true, updatedAt: true },
     }),
-    prisma.user.findMany({
-      select: { robloxUserId: true, updatedAt: true },
-    }),
-    prisma.post.findMany({
-      where: { published: true, deletedAt: null },
-      select: { slug: true, updatedAt: true },
-    }),
-    prisma.tradeAd.findMany({
-      where: { active: true, deletedAt: null },
-      select: { id: true, updatedAt: true },
+    prisma.sale.groupBy({
+      by: ['itemId'],
+      _count: { id: true },
     }),
   ]);
+
+  const maxSales = Math.max(...saleCounts.map(s => s._count.id), 1);
 
   const staticPages: MetadataRoute.Sitemap = [
     {
@@ -85,14 +80,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ];
 
-  const itemPages: MetadataRoute.Sitemap = items.map(item => ({
-    url: `${baseUrl}/item/${item.assetId.toString()}/${toSlug(item.name)}`,
-    lastModified: item.updatedAt,
-    changeFrequency: 'daily' as const,
-    priority: 0.7,
-  }));
+  const itemPages: MetadataRoute.Sitemap = items.map(item => {
+    const sales = saleCounts.find(s => s.itemId === item.assetId)?._count.id ?? 0;
+    const priority = Math.round((0.1 + (sales / maxSales) * 0.6) * 10) / 10;
+    return {
+      url: `${baseUrl}/item/${item.assetId.toString()}/${toSlug(item.name)}`,
+      lastModified: item.updatedAt,
+      changeFrequency: 'daily' as const,
+      priority,
+    };
+  });
 
-
-
-  return [...staticPages, ...itemPages, ];
+  return [...staticPages, ...itemPages];
 }

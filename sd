@@ -1,0 +1,195 @@
+2026-03-12 :>
+2026-03-12 added trade ads, hold periods, fixed many bugs! Have fun with them! and Happy trading!
+2026-03-12 remove duplicate PlayerInteractive from root
+2026-03-12 added trade ads, hold periods, fixed many bugs! Have fun with them! and Happy trading!
+2026-03-10 fixed manipulation unmarks
+2026-03-10 fixed manipulation unmarks
+2026-03-10 fixed manipulation unmarks
+2026-03-10 fix
+2026-03-10 fix
+2026-03-10 fix
+2026-03-10 fix
+2026-03-10 fix
+2026-03-10 fix
+2026-03-10 fix
+2026-03-10 fix
+2026-03-10 fix
+2026-03-09 fixes
+2026-03-09 many errors such fix
+2026-03-08 added titles to web pages
+2026-03-08 added titles to web pages
+2026-03-08 added titles to web pages
+2026-03-08 added titles to web pages
+2026-03-08 added titles to web pages
+2026-03-08 he fixxerds
+2026-03-08 he fixxerds
+2026-03-08 he fixxerds
+2026-03-08 added a player history page, allows you to see the graph for rap now! You can also hover over your current rap, unique item count, and total items to see your rank!!! Visit the players page for more information on the color ranking! :o
+2026-03-07 currently fixing huge bug involving manipulation flags, this will take a lot of pushing to the database lol!
+2026-03-07 currently fixing huge bug involving manipulation flags, this will take a lot of pushing to the database lol!
+2026-03-07 currently fixing huge bug involving manipulation flags, this will take a lot of pushing to the database lol!
+2026-03-06 currently fixing huge bug involving manipulation flags, this will take a lot of pushing to the database lol!
+2026-03-06 currently fixing huge bug involving manipulation flags, this will take a lot of pushing to the database lol!
+2026-03-06 currently fixing huge bug involving manipulation flags, this will take a lot of pushing to the database lol!
+2026-03-06 currently fixing huge bug involving manipulation flags, this will take a lot of pushing to the database lol!
+2026-03-06 currently fixing huge bug involving manipulation flags, this will take a lot of pushing to the database lol!
+2026-03-06 fixed a bug that caused servers to pause
+2026-03-06 fixed a bug that caused servers to pause
+2026-03-06 fixed a bug that caused servers to pause
+2026-03-06 fixed a bug that caused servers to pause
+2026-03-06 fixed a bug that caused servers to pause
+2026-03-05 made players page look very cool and sexy
+2026-03-05 neat and tidy
+2026-03-05 neat and tidy
+2026-03-05 made a specific admin tool slightly more convenient
+2026-03-05 made a specific admin tool slightly more convenient
+2026-03-05 to have users see news posts, i've added notification for it
+2026-03-05 to have users see news posts, i've added notification for it
+2026-03-05 to have users see news posts, i've added notification for it
+2026-03-05 to have users see news posts, i've added notification for it
+2026-03-05 to have users see news posts, i've added notification for it
+2026-03-05 to have users see news posts, i've added notification for it
+2026-03-05 to have users see news posts, i've added notification for it
+2026-03-05 fixed up item pages, made all pages look more appealing, and fixed sniper bot issue, although waiting for google to accept update!
+2026-03-04 to have users see news posts, i've added notification for it
+2026-03-04 to have users see news posts, i've added notification for it
+2026-03-04 added a news section! check it out! Lol! neatened up dropdown, added 'more' dropdown in nav bar, and linked chrome extension to the sniper page!
+2026-03-04 added a news section! check it out! Lol! neatened up dropdown, added 'more' dropdown in nav bar, and linked chrome extension to the sniper page!
+2026-03-04 added a news section! check it out! Lol! neatened up dropdown, added 'more' dropdown in nav bar, and linked chrome extension to the sniper page!
+2026-03-03 added a news section! check it out! Lol! neatened up dropdown, added 'more' dropdown in nav bar, and linked chrome extension to the sniper page!
+2026-03-03 added a news section! check it out! Lol! neatened up dropdown, added 'more' dropdown in nav bar, and linked chrome extension to the sniper page!
+2026-03-03 neatened up dropdown, added 'more' dropdown in nav bar, and linked chrome extension to the sniper page!
+2026-03-03 neatened up dropdown, added 'more' dropdown in nav bar, and linked chrome extension to the sniper page!
+2026-03-01 added cool things i think
+2026-02-28 added roles
+2026-02-27 hm
+2026-02-26 added a players page which shows a neat little leaderboard with filters!
+2026-02-26 added more special serials! :D
+2026-02-26 added more special serials! :D
+2026-02-26 added more special serials! :D
+2026-02-26 secret button for cool people
+2026-02-25 Added special effects to serials: 1, 2-9, (123, 1234, 12345), and 1337
+2026-02-23 uaid page should be fixed
+2026-02-23 uaid page should be fixed
+2026-02-23 uaid page should be fixed
+2026-02-23 uaid page should be fixed
+2026-02-20 added manipulated tag in other places
+2026-02-20 added manipulated tag in other places
+2026-02-20 added manipulated tag in other places
+2026-02-20 added manipulated tag in other places
+2026-02-20 added manipulated tag in other places
+2026-02-20 finally fixed bio authentications because i realized i gave my account to so much people lol
+2026-02-20 added a manipulated tag to items that are experiencing unusual rap changes
+2026-02-20 added a manipulated tag to items that are experiencing unusual rap changes
+2026-02-20 added a manipulated tag to items that are experiencing unusual rap changes
+2026-02-20 added a manipulated tag to items that are experiencing unusual rap changes
+2026-02-19 Willy
+2026-02-19 Willy
+2026-02-19 Willy
+2026-02-19 deals page revamped! | Found out there was a database issue that only has JUST bit me in the back; the price history time in the data base was being saved as their respective 30 minute intervals, which broke the recency sortting on the page
+2026-02-19 deals page revamped! | Found out there was a database issue that only has JUST bit me in the back; the price history time in the data base was being saved as their respective 30 minute intervals, which broke the recency sortting on the page
+2026-02-18 fixed azuresniper. going to make it public soon
+2026-02-18 added a snipe feature in the nav tab (may require you to be logged in with oAuth)
+2026-02-18 added a snipe feature in the nav tab (may require you to be logged in with oAuth)
+2026-02-18 added a snipe feature in the nav tab (may require you to be logged in with oAuth)
+2026-02-18 added a snipe feature in the nav tab (may require you to be logged in with oAuth)
+2026-02-18 added a snipe feature in the nav tab (may require you to be logged in with oAuth)
+2026-02-18 added a snipe feature in the nav tab (may require you to be logged in with oAuth)
+2026-02-17 added a snipe feature in the nav tab (may require you to be logged in with oAuth)
+2026-02-17 added a snipe feature in the nav tab (may require you to be logged in with oAuth)
+2026-02-17 added a snipe feature in the nav tab (may require you to be logged in with oAuth)
+2026-02-17 added a snipe feature in the nav tab (may require you to be logged in with oAuth)
+2026-02-17 added a snipe feature in the nav tab (may require you to be logged in with oAuth)
+2026-02-17 added a snipe feature in the nav tab (may require you to be logged in with oAuth)
+2026-02-17 improved item page! and all timezones are finally corrected!
+2026-02-17 fixing timezones, letting data be recorded at utc then converting locally for consistency
+2026-02-17 added discord link feature for better notifications!
+2026-02-17 added watchlist feature, track any item and get notifications whenever it gets sold or when price changes!
+2026-02-17 added discord link feature for better notifications!
+2026-02-17 added watchlist feature, track any item and get notifications whenever it gets sold or when price changes!
+2026-02-17 added watchlist feature, track any item and get notifications whenever it gets sold or when price changes!
+2026-02-17 added watchlist feature, track any item and get notifications whenever it gets sold or when price changes!
+2026-02-17 added watchlist feature, track any item and get notifications whenever it gets sold or when price changes!
+2026-02-17 added watchlist feature, track any item and get notifications whenever it gets sold or when price changes!
+2026-02-17 added watchlist feature, track any item and get notifications whenever it gets sold or when price changes!
+2026-02-17 added watchlist feature, track any item and get notifications whenever it gets sold or when price changes!
+2026-02-16 added watchlist feature, track any item and get notifications whenever it gets sold or when price changes!
+2026-02-16 genuine
+2026-02-16 genuine
+2026-02-16 genuine
+2026-02-16 genuine
+2026-02-16 move runtime.txt to root
+2026-02-16 added a secret file!
+2026-02-16 Website works completely fine now! Jenks!
+2026-02-16 Website works completely fine now! Jenks!
+2026-02-16 cleaned up tables, things should be a lot smoother now, and easier to impliment, just tidied stuff up basically
+2026-02-16 cleaned up tables, things should be a lot smoother now, and easier to impliment, just tidied stuff up basically
+2026-02-16 cleaned up tables, things should be a lot smoother now, and easier to impliment, just tidied stuff up basically
+2026-02-16 cleaned up tables, things should be a lot smoother now, and easier to impliment, just tidied stuff up basically
+2026-02-16 cleaned up tables, things should be a lot smoother now, and easier to impliment, just tidied stuff up basically
+2026-02-16 cleaned up tables, things should be a lot smoother now, and easier to impliment, just tidied stuff up basically
+2026-02-16 cleaned up tables, things should be a lot smoother now, and easier to impliment, just tidied stuff up basically
+2026-02-16 reset database again!
+2026-02-16 fixing login cookies
+2026-02-13 sales page working (if seeing non colored sales, it's because it's buddies first sale) sales are now being monitored at a better rate though, and more efficiently!
+2026-02-13 oAuth now fully working, and scanning is no longer bugged!!!
+2026-02-13 testing oauth
+2026-02-13 testing oauth
+2026-02-13 testing oauth
+2026-02-13 testing oauth
+2026-02-13 testing oauth
+2026-02-13 testing oauth
+2026-02-13 testing oauth
+2026-02-13 testing oauth
+2026-02-13 testing oauth
+2026-02-13 testing oauth
+2026-02-13 testing oauth
+2026-02-12 testing oauth
+2026-02-12 testing oauth
+2026-02-12 testing oauth
+2026-02-12 added copy list in inventory, also if you click a certain point in the graph, it will show you rap and value differences! unlike shitlimons xd!!! (FART FAIRY TO THE HOLE!)
+2026-02-12 fixed.... uhhh i don't actually know lol
+2026-02-12 fixed.... uhhh i don't actually know lol
+2026-02-12 faster deals page and player inventory
+2026-02-12 gogglers
+2026-02-12 gogglers
+2026-02-12 goggles
+2026-02-12 goggles
+2026-02-12 fixed time
+2026-02-11 cool new main page!
+2026-02-11 cool new main page!
+2026-02-11 renamed /items/ to /item
+2026-02-11 Added working uaid page, added serials, hopefully fixed scanning inventory for the LAST time, fixed sale price calculation (and prettied it up), FINALLY ADDED PLAYER SEARCH
+2026-02-11 bug fixes
+2026-02-10 prices and rap now change
+2026-02-10 blue sky
+2026-02-10 discord website link lol
+2026-02-10 long awaited update: fixed get started button!!!
+2026-02-10 added a graph to user profiles
+2026-02-09 player authentication and inventory scanning works, with user asset identifications, and scan time
+2026-02-09 poop hert
+2026-02-09 created an authentication system!
+2026-02-09 tiny fix
+2026-02-09 created an authentication system!
+2026-02-08 added auth for profile
+2026-02-08 added profile
+2026-02-08 added profile
+2026-02-08 made deals prettier and girl boss #slay
+2026-02-08 made deals prettier and girl boss #slay
+2026-02-08 made deals prettier and girl boss #slay
+2026-02-08 made deals prettier and girl boss #slay
+2026-02-08 Fix Deals nav link to point to /deals
+2026-02-08 made deals prettier and girl boss #slay
+2026-02-08 odd peens
+2026-02-08 odd peens
+2026-02-08 made deals prettier and girl boss #slay
+2026-02-08 Allow deals page to fetch all items by returning all items when no query is provided in search API
+2026-02-08 Allow empty query in search API to return all items for deals page
+2026-02-08 Move deals page to app/deals/page.tsx for correct routing
+2026-02-08 Fix Deals nav link to point to /deals
+2026-02-08 Fix Deals nav link to point to /deals
+2026-02-08 Fix Deals nav link to point to /deals
+2026-02-08 Add deals page with color-coded tiers
+2026-02-08 Use assetId instead of id in item URLs
+2026-02-08 Add @neondatabase/serverless dependency
+2026-02-08 Initial commit to azure branch

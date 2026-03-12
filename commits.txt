@@ -1,0 +1,158 @@
+Initial commit to azure branch 1:41 PM 02/08/2026
+
+Add @neondatabase/serverless dependency 1:49 PM 02/08/2026
+
+Use assetId instead of id in item URLs 1:57 PM 02/08/2026
+
+Add deals page with color-coded tiers 2:11 PM 02/08/2026
+
+Fix Deals nav link to point to /deals 2:15 PM 02/08/2026
+
+Move deals page to app/deals/page.tsx for correct routing 2:47 PM 02/08/2026
+
+Allow empty query in search API to return all items for deals page 2:52 PM 02/08/2026
+
+Allow deals page to fetch all items when no query is provided 2:54 PM 02/08/2026
+
+made deals prettier and girl boss #slay 2:57 PM 02/08/2026
+
+odd peens 3:08 PM 02/08/2026
+
+added profile 3:43 PM 02/08/2026
+
+added auth for profile 3:46 PM 02/08/2026
+
+created an authentication system! 2:44 AM 02/09/2026
+
+tiny fix 2:46 AM 02/09/2026
+
+poop hert 2:10 PM 02/09/2026
+
+
+player authentication and inventory scanning works, with user asset identifications, and scan time 9:02 PM 02/09/2026
+
+added a graph to user profiles 12:37 AM 02/10/2026
+
+long awaited update: fixed get started button!!! 1:43 AM 02/10/2026
+
+discord website link lol 2:57 AM 02/10/2026
+
+blue sky 3:01 AM 02/10/2026
+
+prices and rap now change 1:52 PM 02/10/2026
+
+bug fixes 12:57 AM 02/11/2026
+
+Added working uaid page, added serials, hopefully fixed scanning inventory for the LAST time, fixed sale price calculation (and prettied it up), FINALLY ADDED PLAYER SEARCH 10:35 PM 02/11/2026
+
+renamed /items/ to /item 11:08 PM 02/11/2026
+
+cool new main page! 11:39 PM 02/11/2026
+
+fixed time 2:29 AM 02/12/2026
+
+goggles 11:27 AM 02/12/2026
+
+gogglers 12:24 PM 02/12/2026
+
+faster deals page and player inventory 2:15 PM 02/12/2026
+
+fixed.... uhhh i don't actually know lol 7:27 PM 02/12/2026
+
+added copy list in inventory, also if you click a certain point in the graph, it will show you rap and value differences! unlike shitlimons xd!!! (FART FAIRY TO THE HOLE!) 9:09 PM 02/12/2026
+
+testing oauth 11:50 PM 02/12/2026
+
+oAuth now fully working, and scanning is no longer bugged!!! 2:10 AM 02/13/2026
+
+sales page working (if seeing non colored sales, it's because it's buddies first sale) sales are now being monitored at a better rate though, and more efficiently! 7:32 PM 02/13/2026
+
+fixing login cookies 1:01 PM 02/16/2026
+
+reset database again! 2:51 PM 02/16/2026
+
+cleaned up tables, things should be a lot smoother now, and easier to impliment, just tidied stuff up basically 4:40 PM 02/16/2026
+
+Website works completely fine now! Jenks! 7:20 PM 02/16/2026
+
+added a secret file! 8:55 PM 02/16/2026
+
+move runtime.txt to root 9:00 PM 02/16/2026
+
+genuine 10:12 PM 02/16/2026
+
+added watchlist feature, track any item and get notifications whenever it gets sold or when price changes! 11:28 PM 02/16/2026
+
+added discord link feature for better notifications! 2:37 AM 02/17/2026
+
+fixing timezones, letting data be recorded at utc then converting locally for consistency 11:33 AM 02/17/2026
+
+improved item page! and all timezones are finally corrected! 3:26 PM 02/17/2026
+
+added a snipe feature in the nav tab (may require you to be logged in with oAuth) 4:35 PM 02/17/2026
+
+fixed azuresniper. going to make it public soon 10:46 AM 02/18/2026
+
+deals page revamped! | Found out there was a database issue that only has JUST bit me in the back; the price history time in the data base was being saved as their respective 30 minute intervals, which broke the recency sortting on the page 10:04 AM 02/19/2026     
+
+Willy 5:14 PM 02/19/2026
+
+added a manipulated tag to items that are experiencing unusual rap changes 1:32 AM 02/20/2026
+
+finally fixed bio authentications because i realized i gave my account to so much people lol 2:29 AM 02/20/2026
+
+added manipulated tag in other places 11:11 AM 02/20/2026
+
+uaid page should be fixed 7:50 PM 02/23/2026
+
+Added special effects to serials: 1, 2-9, (123, 1234, 12345), and 1337 11:36 PM 02/25/2026
+
+secret button for cool people 1:02 PM 02/26/2026
+
+added more special serials! :D 6:54 PM 02/26/2026
+
+added a players page which shows a neat little leaderboard with filters! 8:51 PM 02/26/2026
+
+hm 10:55 PM 02/27/2026
+
+added roles 5:55 PM 02/28/2026
+
+added cool things i think 9:07 PM 03/01/2026
+
+neatened up dropdown, added 'more' dropdown in nav bar, and linked chrome extension to the sniper page! 10:54 PM 03/03/2026
+
+added a news section! check it out! Lol! neatened up dropdown, added 'more' dropdown in nav bar, and linked chrome extension to the sniper page! 11:38 PM 03/03/2026
+
+to have users see news posts, i've added notification for it 9:57 PM 03/04/2026
+
+fixed up item pages, made all pages look more appealing, and fixed sniper bot issue, although waiting for google to accept update! 2:44 AM 03/05/2026
+
+made a specific admin tool slightly more convenient 10:20 AM 03/05/2026
+
+neat and tidy 5:53 PM 03/05/2026
+
+made players page look very cool and sexy 9:44 PM 03/05/2026
+
+fixed a bug that caused servers to pause 11:43 AM 03/06/2026
+
+currently fixing huge bug involving manipulation flags, this will take a lot of pushing to the database lol! 1:22 PM 03/06/2026
+
+added a player history page, allows you to see the graph for rap now! You can also hover over your current rap, unique item count, and total items to see your rank!!! Visit the players page for more information on the color ranking! :o 3:00 AM 03/08/2026
+
+he fixxerds 4:06 PM 03/08/2026
+
+added titles to web pages 9:12 PM 03/08/2026
+
+many errors such fix 2:31 AM 03/09/2026
+
+fixes 12:45 PM 03/09/2026
+
+fix 1:53 AM 03/10/2026
+
+fixed manipulation unmarks 2:52 PM 03/10/2026
+
+remove duplicate PlayerInteractive from root 1:43 AM 03/12/2026
+
+added trade ads, hold periods, fixed many bugs! Have fun with them! and Happy trading! 2:33 AM 03/12/2026
+
+:> 12:10 PM 03/12/2026

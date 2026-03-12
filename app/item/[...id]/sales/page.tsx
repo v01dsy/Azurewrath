@@ -24,7 +24,7 @@ interface ItemInfo {
 export default function SalesHistoryPage() {
   const router = useRouter();
   const params = useParams();
-  const itemId = params.id as string;
+  const itemId = (params.id as string[])[0];
 
   const [item, setItem] = useState<ItemInfo | null>(null);
   const [sales, setSales] = useState<Sale[]>([]);

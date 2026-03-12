@@ -1,4 +1,4 @@
-// app/item/[id]/page.tsx
+// app/item/[...id]/page.tsx
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -104,7 +104,7 @@ function Th({ children }: { children: React.ReactNode }) {
 export default function ItemPage() {
   const params = useParams();
   const router = useRouter();
-  const itemId = params.id as string;
+  const itemId = (params.id as string[])[0];
 
   const [item, setItem]                             = useState<ItemDetail | null>(null);
   const [loading, setLoading]                       = useState(true);

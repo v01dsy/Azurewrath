@@ -7,16 +7,13 @@ import prisma from "./prisma";
  * Returns the username of the last owner, or null if not found.
  */
 export async function getLastOwnerByUAID(userAssetId: string): Promise<string | null> {
-  // Query Roblox API for the current owner of the user asset ID
   try {
     const response = await axios.get(
       `https://inventory.roblox.com/v1/assets/${userAssetId}/owners?limit=1&sortOrder=Desc`
     );
     const data = response.data;
     if (data && data.data && data.data.length > 0) {
-      // The API returns an array of owners, the first is the current owner
       const owner = data.data[0];
-      // owner.user is an object with username and userId
       if (owner && owner.user && owner.user.username) {
         return owner.user.username;
       }
@@ -53,12 +50,6 @@ export async function fetchRobloxHeadshotUrl(userId: string, size: string = '150
 
 /**
  * Scans a user's full collectibles inventory from Roblox.
- * 
- * FIXED: Now properly handles the Roblox API response structure:
- * - Response contains `data` array with collectible items
- * - Each item has: assetId, userAssetId, serialNumber, name, etc.
- * - Handles pagination with nextPageCursor
- * - Implements retry logic for rate limiting (429 errors)
  */
 export async function scanFullInventory(userId: string, maxRetries = 3) {
   const fullInventory: any[] = [];
@@ -74,7 +65,6 @@ export async function scanFullInventory(userId: string, maxRetries = 3) {
 
     console.log(`📄 Fetching page ${++pageCount}, current total: ${fullInventory.length}`);
 
-    // Retry logic for THIS specific page only
     let response;
     let success = false;
     
@@ -87,16 +77,15 @@ export async function scanFullInventory(userId: string, maxRetries = 3) {
           }
         });
         success = true;
-        break; // Success, exit retry loop
+        break;
       } catch (err: any) {
         if (err.response?.status === 429) {
           if (attempt < maxRetries) {
-            const waitMs = 5000 * Math.pow(2, attempt - 1); // 5s, 10s, 20s
+            const waitMs = 5000 * Math.pow(2, attempt - 1);
             console.warn(`⚠️ Rate limited (429). Waiting ${waitMs}ms before retry ${attempt}/${maxRetries}...`);
             await new Promise(resolve => setTimeout(resolve, waitMs));
-            continue; // Try again
+            continue;
           } else {
-            // All retries exhausted for this page
             console.error(`❌ All retries exhausted for page ${pageCount}`);
             console.warn(`⚠️ Returning ${fullInventory.length} items collected so far.`);
             return fullInventory;
@@ -108,7 +97,6 @@ export async function scanFullInventory(userId: string, maxRetries = 3) {
           console.error(`❌ Not Found (404) - User does not exist: ${userId}`);
           throw new Error(`User ${userId} not found`);
         } else {
-          // Non-429 error, fail immediately
           console.error(`❌ Error fetching page ${pageCount}:`, err.message);
           if (err.response?.data) {
             console.error(`Response data:`, err.response.data);
@@ -125,19 +113,16 @@ export async function scanFullInventory(userId: string, maxRetries = 3) {
 
     const data = response.data;
     
-    // DEBUG: Log the response structure on first page
     if (pageCount === 1) {
       console.log(`🔍 DEBUG - First page response structure:`, JSON.stringify(data, null, 2).substring(0, 500));
     }
 
-    // CRITICAL FIX: Check if data.data exists and is an array
     if (!data || !data.data || !Array.isArray(data.data)) {
       console.error(`❌ Unexpected response structure on page ${pageCount}:`, data);
       console.warn(`Expected response.data.data to be an array, got:`, typeof data?.data);
       return fullInventory;
     }
 
-    // Process items from this page
     const items = data.data;
     
     if (items.length === 0 && pageCount === 1) {
@@ -145,9 +130,7 @@ export async function scanFullInventory(userId: string, maxRetries = 3) {
       return fullInventory;
     }
 
-    // Map and validate each item
     const processedItems = items.map((item: any, index: number) => {
-      // Validate required fields
       if (!item.assetId || !item.userAssetId) {
         console.warn(`⚠️ Item ${index} on page ${pageCount} missing required fields:`, item);
         return null;
@@ -162,7 +145,7 @@ export async function scanFullInventory(userId: string, maxRetries = 3) {
         created: item.created || null,
         isOnHold: item.isOnHold ?? null,
       };
-    }).filter(Boolean); // Remove null entries
+    }).filter(Boolean);
 
     fullInventory.push(...processedItems);
     console.log(`✅ Page ${pageCount} added ${processedItems.length} items. Total now: ${fullInventory.length}`);
@@ -171,8 +154,7 @@ export async function scanFullInventory(userId: string, maxRetries = 3) {
     console.log(`🔗 Next cursor: ${cursor ? 'exists' : 'null (done)'}`);
 
     if (cursor) {
-      // Add delay between pages to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 2000)); // 2s delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
   } while (cursor);
 
@@ -195,8 +177,6 @@ export async function fetchRobloxUserInfo(userId: string) {
 
 /**
  * Fetch Roblox userId from username
- * 
- * Uses the official Roblox API: https://api.roblox.com/users/get-by-username
  */
 export async function fetchRobloxUserIdByUsername(username: string): Promise<string | null> {
   try {
@@ -223,7 +203,7 @@ export interface RobloxItemData {
   description: string;
   imageUrl: string;
   price?: number;
-  isLimitedUnique?: boolean; // true = Limited U, false = Limited
+  isLimitedUnique?: boolean;
 }
 
 /**
@@ -237,7 +217,6 @@ export async function fetchRobloxItemData(assetId: string): Promise<RobloxItemDa
 
     const catalogData = catalogRes.data;
 
-    // Fetch IsLimitedUnique from economy API (same endpoint used by fetchPriceData)
     let isLimitedUnique: boolean | undefined = undefined;
     try {
       const economyRes = await axios.get(
@@ -277,13 +256,9 @@ export async function fetchRobloxItemData(assetId: string): Promise<RobloxItemDa
 
 /**
  * Fetch price data from Roblox's official economy API
- * 
- * UPDATED: Now uses Roblox's native APIs instead of Rolimons
- * Following your instructions to use only Roblox APIs
  */
 export async function fetchPriceData(assetId: string) {
   try {
-    // Step 1: Get CollectibleItemId from asset details
     const detailsRes = await axios.get(
       `https://economy.roblox.com/v2/assets/${assetId}/details`
     );
@@ -296,7 +271,6 @@ export async function fetchPriceData(assetId: string) {
     const collectibleItemId = detailsRes.data.CollectibleItemId;
     console.log(`📊 Asset ${assetId} -> CollectibleItemId: ${collectibleItemId}`);
     
-    // Step 2: Get resale data using CollectibleItemId
     const resaleRes = await axios.get(
       `https://apis.roblox.com/marketplace-sales/v1/item/${collectibleItemId}/resale-data`
     );
@@ -323,7 +297,6 @@ export async function fetchPriceData(assetId: string) {
 
 /**
  * DEPRECATED - Use fetchPriceData instead
- * This is kept only for backwards compatibility
  */
 export async function fetchPriceDataRolimons(assetId: string) {
   console.warn('⚠️ fetchPriceDataRolimons is deprecated. Use fetchPriceData instead for Roblox native APIs.');
@@ -367,23 +340,37 @@ export async function canViewInventory(robloxUserId: string): Promise<boolean> {
 }
 
 /**
- * Fetch full details for a single user asset (UAID) including `created` and `isOnHold`.
- * The bulk collectibles list endpoint does NOT return these fields — this is required.
+ * Fetch full details for a single user asset (UAID).
+ * - isOnHold comes from the per-UAID collectibles endpoint
+ * - created/updated come from the owners API (paginated until UAID is found)
  */
-export async function fetchUserAssetDetails(userId: string, userAssetId: string): Promise<{
+export async function fetchUserAssetDetails(userId: string, userAssetId: string, assetId: string): Promise<{
   created: string | null;
   updated: string | null;
   isOnHold: boolean | null;
 } | null> {
   try {
-    const res = await axios.get(
-      `https://inventory.roblox.com/v1/users/${userId}/assets/collectibles/${userAssetId}`
-    );
-    return {
-      created: res.data.created ?? null,
-      updated: res.data.updated ?? null,
-      isOnHold: res.data.isOnHold ?? null,
-    };
+    let created: string | null = null;
+    let updated: string | null = null;
+    let cursor: string | null = null;
+
+    do {
+      const ownersUrl: string = cursor
+        ? `https://inventory.roblox.com/v2/assets/${assetId}/owners?limit=100&sortOrder=Asc&cursor=${cursor}`
+        : `https://inventory.roblox.com/v2/assets/${assetId}/owners?limit=100&sortOrder=Asc`;
+      const ownersRes = await axios.get(ownersUrl, { timeout: 15000 });
+      const entries: any[] = ownersRes.data?.data ?? [];
+      const match = entries.find((e: any) => e.id?.toString() === userAssetId);
+      if (match) {
+        created = match.created ?? null;
+        updated = match.updated ?? null;
+        break;
+      }
+      cursor = ownersRes.data?.nextPageCursor ?? null;
+      if (cursor) await new Promise(r => setTimeout(r, 500));
+    } while (cursor);
+
+    return { created, updated, isOnHold: null };
   } catch (err: any) {
     console.warn(`Failed to fetch asset details for UAID ${userAssetId}:`, err.message);
     return null;

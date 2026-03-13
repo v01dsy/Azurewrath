@@ -7,9 +7,9 @@ import prisma from './prisma';
  * 1. ONE SNAPSHOT PER DAY - Check if today's snapshot exists
  * 2. SAME DAY = UPDATE existing snapshot (don't create new)
  * 3. NEW DAY = CREATE new snapshot
- * 4. NEW items = Fresh scannedAt, uaidCreatedAt + uaidUpdatedAt + isOnHold fetched per-UAID
- * 5. UNCHANGED items = PRESERVE uaidCreatedAt + uaidUpdatedAt, refresh isOnHold from bulk scan
- * 6. ONLY FETCH INVENTORY ONCE per scan -- reuse for both UAID comparison and item details
+ * 4. isOnHold comes from bulk scan immediately (Phase 1)
+ * 5. uaidCreatedAt + uaidUpdatedAt backfilled in background via owners API (Phase 2)
+ * 6. UNCHANGED items = PRESERVE uaidCreatedAt + uaidUpdatedAt, refresh isOnHold from bulk scan
  */
 
 function getTodayBoundsUtc(): { todayStartUTC: Date; todayEndUTC: Date } {
@@ -41,6 +41,47 @@ async function calculateSnapshotTotals(allItems: { assetId: bigint | string }[])
   const uniqueItems = new Set(allItems.map(i => i.assetId.toString())).size;
 
   return { totalRAP, totalItems, uniqueItems };
+}
+
+/**
+ * Phase 2 — background backfill of uaidCreatedAt + uaidUpdatedAt for new UAIDs.
+ * Runs after the snapshot is already saved so the user sees results immediately.
+ */
+async function backfillTimestamps(
+  snapshotId: string,
+  robloxUserIdString: string,
+  uaidsToBackfill: { userAssetId: string; assetId: string }[]
+) {
+  console.log(`\n🕐 [Phase 2] Starting background timestamp backfill for ${uaidsToBackfill.length} UAIDs...`);
+
+  for (const { userAssetId, assetId } of uaidsToBackfill) {
+    try {
+      const details = await fetchUserAssetDetails(robloxUserIdString, userAssetId, assetId);
+      if (!details?.created && !details?.updated) {
+        console.log(`[Phase 2 UAID ${userAssetId}] No timestamps found`);
+        continue;
+      }
+
+      await prisma.inventoryItem.updateMany({
+        where: {
+          snapshotId,
+          userAssetId: BigInt(userAssetId),
+        },
+        data: {
+          uaidCreatedAt: details.created ? new Date(details.created) : undefined,
+          uaidUpdatedAt: details.updated ? new Date(details.updated) : undefined,
+        },
+      });
+
+      console.log(`[Phase 2 UAID ${userAssetId}] created=${details.created ?? 'NULL'} updated=${details.updated ?? 'NULL'}`);
+    } catch (err: any) {
+      console.warn(`[Phase 2 UAID ${userAssetId}] Failed: ${err.message}`);
+    }
+
+    await new Promise(r => setTimeout(r, 1000));
+  }
+
+  console.log(`✅ [Phase 2] Background timestamp backfill complete`);
 }
 
 export async function saveInventorySnapshot(userId: string | bigint, robloxUserId: string | bigint) {
@@ -94,7 +135,7 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
 
   // ── FIRST SCAN EVER ──────────────────────────────────────────────────────
   if (!latestSnapshot) {
-    console.log('FIRST EVER scan...');
+    console.log('FIRST EVER scan — Phase 1: saving snapshot with isOnHold from bulk...');
 
     await ensureItemsExist(fullInventory);
 
@@ -102,22 +143,16 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
       fullInventory.map((item: any) => ({ assetId: item.assetId.toString() }))
     );
 
-    // Fetch per-UAID details -- bulk endpoint does not return created/updated/isOnHold
-    const itemRows: any[] = [];
-    for (const item of fullInventory) {
-      const details = await fetchUserAssetDetails(robloxUserIdString, item.userAssetId.toString());
-      console.log(`[FIRST SCAN UAID ${item.userAssetId}] created=${details?.created ?? 'NULL'} updated=${details?.updated ?? 'NULL'} isOnHold=${details?.isOnHold ?? 'NULL'}`);
-      itemRows.push({
-        assetId: BigInt(item.assetId.toString()),
-        userAssetId: BigInt(item.userAssetId.toString()),
-        serialNumber: item.serialNumber ?? null,
-        scannedAt: new Date(),
-        uaidCreatedAt: details?.created ? new Date(details.created) : null,
-        uaidUpdatedAt: details?.updated ? new Date(details.updated) : null,
-        isOnHold: details?.isOnHold === true,
-      });
-      await new Promise(r => setTimeout(r, 300)); // avoid 429s
-    }
+    // Phase 1 — save immediately, isOnHold from bulk, timestamps null
+    const itemRows: any[] = fullInventory.map((item: any) => ({
+      assetId: BigInt(item.assetId.toString()),
+      userAssetId: BigInt(item.userAssetId.toString()),
+      serialNumber: item.serialNumber ?? null,
+      scannedAt: new Date(),
+      uaidCreatedAt: null,
+      uaidUpdatedAt: null,
+      isOnHold: item.isOnHold === true,
+    }));
 
     let snapshot: any;
     try {
@@ -131,7 +166,7 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
         },
         include: { items: true },
       });
-      console.log(`FIRST snapshot created (ID: ${snapshot.id}, ${snapshot.items.length} items)`);
+      console.log(`✅ [Phase 1] FIRST snapshot created (ID: ${snapshot.id}, ${snapshot.items.length} items)`);
     } catch (err: any) {
       if (err.code === 'P2002') {
         const { todayStartUTC, todayEndUTC } = getTodayBoundsUtc();
@@ -152,11 +187,20 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
           where: { id: existing.id },
           include: { items: true },
         });
-        console.log(`FIRST snapshot recovered via update (ID: ${snapshot!.id}, ${snapshot!.items.length} items)`);
+        console.log(`✅ [Phase 1] FIRST snapshot recovered via update (ID: ${snapshot!.id}, ${snapshot!.items.length} items)`);
       } else {
         throw err;
       }
     }
+
+    // Phase 2 — fire and forget
+    const uaidsToBackfill = fullInventory.map((item: any) => ({
+      userAssetId: item.userAssetId.toString(),
+      assetId: item.assetId.toString(),
+    }));
+    backfillTimestamps(snapshot.id, robloxUserIdString, uaidsToBackfill).catch(err =>
+      console.error('❌ [Phase 2] Background backfill failed:', err)
+    );
 
     console.log('====================================\n');
     return snapshot;
@@ -189,7 +233,7 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
 
   let unchangedCount = 0;
 
-  // Unchanged items -- preserve uaidCreatedAt + uaidUpdatedAt (set by owner scan), refresh isOnHold from bulk
+  // Unchanged items — preserve uaidCreatedAt + uaidUpdatedAt, refresh isOnHold from bulk
   for (const item of latestSnapshot.items) {
     if (currentUAIDSet.has(item.userAssetId.toString())) {
       const fresh = robloxItemMap.get(item.userAssetId.toString());
@@ -198,30 +242,27 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
         userAssetId: item.userAssetId,
         serialNumber: item.serialNumber,
         scannedAt: item.scannedAt,
-        uaidCreatedAt: (item as any).uaidCreatedAt ?? null,  // preserve -- never overwrite
-        uaidUpdatedAt: (item as any).uaidUpdatedAt ?? null,  // preserve -- updated by owner scan
-        isOnHold: fresh?.isOnHold === true,                  // refresh from bulk inventory response
+        uaidCreatedAt: (item as any).uaidCreatedAt ?? null,  // preserve — never overwrite
+        uaidUpdatedAt: (item as any).uaidUpdatedAt ?? null,  // preserve — updated by owner scan
+        isOnHold: fresh?.isOnHold === true,                  // refresh from bulk
       });
       unchangedCount++;
     }
   }
 
-  // New items -- fetch per-UAID details since bulk endpoint doesn't return created/updated/isOnHold
+  // New items — Phase 1: save with isOnHold from bulk, timestamps null for now
   for (const uaid of newUAIDs) {
     const item = robloxItemMap.get(uaid);
     if (!item) continue;
-    const details = await fetchUserAssetDetails(robloxUserIdString, uaid);
-    console.log(`[NEW UAID ${uaid}] created=${details?.created ?? 'NULL'} updated=${details?.updated ?? 'NULL'} isOnHold=${details?.isOnHold ?? 'NULL'}`);
     allItemsForSnapshot.push({
       assetId: BigInt(item.assetId.toString()),
       userAssetId: BigInt(item.userAssetId.toString()),
       serialNumber: item.serialNumber ?? null,
       scannedAt: new Date(),
-      uaidCreatedAt: details?.created ? new Date(details.created) : null,
-      uaidUpdatedAt: details?.updated ? new Date(details.updated) : null,
-      isOnHold: details?.isOnHold === true,
+      uaidCreatedAt: null,
+      uaidUpdatedAt: null,
+      isOnHold: item.isOnHold === true,
     });
-    await new Promise(r => setTimeout(r, 300)); // avoid 429s
   }
 
   console.log(`Total items for snapshot: ${allItemsForSnapshot.length}`);
@@ -236,9 +277,11 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
     },
   });
 
+  let savedSnapshot: any;
+
   if (todaysSnapshot) {
-    // ── SAME DAY -- update in place ───────────────────────────────────────
-    console.log(`Updating TODAY'S snapshot (ID: ${todaysSnapshot.id})...`);
+    // ── SAME DAY — update in place ────────────────────────────────────────
+    console.log(`[Phase 1] Updating TODAY'S snapshot (ID: ${todaysSnapshot.id})...`);
 
     if (removedUAIDs.length > 0) {
       await prisma.inventoryItem.deleteMany({
@@ -250,7 +293,6 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
     }
 
     if (newUAIDs.length > 0) {
-      // Reuse already-fetched data from allItemsForSnapshot -- no double API calls
       const newItemRows = allItemsForSnapshot
         .filter(i => newUAIDs.includes(i.userAssetId.toString()))
         .map(item => ({
@@ -258,15 +300,15 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
           userAssetId: item.userAssetId,
           assetId: item.assetId,
           scannedAt: item.scannedAt,
-          uaidCreatedAt: item.uaidCreatedAt,
-          uaidUpdatedAt: item.uaidUpdatedAt,
+          uaidCreatedAt: null,
+          uaidUpdatedAt: null,
           isOnHold: item.isOnHold,
           serialNumber: item.serialNumber ?? null,
         }));
       await prisma.inventoryItem.createMany({ data: newItemRows });
     }
 
-    // Refresh isOnHold for unchanged items (uaidCreatedAt + uaidUpdatedAt are preserved)
+    // Refresh isOnHold for unchanged items
     for (const item of allItemsForSnapshot) {
       if (!newUAIDs.includes(item.userAssetId.toString())) {
         await prisma.inventoryItem.update({
@@ -281,23 +323,21 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
       data: { totalRAP, totalItems, uniqueItems },
     });
 
-    const updatedSnapshot = await prisma.inventorySnapshot.findUnique({
+    savedSnapshot = await prisma.inventorySnapshot.findUnique({
       where: { id: todaysSnapshot.id },
       include: { items: true },
     });
 
-    console.log(`UPDATED today's snapshot (${updatedSnapshot!.items.length} items total)`);
+    console.log(`✅ [Phase 1] UPDATED today's snapshot (${savedSnapshot!.items.length} items total)`);
     console.log(`   - ${newUAIDs.length} new items added`);
     console.log(`   - ${unchangedCount} items unchanged (isOnHold refreshed)`);
     console.log(`   - ${removedUAIDs.length} items removed`);
-    console.log('====================================\n');
-    return updatedSnapshot!;
 
   } else {
-    // ── NEW DAY -- create fresh snapshot ─────────────────────────────────
-    console.log('Creating NEW snapshot for new day...');
+    // ── NEW DAY — create fresh snapshot ──────────────────────────────────
+    console.log('[Phase 1] Creating NEW snapshot for new day...');
 
-    const newSnapshot = await prisma.inventorySnapshot.create({
+    savedSnapshot = await prisma.inventorySnapshot.create({
       data: {
         userId: userIdBigInt,
         totalRAP,
@@ -318,13 +358,28 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
       include: { items: true },
     });
 
-    console.log(`NEW snapshot created (ID: ${newSnapshot.id}, ${newSnapshot.items.length} items)`);
+    console.log(`✅ [Phase 1] NEW snapshot created (ID: ${savedSnapshot.id}, ${savedSnapshot.items.length} items)`);
     console.log(`   - ${newUAIDs.length} new items added`);
     console.log(`   - ${unchangedCount} items carried over`);
     console.log(`   - ${removedUAIDs.length} items removed`);
-    console.log('====================================\n');
-    return newSnapshot;
   }
+
+  // Phase 2 — backfill timestamps for new UAIDs only, fire and forget
+  if (newUAIDs.length > 0) {
+    const uaidsToBackfill = newUAIDs
+      .map(uaid => ({
+        userAssetId: uaid,
+        assetId: robloxItemMap.get(uaid)?.assetId?.toString() ?? '',
+      }))
+      .filter(u => u.assetId);
+
+    backfillTimestamps(savedSnapshot.id, robloxUserIdString, uaidsToBackfill).catch(err =>
+      console.error('❌ [Phase 2] Background backfill failed:', err)
+    );
+  }
+
+  console.log('====================================\n');
+  return savedSnapshot;
 }
 
 export async function getLatestSnapshot(userId: string | bigint) {

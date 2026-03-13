@@ -372,6 +372,7 @@ export async function canViewInventory(robloxUserId: string): Promise<boolean> {
  */
 export async function fetchUserAssetDetails(userId: string, userAssetId: string): Promise<{
   created: string | null;
+  updated: string | null;
   isOnHold: boolean | null;
 } | null> {
   try {
@@ -380,6 +381,7 @@ export async function fetchUserAssetDetails(userId: string, userAssetId: string)
     );
     return {
       created: res.data.created ?? null,
+      updated: res.data.updated ?? null,
       isOnHold: res.data.isOnHold ?? null,
     };
   } catch (err: any) {

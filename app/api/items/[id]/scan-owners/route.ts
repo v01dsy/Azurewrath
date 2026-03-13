@@ -167,6 +167,8 @@ async function processOwnersFromQueue(
       if (existingSnapshot) {
         skipped++;
         await updateProgress(jobId, { processed: processed + skipped });
+        console.log(`   ⏭️ Already scanned (last: ${existingSnapshot.createdAt.toLocaleDateString()}) — skipping`);
+        // No delay needed since we didn't hit any external APIs
         console.log(`   ⏭️ Already scanned (last: ${existingSnapshot.createdAt.toLocaleDateString()}) — skipping inventory scan`);
 
         // ✅ Still update UAID timestamps even for skipped users

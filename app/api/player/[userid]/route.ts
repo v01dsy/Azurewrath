@@ -20,6 +20,7 @@ async function canViewInventory(robloxUserId: string): Promise<boolean> {
   }
 }
 
+// ── Inlined rank query — no self-HTTP call needed ─────────────────────────────
 async function getRank(robloxUserId: bigint) {
   try {
     const result = await prisma.$queryRaw<Array<{
@@ -49,11 +50,13 @@ async function getRank(robloxUserId: bigint) {
         (SELECT COUNT(*) FROM latest_snaps, target WHERE latest_snaps."uniqueItems" > target."uniqueItems") + 1 AS unique_rank,
         (SELECT "totalRAP" FROM target) AS rap
     `;
+
     const row = result[0];
     if (!row || row.rap === null) return { rapRank: null, itemsRank: null, uniqueRank: null };
+
     return {
-      rapRank: Number(row.rap_rank),
-      itemsRank: Number(row.items_rank),
+      rapRank:    Number(row.rap_rank),
+      itemsRank:  Number(row.items_rank),
       uniqueRank: Number(row.unique_rank),
     };
   } catch {
@@ -78,6 +81,7 @@ export async function GET(
 
     const robloxUserIdString = user.robloxUserId.toString();
 
+    // Scan logic
     console.log(`🔍 ongoingScans has ${robloxUserIdString}: ${ongoingScans.has(robloxUserIdString)}`);
     if (ongoingScans.has(robloxUserIdString)) {
       console.log(`⏳ Scan already in progress for ${user.username}, skipping...`);
@@ -149,6 +153,7 @@ export async function GET(
       }
     }
 
+    // Run inventory, graph, avatar, and ranks in parallel — rank is now a direct DB call
     const [inventoryData, graphData, avatarResult, rankRes] = await Promise.all([
       prisma.$queryRaw<Array<{
         assetId: bigint;
@@ -232,7 +237,7 @@ export async function GET(
       fetch(
         `https://thumbnails.roblox.com/v1/users/avatar?userIds=${robloxUserIdString}&size=420x420&format=Png&isCircular=false`
       ).then(r => r.ok ? r.json() : null).catch(() => null),
-      getRank(user.robloxUserId),
+      getRank(user.robloxUserId), // ✅ direct DB call — no NEXT_PUBLIC_APP_URL needed
     ]);
 
     const avatarUrl = avatarResult?.data?.[0]?.imageUrl || user.avatarUrl;

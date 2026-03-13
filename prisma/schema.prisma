@@ -102,18 +102,20 @@ model InventoryItem {
   assetId       BigInt
   userAssetId   BigInt
   scannedAt     DateTime          @default(now())
-  uaidCreatedAt DateTime?         // When this UAID was created (from Roblox API)
-  isOnHold      Boolean?          // From Roblox API, null = not yet scanned
+  uaidCreatedAt DateTime?         // When this UAID was originally created (item first purchased)
+  uaidUpdatedAt DateTime?         // When this UAID last changed hands = trade timestamp (from Roblox owners API)
+  isOnHold      Boolean?
   serialNumber  Int?
   item          Item              @relation(fields: [assetId], references: [assetId])
   snapshot      InventorySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
-
+ 
   @@id([snapshotId, userAssetId])
   @@index([snapshotId])
   @@index([assetId])
   @@index([userAssetId])
   @@index([serialNumber])
   @@index([uaidCreatedAt])
+  @@index([uaidUpdatedAt])
 }
 
 model Session {

@@ -20,7 +20,6 @@ async function canViewInventory(robloxUserId: string): Promise<boolean> {
   }
 }
 
-// ── Inlined rank query — no self-HTTP call needed ─────────────────────────────
 async function getRank(robloxUserId: bigint) {
   try {
     const result = await prisma.$queryRaw<Array<{
@@ -50,13 +49,11 @@ async function getRank(robloxUserId: bigint) {
         (SELECT COUNT(*) FROM latest_snaps, target WHERE latest_snaps."uniqueItems" > target."uniqueItems") + 1 AS unique_rank,
         (SELECT "totalRAP" FROM target) AS rap
     `;
-
     const row = result[0];
     if (!row || row.rap === null) return { rapRank: null, itemsRank: null, uniqueRank: null };
-
     return {
-      rapRank:    Number(row.rap_rank),
-      itemsRank:  Number(row.items_rank),
+      rapRank: Number(row.rap_rank),
+      itemsRank: Number(row.items_rank),
       uniqueRank: Number(row.unique_rank),
     };
   } catch {
@@ -81,7 +78,6 @@ export async function GET(
 
     const robloxUserIdString = user.robloxUserId.toString();
 
-    // Scan logic
     console.log(`🔍 ongoingScans has ${robloxUserIdString}: ${ongoingScans.has(robloxUserIdString)}`);
     if (ongoingScans.has(robloxUserIdString)) {
       console.log(`⏳ Scan already in progress for ${user.username}, skipping...`);
@@ -153,7 +149,6 @@ export async function GET(
       }
     }
 
-    // Run inventory, graph, avatar, and ranks in parallel — rank is now a direct DB call
     const [inventoryData, graphData, avatarResult, rankRes] = await Promise.all([
       prisma.$queryRaw<Array<{
         assetId: bigint;
@@ -166,6 +161,8 @@ export async function GET(
         serialNumbers: (number | null)[];
         userAssetIds: bigint[];
         scannedAts: Date[];
+        uaidCreatedAts: (Date | null)[];
+        uaidUpdatedAts: (Date | null)[];
         isOnHold: boolean;
       }>>`
         WITH LatestSnapshot AS (
@@ -182,6 +179,8 @@ export async function GET(
             ARRAY_AGG(ii."userAssetId" ORDER BY ii."scannedAt" ASC) as user_asset_ids,
             ARRAY_AGG(ii."serialNumber" ORDER BY ii."scannedAt" ASC) as serial_numbers,
             ARRAY_AGG(ii."scannedAt" ORDER BY ii."scannedAt" ASC) as scanned_ats,
+            ARRAY_AGG(ii."uaidCreatedAt" ORDER BY ii."scannedAt" ASC) as uaid_created_ats,
+            ARRAY_AGG(ii."uaidUpdatedAt" ORDER BY ii."scannedAt" ASC) as uaid_updated_ats,
             COALESCE(BOOL_OR(ii."isOnHold"), false) as is_on_hold
           FROM "InventoryItem" ii
           INNER JOIN LatestSnapshot ls ON ii."snapshotId" = ls.id
@@ -198,6 +197,8 @@ export async function GET(
           a.serial_numbers as "serialNumbers",
           a.user_asset_ids as "userAssetIds",
           a.scanned_ats as "scannedAts",
+          a.uaid_created_ats as "uaidCreatedAts",
+          a.uaid_updated_ats as "uaidUpdatedAts",
           a.is_on_hold as "isOnHold"
         FROM Aggregated a
         LEFT JOIN "Item" i ON a."assetId" = i."assetId"
@@ -231,7 +232,7 @@ export async function GET(
       fetch(
         `https://thumbnails.roblox.com/v1/users/avatar?userIds=${robloxUserIdString}&size=420x420&format=Png&isCircular=false`
       ).then(r => r.ok ? r.json() : null).catch(() => null),
-      getRank(user.robloxUserId), // ✅ direct DB call — no NEXT_PUBLIC_APP_URL needed
+      getRank(user.robloxUserId),
     ]);
 
     const avatarUrl = avatarResult?.data?.[0]?.imageUrl || user.avatarUrl;
@@ -281,6 +282,8 @@ export async function GET(
         serialNumbers: item.serialNumbers,
         scannedAt: item.scannedAts?.[0] ?? null,
         scannedAts: item.scannedAts,
+        uaidCreatedAts: item.uaidCreatedAts ?? [],
+        uaidUpdatedAts: item.uaidUpdatedAts ?? [],
       })),
       stats: {
         totalRAP,
@@ -289,7 +292,11 @@ export async function GET(
         lastScanned: latestSnapshot?.createdAt ?? null,
       },
       graphData: dedupedGraphData,
-      ranks: rankRes,
+      ranks: {
+        rapRank: rankRes?.rapRank ?? null,
+        itemsRank: rankRes?.itemsRank ?? null,
+        uniqueRank: rankRes?.uniqueRank ?? null,
+      },
       isPrivate: false,
     });
 

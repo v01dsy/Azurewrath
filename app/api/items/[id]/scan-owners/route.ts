@@ -138,6 +138,14 @@ async function processOwnersFromQueue(
     const robloxUserId = entry.owner?.id?.toString();
     if (!robloxUserId) continue;
 
+    // ── Extract UAID timestamps from the owners API entry ──────────────
+    // entry.id = the UAID (numeric)
+    // entry.created = when this UAID was originally created (item first purchased/obtained)
+    // entry.updated = when this UAID last changed hands = trade timestamp
+    const entryUAID = entry.id?.toString() ?? null;
+    const entryUaidCreatedAt = entry.created ? new Date(entry.created) : null;
+    const entryUaidUpdatedAt = entry.updated ? new Date(entry.updated) : null;
+
     const job = await prisma.scanJob.findUnique({ where: { id: jobId }, select: { total: true } });
     const total = job?.total ?? 0;
     const pct = total > 0 ? Math.round(((processed + skipped) / total) * 100) : '?';
@@ -148,6 +156,8 @@ async function processOwnersFromQueue(
     try {
       // ─── SKIP CHECK: if this user already has a snapshot, we already know
       //     their inventory — no need to re-scan them.
+      //     BUT: we should still update uaidCreatedAt/uaidUpdatedAt for this UAID
+      //     since we now have the real values from the owners API.
       const existingSnapshot = await prisma.inventorySnapshot.findFirst({
         where: { userId: BigInt(robloxUserId) },
         select: { id: true, createdAt: true },
@@ -157,8 +167,13 @@ async function processOwnersFromQueue(
       if (existingSnapshot) {
         skipped++;
         await updateProgress(jobId, { processed: processed + skipped });
-        console.log(`   ⏭️ Already scanned (last: ${existingSnapshot.createdAt.toLocaleDateString()}) — skipping`);
-        // No delay needed since we didn't hit any external APIs
+        console.log(`   ⏭️ Already scanned (last: ${existingSnapshot.createdAt.toLocaleDateString()}) — skipping inventory scan`);
+
+        // ✅ Still update UAID timestamps even for skipped users
+        if (entryUAID) {
+          await backfillUaidTimestamps(robloxUserId, entryUAID, entryUaidCreatedAt, entryUaidUpdatedAt);
+        }
+
         continue;
       }
 
@@ -195,6 +210,11 @@ async function processOwnersFromQueue(
       console.log(`   📦 New user — scanning inventory for ${username}...`);
       await saveInventorySnapshot(robloxUserId, robloxUserId);
 
+      // ✅ After snapshot is saved, backfill UAID timestamps from owners API
+      if (entryUAID) {
+        await backfillUaidTimestamps(robloxUserId, entryUAID, entryUaidCreatedAt, entryUaidUpdatedAt);
+      }
+
       processed++;
       await updateProgress(jobId, { processed: processed + skipped, failed });
       console.log(`   ✅ Done: ${username} | ${processed} scanned, ${skipped} skipped`);
@@ -209,6 +229,41 @@ async function processOwnersFromQueue(
   }
 
   return { processed, skipped, failed };
+}
+
+// ─── Backfill UAID timestamps from the owners API onto saved InventoryItems ──
+// This updates uaidCreatedAt and uaidUpdatedAt on ALL snapshots that contain
+// this UAID for this user — so the data is always accurate.
+async function backfillUaidTimestamps(
+  robloxUserId: string,
+  uaid: string,
+  uaidCreatedAt: Date | null,
+  uaidUpdatedAt: Date | null,
+) {
+  if (!uaidCreatedAt && !uaidUpdatedAt) return;
+
+  try {
+    // Find all InventoryItem rows for this UAID belonging to this user
+    const updateData: any = {};
+    if (uaidCreatedAt) updateData.uaidCreatedAt = uaidCreatedAt;
+    if (uaidUpdatedAt) updateData.uaidUpdatedAt = uaidUpdatedAt;
+
+    const result = await prisma.$executeRaw`
+      UPDATE "InventoryItem" ii
+      SET
+        "uaidCreatedAt" = COALESCE(ii."uaidCreatedAt", ${uaidCreatedAt}),
+        "uaidUpdatedAt" = ${uaidUpdatedAt}
+      FROM "InventorySnapshot" snap
+      WHERE ii."snapshotId" = snap.id
+        AND snap."userId" = ${BigInt(robloxUserId)}
+        AND ii."userAssetId" = ${BigInt(uaid)}
+    `;
+    if (result > 0) {
+      console.log(`   📅 Updated UAID ${uaid} timestamps: created=${uaidCreatedAt?.toISOString()}, updated=${uaidUpdatedAt?.toISOString()}`);
+    }
+  } catch (err) {
+    console.warn(`   ⚠️ Could not backfill UAID timestamps for ${uaid}:`, err);
+  }
 }
 
 // ─── Main scan orchestrator ────────────────────────────────────────────────

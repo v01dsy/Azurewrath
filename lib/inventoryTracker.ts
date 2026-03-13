@@ -44,7 +44,8 @@ async function calculateSnapshotTotals(allItems: { assetId: bigint | string }[])
 }
 
 /**
- * Phase 2 — background backfill of uaidCreatedAt + uaidUpdatedAt for new UAIDs.
+ * Phase 2 — background backfill of uaidCreatedAt + uaidUpdatedAt.
+ * Uses exponential backoff on 429s so the whole batch doesn't fail on rate limits.
  * Runs after the snapshot is already saved so the user sees results immediately.
  */
 async function backfillTimestamps(
@@ -54,31 +55,53 @@ async function backfillTimestamps(
 ) {
   console.log(`\n🕐 [Phase 2] Starting background timestamp backfill for ${uaidsToBackfill.length} UAIDs...`);
 
+  const MAX_RETRIES = 5;
+  const BASE_DELAY_MS = 3000;
+
   for (const { userAssetId, assetId } of uaidsToBackfill) {
-    try {
-      const details = await fetchUserAssetDetails(robloxUserIdString, userAssetId, assetId);
-      if (!details?.created && !details?.updated) {
-        console.log(`[Phase 2 UAID ${userAssetId}] No timestamps found`);
-        continue;
+    let attempt = 0;
+    let done = false;
+
+    while (attempt < MAX_RETRIES && !done) {
+      try {
+        const details = await fetchUserAssetDetails(robloxUserIdString, userAssetId, assetId);
+
+        if (!details?.created && !details?.updated) {
+          console.log(`[Phase 2 UAID ${userAssetId}] No timestamps found`);
+          done = true;
+          break;
+        }
+
+        await prisma.inventoryItem.updateMany({
+          where: {
+            snapshotId,
+            userAssetId: BigInt(userAssetId),
+          },
+          data: {
+            uaidCreatedAt: details.created ? new Date(details.created) : undefined,
+            uaidUpdatedAt: details.updated ? new Date(details.updated) : undefined,
+          },
+        });
+
+        console.log(`[Phase 2 UAID ${userAssetId}] ✅ created=${details.created ?? 'NULL'} updated=${details.updated ?? 'NULL'}`);
+        done = true;
+      } catch (err: any) {
+        const is429 = err?.response?.status === 429 || err?.message?.includes('429');
+
+        if (is429 && attempt < MAX_RETRIES - 1) {
+          const waitMs = BASE_DELAY_MS * Math.pow(2, attempt); // 3s, 6s, 12s, 24s, 48s
+          attempt++;
+          console.warn(`[Phase 2 UAID ${userAssetId}] 429 — attempt ${attempt}/${MAX_RETRIES}, waiting ${waitMs / 1000}s...`);
+          await new Promise(r => setTimeout(r, waitMs));
+        } else {
+          console.warn(`[Phase 2 UAID ${userAssetId}] Failed after ${attempt + 1} attempts: ${err.message}`);
+          done = true;
+        }
       }
-
-      await prisma.inventoryItem.updateMany({
-        where: {
-          snapshotId,
-          userAssetId: BigInt(userAssetId),
-        },
-        data: {
-          uaidCreatedAt: details.created ? new Date(details.created) : undefined,
-          uaidUpdatedAt: details.updated ? new Date(details.updated) : undefined,
-        },
-      });
-
-      console.log(`[Phase 2 UAID ${userAssetId}] created=${details.created ?? 'NULL'} updated=${details.updated ?? 'NULL'}`);
-    } catch (err: any) {
-      console.warn(`[Phase 2 UAID ${userAssetId}] Failed: ${err.message}`);
     }
 
-    await new Promise(r => setTimeout(r, 1000));
+    const politeDelay = attempt > 0 ? 15000 : 5000;
+    await new Promise(r => setTimeout(r, politeDelay));
   }
 
   console.log(`✅ [Phase 2] Background timestamp backfill complete`);
@@ -193,7 +216,7 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
       }
     }
 
-    // Phase 2 — fire and forget
+    // Phase 2 — fire and forget, all UAIDs need timestamps
     const uaidsToBackfill = fullInventory.map((item: any) => ({
       userAssetId: item.userAssetId.toString(),
       assetId: item.assetId.toString(),

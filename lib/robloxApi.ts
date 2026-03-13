@@ -350,27 +350,70 @@ export async function fetchUserAssetDetails(userId: string, userAssetId: string,
   isOnHold: boolean | null;
 } | null> {
   try {
-    let created: string | null = null;
-    let updated: string | null = null;
+    const targetUAID = BigInt(userAssetId);
     let cursor: string | null = null;
+    let pageNum = 0;
+
+    const rawCookie = process.env.ROBLOX_SECURITY_COOKIE ?? '';
+    const cleanCookie = rawCookie.replace(/^"|"$/g, '').replace(/^'|'$/g, '');
+    const headers: Record<string, string> = { 'User-Agent': 'Mozilla/5.0' };
+    if (cleanCookie) headers['Cookie'] = `.ROBLOSECURITY=${cleanCookie}`;
+    console.log(`[UAID search] Cookie present: ${!!cleanCookie}`);
 
     do {
-      const ownersUrl: string = cursor
-        ? `https://inventory.roblox.com/v2/assets/${assetId}/owners?limit=100&sortOrder=Asc&cursor=${cursor}`
-        : `https://inventory.roblox.com/v2/assets/${assetId}/owners?limit=100&sortOrder=Asc`;
-      const ownersRes = await axios.get(ownersUrl, { timeout: 15000 });
-      const entries: any[] = ownersRes.data?.data ?? [];
-      const match = entries.find((e: any) => e.id?.toString() === userAssetId);
-      if (match) {
-        created = match.created ?? null;
-        updated = match.updated ?? null;
-        break;
+      const ownersUrl: string = `https://inventory.roblox.com/v2/assets/${assetId}/owners?limit=100&sortOrder=Asc${cursor ? `&cursor=${cursor}` : ''}`;
+
+      let ownersRes: any;
+      let retries = 0;
+      while (retries < 5) {
+        try {
+          ownersRes = await axios.get(ownersUrl, { timeout: 15000, headers });
+          break;
+        } catch (err: any) {
+          if (err?.response?.status === 429 && retries < 4) {
+            const waitMs = 3000 * Math.pow(2, retries); // 3s, 6s, 12s, 24s, 48s
+            console.warn(`[UAID search] 429 on page ${pageNum + 1}, waiting ${waitMs / 1000}s...`);
+            await new Promise(r => setTimeout(r, waitMs));
+            retries++;
+          } else {
+            throw err;
+          }
+        }
       }
-      cursor = ownersRes.data?.nextPageCursor ?? null;
-      if (cursor) await new Promise(r => setTimeout(r, 500));
+
+      const entries: any[] = ownersRes.data?.data ?? [];
+      pageNum++;
+
+      if (entries.length === 0) break;
+
+      const lastUAID = BigInt(entries[entries.length - 1].id ?? 0);
+
+      if (lastUAID < targetUAID) {
+        console.log(`[UAID search] Page ${pageNum}: last=${lastUAID} < target=${targetUAID}, skipping`);
+        cursor = ownersRes.data?.nextPageCursor ?? null;
+        if (cursor) {
+          const delay = pageNum % 10 === 0 ? 5000 : 800;
+          await new Promise(r => setTimeout(r, delay));
+        }
+        continue;
+      }
+
+      const match = entries.find((e: any) => BigInt(e.id ?? 0) === targetUAID);
+      if (match) {
+        console.log(`[UAID search] Found on page ${pageNum}`);
+        return {
+          created: match.created ?? null,
+          updated: match.updated ?? null,
+          isOnHold: null,
+        };
+      }
+
+      console.log(`[UAID search] Page ${pageNum}: passed target UAID, not found`);
+      break;
+
     } while (cursor);
 
-    return { created, updated, isOnHold: null };
+    return { created: null, updated: null, isOnHold: null };
   } catch (err: any) {
     console.warn(`Failed to fetch asset details for UAID ${userAssetId}:`, err.message);
     return null;

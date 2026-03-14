@@ -50,6 +50,11 @@ export async function fetchRobloxHeadshotUrl(userId: string, size: string = '150
 
 /**
  * Scans a user's full collectibles inventory from Roblox.
+ *
+ * Uses native fetch() instead of axios to avoid ECONNRESET on background
+ * fire-and-forget scans — axios shares the Node HTTP agent with the
+ * incoming request, which gets torn down once the response is sent.
+ * fetch() has its own connection pool that outlives the request lifecycle.
  */
 export async function scanFullInventory(userId: string, maxRetries = 3) {
   const fullInventory: any[] = [];
@@ -65,66 +70,81 @@ export async function scanFullInventory(userId: string, maxRetries = 3) {
 
     console.log(`📄 Fetching page ${++pageCount}, current total: ${fullInventory.length}`);
 
-    let response;
+    let data: any = null;
     let success = false;
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      let res: Response;
       try {
-        response = await axios.get(url, { 
-          timeout: 30000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-          }
+        res = await fetch(url, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
         });
-        success = true;
-        break;
       } catch (err: any) {
-        if (err.response?.status === 429) {
-          if (attempt < maxRetries) {
-            const waitMs = 5000 * Math.pow(2, attempt - 1);
-            console.warn(`⚠️ Rate limited (429). Waiting ${waitMs}ms before retry ${attempt}/${maxRetries}...`);
-            await new Promise(resolve => setTimeout(resolve, waitMs));
-            continue;
-          } else {
-            console.error(`❌ All retries exhausted for page ${pageCount}`);
-            console.warn(`⚠️ Returning ${fullInventory.length} items collected so far.`);
-            return fullInventory;
-          }
-        } else if (err.response?.status === 400) {
-          console.error(`❌ Bad Request (400) - Invalid userId or private inventory: ${userId}`);
-          throw new Error(`Cannot access inventory for userId ${userId}. User may not exist or inventory is private.`);
-        } else if (err.response?.status === 404) {
-          console.error(`❌ Not Found (404) - User does not exist: ${userId}`);
-          throw new Error(`User ${userId} not found`);
+        // Network-level error (ECONNRESET, etc.) — retry
+        console.error(`❌ Network error fetching page ${pageCount} (attempt ${attempt}):`, err.message);
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, 3000 * attempt));
+          continue;
+        }
+        console.warn(`⚠️ All retries exhausted for page ${pageCount}. Returning ${fullInventory.length} items so far.`);
+        return fullInventory;
+      }
+
+      if (res.status === 429) {
+        const retryAfter = res.headers.get('Retry-After');
+        const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : 5000 * Math.pow(2, attempt - 1);
+        if (attempt < maxRetries) {
+          console.warn(`⚠️ Rate limited (429). Waiting ${waitMs}ms before retry ${attempt}/${maxRetries}...`);
+          await new Promise(r => setTimeout(r, waitMs));
+          continue;
         } else {
-          console.error(`❌ Error fetching page ${pageCount}:`, err.message);
-          if (err.response?.data) {
-            console.error(`Response data:`, err.response.data);
-          }
-          throw err;
+          console.error(`❌ All retries exhausted for page ${pageCount}`);
+          console.warn(`⚠️ Returning ${fullInventory.length} items collected so far.`);
+          return fullInventory;
         }
       }
+
+      if (res.status === 400) {
+        console.error(`❌ Bad Request (400) - Invalid userId or private inventory: ${userId}`);
+        throw new Error(`Cannot access inventory for userId ${userId}. User may not exist or inventory is private.`);
+      }
+
+      if (res.status === 404) {
+        console.error(`❌ Not Found (404) - User does not exist: ${userId}`);
+        throw new Error(`User ${userId} not found`);
+      }
+
+      if (!res.ok) {
+        console.error(`❌ Unexpected status ${res.status} on page ${pageCount}`);
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, 3000 * attempt));
+          continue;
+        }
+        return fullInventory;
+      }
+
+      data = await res.json();
+      success = true;
+      break;
     }
 
-    if (!success || !response) {
+    if (!success || !data) {
       console.warn(`⚠️ Failed to fetch page ${pageCount}. Returning ${fullInventory.length} items.`);
-      return fullInventory;
+      break;
     }
 
-    const data = response.data;
-    
     if (pageCount === 1) {
       console.log(`🔍 DEBUG - First page response structure:`, JSON.stringify(data, null, 2).substring(0, 500));
     }
 
-    if (!data || !data.data || !Array.isArray(data.data)) {
+    if (!data.data || !Array.isArray(data.data)) {
       console.error(`❌ Unexpected response structure on page ${pageCount}:`, data);
-      console.warn(`Expected response.data.data to be an array, got:`, typeof data?.data);
-      return fullInventory;
+      console.warn(`Expected data.data to be an array, got:`, typeof data?.data);
+      break;
     }
 
-    const items = data.data;
-    
+    const items: any[] = data.data;
+
     if (items.length === 0 && pageCount === 1) {
       console.log(`✅ User has an empty collectibles inventory`);
       return fullInventory;
@@ -135,7 +155,6 @@ export async function scanFullInventory(userId: string, maxRetries = 3) {
         console.warn(`⚠️ Item ${index} on page ${pageCount} missing required fields:`, item);
         return null;
       }
-
       return {
         assetId: item.assetId,
         userAssetId: item.userAssetId,
@@ -154,7 +173,7 @@ export async function scanFullInventory(userId: string, maxRetries = 3) {
     console.log(`🔗 Next cursor: ${cursor ? 'exists' : 'null (done)'}`);
 
     if (cursor) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(r => setTimeout(r, 2000));
     }
   } while (cursor);
 
@@ -343,6 +362,9 @@ export async function canViewInventory(robloxUserId: string): Promise<boolean> {
  * Fetch full details for a single user asset (UAID).
  * - isOnHold comes from the per-UAID collectibles endpoint
  * - created/updated come from the owners API (paginated until UAID is found)
+ *
+ * Uses native fetch() instead of axios to survive background fire-and-forget
+ * execution after the Next.js response has already been sent.
  */
 export async function fetchUserAssetDetails(userId: string, userAssetId: string, assetId: string): Promise<{
   created: string | null;
@@ -363,36 +385,52 @@ export async function fetchUserAssetDetails(userId: string, userAssetId: string,
     do {
       const ownersUrl: string = `https://inventory.roblox.com/v2/assets/${assetId}/owners?limit=100&sortOrder=Asc${cursor ? `&cursor=${cursor}` : ''}`;
 
-      let ownersRes: any;
+      let ownersData: any = null;
       let retries = 0;
+
       while (retries < 5) {
+        let res: Response;
         try {
-          ownersRes = await axios.get(ownersUrl, { timeout: 15000, headers });
-          break;
+          res = await fetch(ownersUrl, { headers });
         } catch (err: any) {
-          if (err?.response?.status === 429 && retries < 4) {
+          if (retries < 4) {
             const waitMs = 3000 * Math.pow(2, retries);
-            console.warn(`[UAID search] 429 on page ${pageNum + 1}, waiting ${waitMs / 1000}s...`);
+            console.warn(`[UAID search] Network error on page ${pageNum + 1}, waiting ${waitMs / 1000}s...`);
             await new Promise(r => setTimeout(r, waitMs));
             retries++;
-          } else {
-            throw err;
+            continue;
           }
+          throw err;
         }
+
+        if (res.status === 429 && retries < 4) {
+          const waitMs = 3000 * Math.pow(2, retries);
+          console.warn(`[UAID search] 429 on page ${pageNum + 1}, waiting ${waitMs / 1000}s...`);
+          await new Promise(r => setTimeout(r, waitMs));
+          retries++;
+          continue;
+        }
+
+        if (!res.ok) throw new Error(`HTTP ${res.status} on owners page ${pageNum + 1}`);
+
+        ownersData = await res.json();
+        break;
       }
 
-      const entries: any[] = ownersRes.data?.data ?? [];
+      if (!ownersData) break;
+
+      const entries: any[] = ownersData?.data ?? [];
       pageNum++;
 
       if (entries.length === 0) break;
 
-      const nextCursor: string | null = ownersRes.data?.nextPageCursor ?? null;
+      const nextCursor: string | null = ownersData?.nextPageCursor ?? null;
 
       // Parse last UAID from next cursor instead of scanning entries
       if (nextCursor) {
         const lastUAID = BigInt(nextCursor.split('_')[0]);
         if (lastUAID < targetUAID) {
-          console.log(`[UAID search] Page ${pageNum}: cursor lastUAID=${lastUAID} < target=${targetUAID}, skipping | nextCursor=${nextCursor ? nextCursor.substring(0, 30) + '...' : 'null'}`);
+          console.log(`[UAID search] Page ${pageNum}: cursor lastUAID=${lastUAID} < target=${targetUAID}, skipping | nextCursor=${nextCursor.substring(0, 30)}...`);
           cursor = nextCursor;
           requestsSinceBreak++;
           if (requestsSinceBreak >= 15) {

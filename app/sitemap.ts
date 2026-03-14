@@ -3,7 +3,8 @@
 import { MetadataRoute } from 'next';
 import { getPool } from '@/lib/db';
 
-export const revalidate = 3600; // revalidate every hour
+export const dynamic = 'force-dynamic';
+export const revalidate = 3600;
 
 function toSlug(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -11,36 +12,6 @@ function toSlug(name: string) {
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = 'https://azurewrath.lol';
-  const pool = getPool();
-
-  const { rows } = await pool.query<{
-    assetId: string;
-    name: string;
-    updatedAt: Date;
-    sitemap_priority: number;
-  }>(`
-    WITH sale_counts AS (
-      SELECT "itemId", COUNT(id) AS sale_count
-      FROM "Sale"
-      GROUP BY "itemId"
-    ),
-    max_pow AS (
-      SELECT GREATEST(MAX(sale_count) ^ 0.3, 1) AS max_p
-      FROM sale_counts
-    )
-    SELECT
-      i."assetId"::text,
-      i.name,
-      i."updatedAt",
-      ROUND(
-        CAST(
-          0.1 + (COALESCE(sc.sale_count, 0) ^ 0.3 / (SELECT max_p FROM max_pow)) * 0.6
-        AS numeric), 1
-      )::float AS sitemap_priority
-    FROM "Item" i
-    LEFT JOIN sale_counts sc ON sc."itemId" = i."assetId"
-    WHERE i."assetId" != 1
-  `);
 
   const staticPages: MetadataRoute.Sitemap = [
     { url: baseUrl,                   lastModified: new Date(), changeFrequency: 'daily',   priority: 1    },
@@ -54,12 +25,47 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${baseUrl}/verify`,       lastModified: new Date(), changeFrequency: 'monthly', priority: 0.4  },
   ];
 
-  const itemPages: MetadataRoute.Sitemap = rows.map(row => ({
-    url: `${baseUrl}/item/${row.assetId}/${toSlug(row.name)}`,
-    lastModified: row.updatedAt,
-    changeFrequency: 'daily' as const,
-    priority: row.sitemap_priority,
-  }));
+  try {
+    const pool = getPool();
+    const { rows } = await pool.query<{
+      assetId: string;
+      name: string;
+      updatedAt: Date;
+      sitemap_priority: number;
+    }>(`
+      WITH sale_counts AS (
+        SELECT "itemId", COUNT(id) AS sale_count
+        FROM "Sale"
+        GROUP BY "itemId"
+      ),
+      max_pow AS (
+        SELECT GREATEST(MAX(sale_count) ^ 0.3, 1) AS max_p
+        FROM sale_counts
+      )
+      SELECT
+        i."assetId"::text,
+        i.name,
+        i."updatedAt",
+        ROUND(
+          CAST(
+            0.1 + (COALESCE(sc.sale_count, 0) ^ 0.3 / (SELECT max_p FROM max_pow)) * 0.6
+          AS numeric), 1
+        )::float AS sitemap_priority
+      FROM "Item" i
+      LEFT JOIN sale_counts sc ON sc."itemId" = i."assetId"
+      WHERE i."assetId" != 1
+    `);
 
-  return [...staticPages, ...itemPages];
+    const itemPages: MetadataRoute.Sitemap = rows.map(row => ({
+      url: `${baseUrl}/item/${row.assetId}/${toSlug(row.name)}`,
+      lastModified: row.updatedAt,
+      changeFrequency: 'daily' as const,
+      priority: row.sitemap_priority,
+    }));
+
+    return [...staticPages, ...itemPages];
+  } catch (err) {
+    console.error('sitemap: DB query failed, returning static pages only:', err);
+    return staticPages;
+  }
 }

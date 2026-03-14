@@ -20,6 +20,7 @@ export async function GET(
       robloxUserId: bigint;
       avatarUrl: string | null;
       scannedAt: Date;
+      uaidUpdatedAt: Date | null;
     }>>`
       WITH LatestSnapshots AS (
         SELECT DISTINCT ON ("userId")
@@ -36,7 +37,8 @@ export async function GET(
         u."displayName",
         u."robloxUserId",
         u."avatarUrl",
-        ii."scannedAt"
+        ii."scannedAt",
+        ii."uaidUpdatedAt"
       FROM "InventoryItem" ii
       INNER JOIN LatestSnapshots ls ON ii."snapshotId" = ls.id
       INNER JOIN "User" u ON ls."userId" = u."robloxUserId"
@@ -71,6 +73,7 @@ export async function GET(
         robloxUserId: o.robloxUserId.toString(),
         avatarUrl: o.avatarUrl || avatarMap.get(o.robloxUserId.toString()) || null,
         scannedAt: o.scannedAt.toISOString(),
+        uaidUpdatedAt: o.uaidUpdatedAt?.toISOString() ?? null,
       })),
       total: owners.length,
     });

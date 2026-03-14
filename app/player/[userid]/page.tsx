@@ -74,6 +74,7 @@ async function fetchPlayerData(userid: string) {
       serialNumbers: (number | null)[];
       userAssetIds: bigint[];
       scannedAts: Date[];
+      uaidUpdatedAts: (Date | null)[];
       isOnHold: boolean;
     }>>`
       WITH LatestSnapshot AS (
@@ -90,6 +91,7 @@ async function fetchPlayerData(userid: string) {
           ARRAY_AGG(ii."userAssetId" ORDER BY ii."scannedAt" ASC) as user_asset_ids,
           ARRAY_AGG(ii."serialNumber" ORDER BY ii."scannedAt" ASC) as serial_numbers,
           ARRAY_AGG(ii."scannedAt" ORDER BY ii."scannedAt" ASC) as scanned_ats,
+          ARRAY_AGG(ii."uaidUpdatedAt" ORDER BY ii."scannedAt" ASC) as uaid_updated_ats,
           COALESCE(BOOL_OR(ii."isOnHold"), false) as is_on_hold
         FROM "InventoryItem" ii
         INNER JOIN LatestSnapshot ls ON ii."snapshotId" = ls.id
@@ -106,6 +108,7 @@ async function fetchPlayerData(userid: string) {
         a.serial_numbers as "serialNumbers",
         a.user_asset_ids as "userAssetIds",
         a.scanned_ats as "scannedAts",
+        a.uaid_updated_ats as "uaidUpdatedAts",
         a.is_on_hold as "isOnHold"
       FROM Aggregated a
       LEFT JOIN "Item" i ON a."assetId" = i."assetId"
@@ -145,6 +148,7 @@ async function fetchPlayerData(userid: string) {
     serialNumbers: item.serialNumbers,
     scannedAt: item.scannedAts?.[0] ?? null,
     scannedAts: item.scannedAts,
+    uaidUpdatedAts: item.uaidUpdatedAts,
   }));
 
   const totalRAP = inventory.reduce((sum, item) => sum + (item.rap * item.count), 0);

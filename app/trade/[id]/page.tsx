@@ -272,7 +272,7 @@ export default function TradeDetailPage() {
           )}
 
           {/* Delete (own ads) */}
-          {isOwn && (
+          {isOwn && ad.active && (
             <div className="px-6 pb-6 -mt-2">
               <button
                 onClick={handleDelete}

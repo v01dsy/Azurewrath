@@ -353,12 +353,12 @@ export async function fetchUserAssetDetails(userId: string, userAssetId: string,
     const targetUAID = BigInt(userAssetId);
     let cursor: string | null = null;
     let pageNum = 0;
+    let requestsSinceBreak = 0;
 
     const rawCookie = process.env.ROBLOX_SECURITY_COOKIE ?? '';
     const cleanCookie = rawCookie.replace(/^"|"$/g, '').replace(/^'|'$/g, '');
     const headers: Record<string, string> = { 'User-Agent': 'Mozilla/5.0' };
     if (cleanCookie) headers['Cookie'] = `.ROBLOSECURITY=${cleanCookie}`;
-    console.log(`[UAID search] Cookie present: ${!!cleanCookie}`);
 
     do {
       const ownersUrl: string = `https://inventory.roblox.com/v2/assets/${assetId}/owners?limit=100&sortOrder=Asc${cursor ? `&cursor=${cursor}` : ''}`;
@@ -371,7 +371,7 @@ export async function fetchUserAssetDetails(userId: string, userAssetId: string,
           break;
         } catch (err: any) {
           if (err?.response?.status === 429 && retries < 4) {
-            const waitMs = 3000 * Math.pow(2, retries); // 3s, 6s, 12s, 24s, 48s
+            const waitMs = 3000 * Math.pow(2, retries);
             console.warn(`[UAID search] 429 on page ${pageNum + 1}, waiting ${waitMs / 1000}s...`);
             await new Promise(r => setTimeout(r, waitMs));
             retries++;
@@ -386,18 +386,27 @@ export async function fetchUserAssetDetails(userId: string, userAssetId: string,
 
       if (entries.length === 0) break;
 
-      const lastUAID = BigInt(entries[entries.length - 1].id ?? 0);
+      const nextCursor: string | null = ownersRes.data?.nextPageCursor ?? null;
 
-      if (lastUAID < targetUAID) {
-        console.log(`[UAID search] Page ${pageNum}: last=${lastUAID} < target=${targetUAID}, skipping`);
-        cursor = ownersRes.data?.nextPageCursor ?? null;
-        if (cursor) {
-          const delay = pageNum % 10 === 0 ? 5000 : 800;
-          await new Promise(r => setTimeout(r, delay));
+      // Parse last UAID from next cursor instead of scanning entries
+      if (nextCursor) {
+        const lastUAID = BigInt(nextCursor.split('_')[0]);
+        if (lastUAID < targetUAID) {
+          console.log(`[UAID search] Page ${pageNum}: cursor lastUAID=${lastUAID} < target=${targetUAID}, skipping | nextCursor=${nextCursor ? nextCursor.substring(0, 30) + '...' : 'null'}`);
+          cursor = nextCursor;
+          requestsSinceBreak++;
+          if (requestsSinceBreak >= 15) {
+            console.log(`⏸️ [UAID search] 15 requests done — taking 30s breather...`);
+            await new Promise(r => setTimeout(r, 30000));
+            requestsSinceBreak = 0;
+          } else {
+            await new Promise(r => setTimeout(r, 1000));
+          }
+          continue;
         }
-        continue;
       }
 
+      // Target is on this page — scan entries
       const match = entries.find((e: any) => BigInt(e.id ?? 0) === targetUAID);
       if (match) {
         console.log(`[UAID search] Found on page ${pageNum}`);

@@ -107,7 +107,7 @@ async function backfillTimestamps(
   console.log(`✅ [Phase 2] Background timestamp backfill complete`);
 }
 
-export async function saveInventorySnapshot(userId: string | bigint, robloxUserId: string | bigint) {
+export async function saveInventorySnapshot(userId: string | bigint, robloxUserId: string | bigint, skipPhase2 = false) {
   const userIdBigInt = typeof userId === 'string' ? BigInt(userId) : userId;
   const robloxUserIdString = typeof robloxUserId === 'bigint' ? robloxUserId.toString() : robloxUserId;
 
@@ -221,10 +221,12 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
       userAssetId: item.userAssetId.toString(),
       assetId: item.assetId.toString(),
     }));
-    backfillTimestamps(snapshot.id, robloxUserIdString, uaidsToBackfill).catch(err =>
-      console.error('❌ [Phase 2] Background backfill failed:', err)
-    );
-
+    // Phase 2 — fire and forget, all UAIDs need timestamps
+    if (!skipPhase2) {
+      backfillTimestamps(snapshot.id, robloxUserIdString, uaidsToBackfill).catch(err =>
+        console.error('❌ [Phase 2] Background backfill failed:', err)
+      );
+    }
     console.log('====================================\n');
     return snapshot;
   }
@@ -396,9 +398,12 @@ export async function saveInventorySnapshot(userId: string | bigint, robloxUserI
       }))
       .filter(u => u.assetId);
 
-    backfillTimestamps(savedSnapshot.id, robloxUserIdString, uaidsToBackfill).catch(err =>
-      console.error('❌ [Phase 2] Background backfill failed:', err)
-    );
+    // Phase 2 — backfill timestamps for new UAIDs only, fire and forget
+    if (newUAIDs.length > 0 && !skipPhase2) {
+      backfillTimestamps(savedSnapshot.id, robloxUserIdString, uaidsToBackfill).catch(err =>
+        console.error('❌ [Phase 2] Background backfill failed:', err)
+      );
+    }
   }
 
   console.log('====================================\n');

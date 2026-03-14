@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 
 function getRankTier(rank: number): { color: string; label: string; glow: boolean; glowLevel: 0 | 1 | 2 | 3 } {
   if (rank === 1)    return { color: '#c2b506', label: '👑',       glow: true,  glowLevel: 3 };
@@ -19,6 +19,8 @@ function getRankTier(rank: number): { color: string; label: string; glow: boolea
 }
 
 function Particles({ color }: { color: string }) {
+  const [mounted, setMounted] = useState(false);
+
   const particles = useMemo(() =>
     Array.from({ length: 10 }, (_, i) => ({
       id:       i,
@@ -27,6 +29,12 @@ function Particles({ color }: { color: string }) {
       duration: `${(2 + Math.random() * 2).toFixed(2)}s`,
       size:     1 + Math.random() * 1.5,
     })), []);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null;
 
   return (
     <>

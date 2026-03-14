@@ -14,6 +14,7 @@ import { SpecialSerialText } from '@/components/specialSerialText';
 import HoardsSection from '@/components/HoardsSection';
 import Pagination from '@/components/Pagination';
 import { hasRole } from '@/lib/roles';
+import { timeSince } from '@/lib/timeSince';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -54,8 +55,8 @@ interface Owner {
   robloxUserId: string;
   avatarUrl: string | null;
   scannedAt: string;
+  uaidUpdatedAt: string | null;
 }
-
 interface ScanProgress {
   total: number;
   processed: number;
@@ -70,14 +71,13 @@ interface ScanState {
   progress: ScanProgress | null;
 }
 
-// ── CHANGED: accept item as prop ───────────────────────────────────────────
 interface Props {
   item: ItemDetail;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-const fmt    = (n: number) => n.toLocaleString();
+const fmt = (n: number) => n.toLocaleString();
 const fmtEta = (s: number) => s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
 
 function niceMax(raw: number) {
@@ -92,8 +92,8 @@ function buildTicks(max: number, n = 5) {
 }
 const fmtY = (v: number) => {
   if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}B`;
-  if (v >= 1_000_000)     return `${(v / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-  if (v >= 1_000)         return `${(v / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
   return String(v);
 };
 
@@ -105,39 +105,80 @@ function Th({ children }: { children: React.ReactNode }) {
   );
 }
 
+function AcquiredCell({ uaidUpdatedAt }: { uaidUpdatedAt: string | null }) {
+  if (!uaidUpdatedAt) return <span className="text-slate-500">—</span>;
+  const date = new Date(uaidUpdatedAt);
+  const diffMs = new Date().getTime() - date.getTime();
+  const mins = Math.floor(diffMs / (1000 * 60));
+  const hours = Math.floor(mins / 60);
+  const days = Math.floor(hours / 24);
+  const months = Math.floor(days / 30);
+  const years = Math.floor(months / 12);
+
+  const short = (() => {
+    if (years > 0) return `${years} year${years === 1 ? '' : 's'} ago`;
+    if (months > 0) return `${months} month${months === 1 ? '' : 's'} ago`;
+    if (days > 0) return `${days} day${days === 1 ? '' : 's'} ago`;
+    if (hours > 0) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+    return `${mins} minute${mins === 1 ? '' : 's'} ago`;
+  })();
+
+  const long = (() => {
+    if (years > 0) return `${years}y ${months % 12}mo ago`;
+    if (months > 0) return `${months}mo ${days % 30}d ago`;
+    if (days > 0) return `${days}d ${hours % 24}h ago`;
+    if (hours > 0) return `${hours}h ${mins % 60}m ago`;
+    return `${mins}m ago`;
+  })();
+
+  const full = date.toLocaleString(undefined, {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  });
+
+  return (
+    <div className="relative group inline-block">
+      <span className="text-white text-sm font-medium cursor-default">{short}</span>
+      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-20 hidden group-hover:block pointer-events-none">
+        <div className="bg-[#111] border border-white/10 rounded-lg px-3 py-1.5 text-xs shadow-xl whitespace-nowrap">
+          <p className="text-[#ccc] font-bold mb-1 text-center">{long}</p>
+          <p className="text-[#ccc] font-bold">{full}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────
 
-// CHANGED: was `export default function ItemPage()`, now accepts props
 export default function ItemClient({ item: initialItem }: Props) {
   const params = useParams();
   const router = useRouter();
 
-  // CHANGED: itemId comes from prop, not useParams
   const itemId = initialItem.assetId;
 
-  // CHANGED: item starts from SSR prop, no loading/error state needed
-  const [item, setItem]                             = useState<ItemDetail>(initialItem);
-  const [userRole, setUserRole]                     = useState('user');
-  const [isWatchlisted, setIsWatchlisted]           = useState(false);
-  const [watchlistLoading, setWatchlistLoading]     = useState(false);
+  const [item, setItem] = useState<ItemDetail>(initialItem);
+  const [userRole, setUserRole] = useState('user');
+  const [isWatchlisted, setIsWatchlisted] = useState(false);
+  const [watchlistLoading, setWatchlistLoading] = useState(false);
   const [manipulatedLoading, setManipulatedLoading] = useState(false);
-  const [hiddenLines, setHiddenLines]               = useState<Set<string>>(new Set());
+  const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
 
-  const [owners, setOwners]               = useState<Owner[]>([]);
+  const [owners, setOwners] = useState<Owner[]>([]);
   const [ownersLoading, setOwnersLoading] = useState(true);
-  const [ownerSort, setOwnerSort]         = useState<'serial' | 'username' | 'recent'>('serial');
-  const [ownerPage, setOwnerPage]         = useState(1);
+  const [ownerSort, setOwnerSort] = useState<'serial' | 'username' | 'recent'>('serial');
+  const [ownerPage, setOwnerPage] = useState(1);
   const [ownerPageSize, setOwnerPageSize] = useState<10 | 25 | 50 | 100>(25);
 
-  const [scanState, setScanState]       = useState<ScanState>({ scanning: false, stopRequested: false, progress: null });
+  const [scanState, setScanState] = useState<ScanState>({ scanning: false, stopRequested: false, progress: null });
   const [scanStarting, setScanStarting] = useState(false);
-  const [scanMessage, setScanMessage]   = useState<{ text: string; ok: boolean } | null>(null);
-  const [activeTab, setActiveTab]       = useState<'owners' | 'hoards'>('owners');
+  const [scanMessage, setScanMessage] = useState<{ text: string; ok: boolean } | null>(null);
+  const [activeTab, setActiveTab] = useState<'owners' | 'hoards'>('owners');
 
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   const legendItems = [
-    { dataKey: 'rap',   name: 'RAP',   color: '#34d399' },
+    { dataKey: 'rap', name: 'RAP', color: '#34d399' },
     { dataKey: 'price', name: 'Price', color: '#3b82f6' },
   ];
 
@@ -148,7 +189,7 @@ export default function ItemClient({ item: initialItem }: Props) {
       const res = await axios.get(`/api/items/${itemId}/owners`);
       setOwners(res.data.owners || []);
     } catch { setOwners([]); }
-    finally  { setOwnersLoading(false); }
+    finally { setOwnersLoading(false); }
   }, [itemId]);
 
   // ── Scan polling ───────────────────────────────────────────────────────
@@ -209,7 +250,7 @@ export default function ItemClient({ item: initialItem }: Props) {
       const data: ScanState = res.data;
       setScanState(data);
       if (data.scanning) { setScanMessage({ text: '🔄 Scan already running…', ok: true }); startPolling(); }
-    }).catch(() => {});
+    }).catch(() => { });
   }, [itemId, startPolling]);
 
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
@@ -222,14 +263,14 @@ export default function ItemClient({ item: initialItem }: Props) {
     const user = getUserSession();
     if (!user) return;
     axios.get(`/api/items/${itemId}/watchlist?userId=${user.robloxUserId}`)
-      .then(res => setIsWatchlisted(res.data.isWatchlisted)).catch(() => {});
+      .then(res => setIsWatchlisted(res.data.isWatchlisted)).catch(() => { });
   }, [item, itemId]);
 
   useEffect(() => {
     const user = getUserSession();
     if (!user) return;
     axios.get(`/api/user/role?userId=${user.robloxUserId}`)
-      .then(res => setUserRole(res.data.role ?? 'user')).catch(() => {});
+      .then(res => setUserRole(res.data.role ?? 'user')).catch(() => { });
   }, []);
 
   useEffect(() => { setOwnerPage(1); }, [ownerSort, ownerPageSize]);
@@ -269,7 +310,7 @@ export default function ItemClient({ item: initialItem }: Props) {
   // ── Derived ────────────────────────────────────────────────────────────
 
   const canToggleManipulated = hasRole(userRole, 'mod');
-  const isAdmin               = hasRole(userRole, 'admin');
+  const isAdmin = hasRole(userRole, 'admin');
   const { scanning, stopRequested, progress } = scanState;
 
   const sortedOwners = [...owners].sort((a, b) => {
@@ -280,27 +321,26 @@ export default function ItemClient({ item: initialItem }: Props) {
       return a.serialNumber - b.serialNumber;
     }
     if (ownerSort === 'username') return a.username.localeCompare(b.username);
-    return new Date(b.scannedAt).getTime() - new Date(a.scannedAt).getTime();
+    return new Date(b.uaidUpdatedAt ?? b.scannedAt).getTime() - new Date(a.uaidUpdatedAt ?? a.scannedAt).getTime();
   });
 
   const ownerTotalPages = Math.max(1, Math.ceil(sortedOwners.length / ownerPageSize));
-  const pagedOwners     = sortedOwners.slice((ownerPage - 1) * ownerPageSize, ownerPage * ownerPageSize);
+  const pagedOwners = sortedOwners.slice((ownerPage - 1) * ownerPageSize, ownerPage * ownerPageSize);
 
   const progressPct = progress && progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
-  const elapsed     = progress ? Math.round((Date.now() - progress.startedAt) / 1000) : 0;
-  const rate        = elapsed > 0 && progress ? progress.processed / elapsed : 0;
-  const etaSec      = rate > 0 && progress ? Math.round((progress.total - progress.processed) / rate) : null;
+  const elapsed = progress ? Math.round((Date.now() - progress.startedAt) / 1000) : 0;
+  const rate = elapsed > 0 && progress ? progress.processed / elapsed : 0;
+  const etaSec = rate > 0 && progress ? Math.round((progress.total - progress.processed) / rate) : null;
 
-  // Chart — numeric timestamps so recharts spaces points by real time
   const chartData = [...(item?.priceHistory ?? [])]
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
     .map(ph => ({ ts: new Date(ph.timestamp).getTime(), price: ph.price, rap: ph.rap ?? null }));
 
   const priceMax = chartData.length ? Math.max(...chartData.map(d => Math.max(d.price || 0, d.rap || 0))) : 0;
-  const yNice    = niceMax(priceMax);
-  const yTicks   = buildTicks(yNice);
+  const yNice = niceMax(priceMax);
+  const yTicks = buildTicks(yNice);
 
-  const tsArr  = chartData.map(d => d.ts);
+  const tsArr = chartData.map(d => d.ts);
   const xTicks = (() => {
     if (tsArr.length <= 6) return tsArr;
     const min = tsArr[0], max = tsArr[tsArr.length - 1];
@@ -308,7 +348,7 @@ export default function ItemClient({ item: initialItem }: Props) {
     return Array.from({ length: 6 }, (_, i) => Math.round(min + i * step));
   })();
 
-  const formatXTick        = (ts: number) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const formatXTick = (ts: number) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const formatTooltipLabel = (ts: number) => new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 
   const displayImageUrl = item?.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${item?.assetId}&width=420&height=420&format=png`;
@@ -411,7 +451,7 @@ export default function ItemClient({ item: initialItem }: Props) {
                   labelFormatter={formatTooltipLabel}
                   formatter={(value: number, name: string) => [`${fmt(value)} R$`, name === 'rap' ? 'RAP' : 'Price']}
                 />
-                {!hiddenLines.has('rap')   && <Line type="linear" dataKey="rap"   stroke="#34d399" strokeWidth={2} dot={false} name="rap"   connectNulls={false} />}
+                {!hiddenLines.has('rap') && <Line type="linear" dataKey="rap" stroke="#34d399" strokeWidth={2} dot={false} name="rap" connectNulls={false} />}
                 {!hiddenLines.has('price') && <Line type="linear" dataKey="price" stroke="#3b82f6" strokeWidth={2} dot={false} name="price" connectNulls={false} />}
               </LineChart>
             </ResponsiveContainer>
@@ -431,9 +471,9 @@ export default function ItemClient({ item: initialItem }: Props) {
         {item.marketTrends && (
           <div className="grid grid-cols-3 gap-4">
             {[
-              { label: 'Trend',      value: item.marketTrends.trend,                              color: 'text-blue-400'   },
+              { label: 'Trend', value: item.marketTrends.trend, color: 'text-blue-400' },
               { label: 'Volatility', value: `${(item.marketTrends.volatility * 100).toFixed(1)}%`, color: 'text-purple-400' },
-              { label: 'Demand',     value: `${item.marketTrends.estimatedDemand}/10`,             color: 'text-pink-400'   },
+              { label: 'Demand', value: `${item.marketTrends.estimatedDemand}/10`, color: 'text-pink-400' },
             ].map(({ label, value, color }) => (
               <div key={label} className="bg-slate-800 rounded-2xl border border-purple-500/20 p-5">
                 <p className="text-slate-400 text-[11px] uppercase tracking-wider mb-1">{label}</p>
@@ -450,12 +490,11 @@ export default function ItemClient({ item: initialItem }: Props) {
           <div className="flex border-b border-slate-700">
             {([
               { key: 'owners', label: 'Owners', badge: owners.length, accent: 'border-purple-500' },
-              { key: 'hoards', label: 'Hoards', badge: null,          accent: 'border-blue-500'   },
+              { key: 'hoards', label: 'Hoards', badge: null, accent: 'border-blue-500' },
             ] as const).map(tab => (
               <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${
-                  activeTab === tab.key ? `${tab.accent} text-white` : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}>
+                className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${activeTab === tab.key ? `${tab.accent} text-white` : 'border-transparent text-slate-400 hover:text-slate-200'
+                  }`}>
                 {tab.label}
                 {tab.badge !== null && !ownersLoading && (
                   <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${activeTab === tab.key ? 'bg-purple-500/20 text-purple-300' : 'bg-slate-700 text-slate-500'}`}>
@@ -476,15 +515,13 @@ export default function ItemClient({ item: initialItem }: Props) {
                     {scanning && progress ? `Scanning… ${progress.processed}/${progress.total}` : `${owners.length.toLocaleString()} tracked owners`}
                   </span>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {/* Sort */}
                     <select value={ownerSort} onChange={e => setOwnerSort(e.target.value as any)}
                       className="bg-slate-700 text-white text-xs px-3 py-1.5 rounded-lg border border-slate-600 focus:border-purple-500/60 outline-none">
                       <option value="serial">Serial #</option>
                       <option value="username">Username A–Z</option>
-                      <option value="recent">Recently Scanned</option>
+                      <option value="recent">Acquired At</option>
                     </select>
 
-                    {/* Page size */}
                     <div className="flex items-center bg-slate-700/60 rounded-lg border border-slate-600 p-0.5">
                       {([10, 25, 50, 100] as const).map(n => (
                         <button key={n} onClick={() => setOwnerPageSize(n)}
@@ -494,7 +531,6 @@ export default function ItemClient({ item: initialItem }: Props) {
                       ))}
                     </div>
 
-                    {/* Admin controls */}
                     {isAdmin && (
                       <>
                         <button onClick={handleScanOwners} disabled={scanning || scanStarting}
@@ -502,7 +538,7 @@ export default function ItemClient({ item: initialItem }: Props) {
                           {scanning
                             ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Scanning…</>
                             : scanStarting ? 'Starting…'
-                            : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>Scan Owners</>}
+                              : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>Scan Owners</>}
                         </button>
                         {scanning && !stopRequested && (
                           <button onClick={handleStopScan} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-red-900/30 border border-red-500/30 text-red-300 hover:bg-red-900/50 transition">
@@ -515,7 +551,6 @@ export default function ItemClient({ item: initialItem }: Props) {
                   </div>
                 </div>
 
-                {/* Progress bar */}
                 {scanning && progress && (
                   <div className="space-y-1.5">
                     <div className="flex justify-between text-xs text-slate-500">
@@ -553,12 +588,12 @@ export default function ItemClient({ item: initialItem }: Props) {
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-slate-700/30 border-b border-slate-700">
-                        <tr><Th>Player</Th><Th>Serial</Th><Th>UAID</Th><Th>Last Seen</Th></tr>
+                        <tr><Th>Player</Th><Th>Serial</Th><Th>UAID</Th><Th>Acquired At</Th></tr>
                       </thead>
                       <tbody className="divide-y divide-slate-700/50">
                         {pagedOwners.map(owner => {
                           const tier = getGhostTier(item.isLimitedUnique, owner.serialNumber)
-                                    ?? getSerialTier(owner.serialNumber);
+                            ?? getSerialTier(owner.serialNumber);
                           return (
                             <tr key={owner.userAssetId} className="hover:bg-slate-700/20 transition-colors">
                               <td className="px-5 py-3.5">
@@ -588,8 +623,8 @@ export default function ItemClient({ item: initialItem }: Props) {
                                   {owner.userAssetId}
                                 </a>
                               </td>
-                              <td className="px-5 py-3.5 text-slate-500 text-xs">
-                                {new Date(owner.scannedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              <td className="px-5 py-3.5">
+                                <AcquiredCell uaidUpdatedAt={owner.uaidUpdatedAt} />
                               </td>
                             </tr>
                           );
@@ -598,7 +633,6 @@ export default function ItemClient({ item: initialItem }: Props) {
                     </table>
                   </div>
 
-                  {/* Pagination */}
                   <div className="px-5 py-3 border-t border-slate-700/60">
                     <Pagination
                       page={ownerPage}

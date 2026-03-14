@@ -1,30 +1,21 @@
 // app/api/trade/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { hasRole } from '@/lib/roles';
+import '@/lib/bigint-patch';
 
 async function getSession(req: NextRequest) {
   const token = req.cookies.get('session')?.value;
   if (!token) return null;
-  const session = await prisma.session.findUnique({
+  const s = await prisma.session.findUnique({
     where: { sessionToken: token },
     include: { user: true },
   });
-  if (!session || session.expires < new Date()) return null;
-  return session;
+  if (!s || s.expires < new Date()) return null;
+  return s;
 }
 
-function mapItem(i: {
-  id: string;
-  userAssetId: bigint | null;
-  serialNumber: number | null;
-  item: {
-    assetId: bigint;
-    name: string;
-    imageUrl: string | null;
-    manipulated: boolean;
-    priceHistory: { rap: number | null }[];
-  };
-}) {
+function mapItem(i: any) {
   return {
     id: i.id,
     assetId: i.item.assetId.toString(),
@@ -38,7 +29,7 @@ function mapItem(i: {
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -75,6 +66,14 @@ export async function GET(
   });
 
   if (!ad) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  // Deleted ads — only admins can view
+  if (ad.deletedAt) {
+    const session = await getSession(req);
+    if (!session || !hasRole(session.user.role, 'admin')) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+  }
 
   return NextResponse.json({
     id: ad.id,

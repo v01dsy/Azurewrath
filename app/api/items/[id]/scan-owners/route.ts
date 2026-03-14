@@ -44,6 +44,7 @@ async function fetchPagesIntoQueue(
   await delay(3000);
   let cursor: string | null = null;
   let pageNum = 0;
+  let requestsSinceBreak = 0;
 
   do {
     if (await isStopRequested(jobId)) {
@@ -87,11 +88,20 @@ async function fetchPagesIntoQueue(
 
     const entries: any[] = data.data ?? [];
     const valid = entries.filter((e: any) => e.owner?.id != null);
-    const nullCount = entries.length - valid.length;
+    const nullOwners = entries.filter((e: any) => e.owner?.id == null && e.id != null);
 
-    console.log(`   ✅ Page ${pageNum}: ${valid.length} valid owners, ${nullCount} null skipped`);
+    console.log(`   ✅ Page ${pageNum}: ${valid.length} valid owners, ${nullOwners.length} null-owner UAIDs`);
 
     for (const entry of valid) queue.push(entry);
+
+    // Backfill timestamps for null-owner entries — Roblox hides the owner but still gives us UAID data
+    for (const entry of nullOwners) {
+      await backfillUaidTimestampsByUaid(
+        entry.id.toString(),
+        entry.created ? new Date(entry.created) : null,
+        entry.updated ? new Date(entry.updated) : null,
+      );
+    }
 
     // Update total and pages in DB
     const job = await prisma.scanJob.findUnique({ where: { id: jobId }, select: { total: true, pagesFound: true } });
@@ -103,7 +113,16 @@ async function fetchPagesIntoQueue(
     }
 
     cursor = data.nextPageCursor ?? null;
-    if (cursor) await delay(2500);
+    if (cursor) {
+      requestsSinceBreak++;
+      if (requestsSinceBreak >= 15) {
+        console.log(`⏸️ 15 requests done — taking 30s breather...`);
+        await delay(30000);
+        requestsSinceBreak = 0;
+      } else {
+        await delay(1000);
+      }
+    }
 
   } while (cursor);
 
@@ -167,8 +186,6 @@ async function processOwnersFromQueue(
       if (existingSnapshot) {
         skipped++;
         await updateProgress(jobId, { processed: processed + skipped });
-        console.log(`   ⏭️ Already scanned (last: ${existingSnapshot.createdAt.toLocaleDateString()}) — skipping`);
-        // No delay needed since we didn't hit any external APIs
         console.log(`   ⏭️ Already scanned (last: ${existingSnapshot.createdAt.toLocaleDateString()}) — skipping inventory scan`);
 
         // ✅ Still update UAID timestamps even for skipped users
@@ -233,9 +250,7 @@ async function processOwnersFromQueue(
   return { processed, skipped, failed };
 }
 
-// ─── Backfill UAID timestamps from the owners API onto saved InventoryItems ──
-// This updates uaidCreatedAt and uaidUpdatedAt on ALL snapshots that contain
-// this UAID for this user — so the data is always accurate.
+// ─── Backfill UAID timestamps (known user) ────────────────────────────────
 async function backfillUaidTimestamps(
   robloxUserId: string,
   uaid: string,
@@ -245,11 +260,6 @@ async function backfillUaidTimestamps(
   if (!uaidCreatedAt && !uaidUpdatedAt) return;
 
   try {
-    // Find all InventoryItem rows for this UAID belonging to this user
-    const updateData: any = {};
-    if (uaidCreatedAt) updateData.uaidCreatedAt = uaidCreatedAt;
-    if (uaidUpdatedAt) updateData.uaidUpdatedAt = uaidUpdatedAt;
-
     const result = await prisma.$executeRaw`
       UPDATE "InventoryItem" ii
       SET
@@ -265,6 +275,27 @@ async function backfillUaidTimestamps(
     }
   } catch (err) {
     console.warn(`   ⚠️ Could not backfill UAID timestamps for ${uaid}:`, err);
+  }
+}
+
+// ─── Backfill UAID timestamps (null owner — no userId available) ──────────
+async function backfillUaidTimestampsByUaid(
+  uaid: string,
+  uaidCreatedAt: Date | null,
+  uaidUpdatedAt: Date | null,
+) {
+  if (!uaidCreatedAt && !uaidUpdatedAt) return;
+  try {
+    const result = await prisma.$executeRaw`
+      UPDATE "InventoryItem"
+      SET
+        "uaidCreatedAt" = COALESCE("uaidCreatedAt", ${uaidCreatedAt}),
+        "uaidUpdatedAt" = ${uaidUpdatedAt}
+      WHERE "userAssetId" = ${BigInt(uaid)}
+    `;
+    if (result > 0) console.log(`   📅 Backfilled null-owner UAID ${uaid}: created=${uaidCreatedAt?.toISOString()}, updated=${uaidUpdatedAt?.toISOString()}`);
+  } catch (err) {
+    console.warn(`   ⚠️ Could not backfill null-owner UAID ${uaid}:`, err);
   }
 }
 

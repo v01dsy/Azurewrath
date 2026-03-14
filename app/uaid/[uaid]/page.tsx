@@ -4,16 +4,12 @@ import React from "react";
 import { LocalTime } from "@/components/LocalTime";
 import { getSerialTier, getGhostTier, getCardGlowClass } from '@/lib/specialSerial';
 import { SpecialSerialText } from '@/components/specialSerialText';
+import { timeSince } from '@/lib/timeSince';
 
 interface UAIDPageProps {
   params: Promise<{ uaid: string }>;
 }
 
-/**
- * Checks if a specific user still has a UAID in their Roblox inventory.
- * Pages through all collectibles until found or exhausted.
- * Returns false if inventory is private or UAID not found.
- */
 async function checkUserStillOwnsUAID(userId: string, userAssetId: string): Promise<boolean> {
   let cursor: string | null = null;
   let url = "";
@@ -45,6 +41,15 @@ async function checkUserStillOwnsUAID(userId: string, userAssetId: string): Prom
   return false;
 }
 
+function formatDate(date: Date | null | undefined): string {
+  if (!date) return 'Unknown';
+  return new Date(date).toLocaleString(undefined, {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+
 export default async function UAIDPage({ params }: UAIDPageProps) {
   const { uaid } = await params;
 
@@ -68,9 +73,9 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
 
   if (!mostRecentItem) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-8">
+      <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white -mt-20 pt-24 px-4 pb-20">
         <div className="max-w-2xl w-full">
-          <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-8">
+          <div className="bg-[#111] rounded-xl border border-white/10 p-8">
             <h1 className="text-3xl font-bold text-white mb-4">UAID Not Found</h1>
             <p className="text-slate-400">
               No items found for UAID:{" "}
@@ -82,7 +87,6 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
     );
   }
 
-  // All distinct snapshots that ever contained this UAID
   const allOwnerships = await prisma.inventoryItem.findMany({
     where: { userAssetId: uaidBigInt },
     orderBy: { scannedAt: "desc" },
@@ -92,7 +96,6 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
     },
   });
 
-  // Deduplicate consecutive same-owner entries
   const dedupedHistory: typeof allOwnerships = [];
   for (const entry of allOwnerships) {
     const lastEntry = dedupedHistory[dedupedHistory.length - 1];
@@ -111,21 +114,20 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
   const latestPrice = itemData?.priceHistory?.[0];
   const serialNumber = mostRecentItem?.serialNumber;
 
-  // Resolve serial tier — ghost takes priority for LimitedU with no serial
+  const uaidCreatedAt = mostRecentItem.uaidCreatedAt;
+  const uaidUpdatedAt = mostRecentItem.uaidUpdatedAt;
+
   const serialTier = getGhostTier(itemData?.isLimitedUnique, serialNumber) ?? getSerialTier(serialNumber);
 
-  // Directly check if last known owner still has this UAID — no pre-check
   let ownerStillHasIt = false;
   if (lastKnownOwnerId) {
     ownerStillHasIt = await checkUserStillOwnsUAID(lastKnownOwnerId, uaid);
   }
 
   const itemTraded = !ownerStillHasIt && lastKnownOwnerId !== null;
-
   const currentOwner = ownerStillHasIt ? lastKnownOwnerUsername : null;
   const currentOwnerUserId = ownerStillHasIt ? lastKnownOwnerId : null;
 
-  // Avatars
   let currentOwnerAvatar: string | null = null;
   const avatarUserId = currentOwnerUserId ?? lastKnownOwnerId;
   if (avatarUserId) {
@@ -161,14 +163,16 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
     } catch {}
   }
 
+  const awaitingScan = !uaidCreatedAt && !uaidUpdatedAt;
+
   return (
-    <div className="min-h-screen bg-slate-900 p-4">
+    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white -mt-20 pt-24 px-4 pb-20">
       <div className="max-w-4xl mx-auto space-y-6">
 
         {/* Header Card */}
-        <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
+        <div className="bg-[#111] rounded-xl border border-white/10 p-[26px]">
           <div className="flex items-start gap-6">
-            <div className="relative w-40 h-40 bg-slate-700/50 rounded-lg overflow-hidden flex-shrink-0">
+            <div className="relative w-48 h-48 bg-white/5 rounded-lg overflow-hidden flex-shrink-0">
               {itemData?.imageUrl ? (
                 <img
                   src={itemData.imageUrl}
@@ -203,13 +207,13 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-slate-400 text-l uppercase tracking-wider font-semibold">UAID</span>
-                  <div className="font-mono text-purple-300 text-m bg-slate-700/50 px-3 py-1.5 rounded-lg border border-purple-500/20">
+                  <div className="font-mono text-purple-300 text-m bg-white/5 px-3 py-1.5 rounded-lg border border-white/10">
                     {uaid}
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 px-4 gap-x-36 py-2 gap-y-12">
+              <div className="grid grid-cols-2 px-4 gap-x-12 py-2 gap-y-4">
                 <div>
                   <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">ASSET ID</div>
                   <div className="font-mono text-white text-xl font-semibold">
@@ -237,7 +241,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                           </span>
                         );
                       }
-                      return <span className="text-slate-500">N/A</span>;
+                      return <span className="text-slate-500">—</span>;
                     })()}
                   </div>
                 </div>
@@ -248,48 +252,89 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                     {latestPrice?.rap?.toLocaleString() || "N/A"} R$
                   </div>
                 </div>
+
                 <div>
                   <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">BEST PRICE</div>
                   <div className="text-blue-400 text-xl font-semibold">
                     {latestPrice?.price?.toLocaleString() || "N/A"} R$
                   </div>
                 </div>
+
+                <div>
+                  <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">ACQUIRED AT</div>
+                  {uaidUpdatedAt ? (
+                    <div>
+                      <div className="text-white text-sm font-semibold">{timeSince(uaidUpdatedAt)}</div>
+                      <div className="text-slate-500 text-xs mt-0.5">{formatDate(uaidUpdatedAt)}</div>
+                    </div>
+                  ) : (
+                    <span className="text-slate-500">—</span>
+                  )}
+                </div>
+
+                <div>
+                  <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">CREATED AT</div>
+                  {uaidCreatedAt ? (
+                    <div>
+                      <div className="text-white text-sm font-semibold">{timeSince(uaidCreatedAt)}</div>
+                      <div className="text-slate-500 text-xs mt-0.5">{formatDate(uaidCreatedAt)}</div>
+                    </div>
+                  ) : (
+                    <span className="text-slate-500">—</span>
+                  )}
+                </div>
+
               </div>
             </div>
           </div>
         </div>
 
         {/* Current Owner Card */}
-        <div className="bg-slate-800 rounded-2xl border border-purple-500/20 px-6 py-6">
-          <div className="flex items-top justify-between">
+        <div className="bg-[#111] rounded-xl border border-white/10 px-6 py-6">
+          <div className="flex items-start justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-3">
-                {ownerStillHasIt ? (
+                {ownerStillHasIt && !awaitingScan ? (
                   <div className="w-2 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                ) : ownerStillHasIt && awaitingScan ? (
+                  <div className="w-2 h-3 bg-yellow-400 rounded-full animate-pulse"></div>
                 ) : itemTraded ? (
                   <div className="w-2 h-3 bg-yellow-400 rounded-full"></div>
+                ) : !lastKnownOwnerId ? (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                    <span className="text-yellow-400 text-xs font-medium">Awaiting Scan</span>
+                  </div>
                 ) : (
-                  <div className="w-2 h-3 bg-slate-500 rounded-full"></div>
+                  <div className="w-2 h-2 bg-slate-500 rounded-full"></div>
                 )}
-                <h2 className="text-sm uppercase tracking-wider text-slate-400 font-bold">Current Owner</h2>
+                <h2 className="text-sm uppercase tracking-wider text-slate-400 font-bold">{ownerStillHasIt && awaitingScan ? "Verifying..." : "Current Owner"}</h2>
               </div>
 
               {ownerStillHasIt ? (
                 <>
-                  <a
-                    href={`/player/${currentOwnerUserId}`}
-                    className="text-4xl font-bold text-white hover:text-purple-300 transition-colors"
-                  >
-                    {currentOwner}
-                  </a>
-                  <div className="inline-block bg-slate-700/30 px-4 py-2 rounded-lg mt-4">
-                    <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">DAYS OWNED</div>
-                    <div className="text-white text-lg font-semibold">
-                      {Math.floor(
-                        (new Date().getTime() - new Date(allOwnerships[0].scannedAt).getTime()) /
-                          (1000 * 60 * 60 * 24)
-                      )}
-                    </div>
+                  <div className="flex flex-col items-start gap-3">
+                    <a
+                      href={`/player/${currentOwnerUserId}`}
+                      className="text-4xl font-bold text-white hover:text-purple-300 transition-colors"
+                    >
+                      {currentOwner}
+                    </a>
+                    {awaitingScan ? (
+                      <div className="inline-block bg-yellow-500/10 border border-yellow-500/20 px-4 py-2 rounded-lg">
+                        <div className="text-yellow-400 text-xs uppercase tracking-wider mb-1">STATUS</div>
+                        <div className="text-yellow-400 text-lg font-semibold">Pending</div>
+                      </div>
+                    ) : (
+                      <div className="inline-block bg-white/5 px-4 py-2 rounded-lg">
+                        <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">DAYS OWNED</div>
+                        <div className="text-white text-lg font-semibold">
+                          {Math.floor(
+                            (new Date().getTime() - new Date(allOwnerships[0].scannedAt).getTime()) /
+                              (1000 * 60 * 60 * 24)
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </>
               ) : itemTraded ? (
@@ -302,7 +347,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                     </a>
                     's inventory. It was likely traded or sold to someone not yet tracked.
                   </div>
-                  <div className="mt-3 inline-block bg-slate-700/30 px-4 py-2 rounded-lg">
+                  <div className="mt-3 inline-block bg-white/5 px-4 py-2 rounded-lg">
                     <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">LAST SEEN WITH</div>
                     <div className="text-white text-base font-semibold">{lastKnownOwnerUsername}</div>
                   </div>
@@ -313,7 +358,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
             </div>
 
             {currentOwnerAvatar && (
-              <div className="w-40 h-40 bg-slate-700/50 rounded-lg overflow-hidden flex items-center justify-center">
+              <div className="w-40 h-40 bg-white/5 rounded-lg overflow-hidden flex items-center justify-center">
                 <img
                   src={currentOwnerAvatar}
                   alt={`${currentOwner ?? lastKnownOwnerUsername}'s avatar`}
@@ -325,12 +370,10 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
         </div>
 
         {/* Ownership History Table */}
-        <div className="bg-slate-800 rounded-2xl border border-purple-500/20 overflow-hidden">
-          <div className="px-6 py-5 border-b border-slate-700">
+        <div className="bg-[#111] rounded-xl border border-white/10 overflow-hidden">
+          <div className="px-6 py-5 border-b border-white/10">
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <img src="/Images/hold.png" alt="" className="w-5 h-5" style={{ filter: 'invert(58%) sepia(60%) saturate(500%) hue-rotate(230deg) brightness(110%)' }} />
               Ownership History
             </h2>
             <p className="text-slate-400 text-sm mt-1">All tracked owners — most recent first</p>
@@ -339,25 +382,28 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
           {dedupedHistory.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-slate-700/30">
-                  <tr className="border-b border-slate-700">
+                <thead className="bg-white/5">
+                  <tr className="border-b border-white/10">
                     <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">Owner</th>
-                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">First Seen</th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-purple-400 uppercase tracking-wider">Acquired At</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-700">
+                <tbody className="divide-y divide-white/10">
                   {dedupedHistory.map((entry, i) => {
                     const userId = entry.snapshot?.user?.robloxUserId?.toString();
                     const username = entry.snapshot?.user?.username;
                     const avatarUrl = userId ? avatarMap.get(userId) : null;
                     const isCurrentTracked = i === 0 && ownerStillHasIt;
 
+                    // Hide current owner from history table while still verifying
+                    if (isCurrentTracked && awaitingScan) return null;
+
                     return (
-                      <tr key={`${entry.snapshotId}-${i}`} className="hover:bg-slate-700/20 transition-colors">
+                      <tr key={`${entry.snapshotId}-${i}`} className="hover:bg-white/5/20 transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             {avatarUrl ? (
-                              <div className="w-12 h-12 bg-slate-700/50 rounded-lg overflow-hidden flex-shrink-0">
+                              <div className="w-12 h-12 bg-white/5 rounded-lg overflow-hidden flex-shrink-0">
                                 <img
                                   src={avatarUrl}
                                   alt={`${username}'s avatar`}
@@ -376,8 +422,11 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                               >
                                 {username || "Unknown"}
                               </a>
-                              {isCurrentTracked && (
-                                <div className="text-xs text-green-400 mt-0.5">✓ Confirmed current owner</div>
+                              {isCurrentTracked && !awaitingScan && (
+                                <div className="flex items-center gap-1 mt-0.5">
+                                  <img src="/Images/verify.png" alt="" className="w-3 h-3" style={{ filter: 'brightness(0.3) sepia(1) saturate(10) hue-rotate(90deg)' }} />
+                                  <span className="text-xs text-green-400">Current owner</span>
+                                </div>
                               )}
                               {i === 0 && itemTraded && (
                                 <div className="text-xs text-yellow-400 mt-0.5">Last known owner</div>
@@ -386,9 +435,14 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <div className="text-slate-400 text-sm">
-                            <LocalTime date={entry.scannedAt.toISOString()} />
-                          </div>
+                          {entry.uaidUpdatedAt ? (
+                            <div>
+                              <div className="text-white text-sm font-medium">{timeSince(entry.uaidUpdatedAt)}</div>
+                              <div className="text-slate-500 text-xs mt-0.5">{formatDate(entry.uaidUpdatedAt)}</div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-500 text-sm">—</span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -398,7 +452,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
             </div>
           ) : (
             <div className="px-6 py-12 text-center">
-              <div className="w-12 h-12 bg-slate-700/50 rounded-full flex items-center justify-center mx-auto mb-3">
+              <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-3">
                 <svg className="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                 </svg>

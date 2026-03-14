@@ -4,7 +4,6 @@ import { MetadataRoute } from 'next';
 import { getPool } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 3600;
 
 function toSlug(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -14,14 +13,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = 'https://azurewrath.lol';
 
   const staticPages: MetadataRoute.Sitemap = [
-    { url: baseUrl,                   lastModified: new Date(), changeFrequency: 'daily',   priority: 1    },
+    { url: baseUrl,                   lastModified: new Date(), changeFrequency: 'daily',   priority: 1.0  },
     { url: `${baseUrl}/search`,       lastModified: new Date(), changeFrequency: 'daily',   priority: 0.9  },
     { url: `${baseUrl}/players`,      lastModified: new Date(), changeFrequency: 'hourly',  priority: 0.9  },
-    { url: `${baseUrl}/sales`,        lastModified: new Date(), changeFrequency: 'always',  priority: 0.75 },
-    { url: `${baseUrl}/deals`,        lastModified: new Date(), changeFrequency: 'always',  priority: 0.75 },
     { url: `${baseUrl}/trade`,        lastModified: new Date(), changeFrequency: 'hourly',  priority: 0.6  },
     { url: `${baseUrl}/news`,         lastModified: new Date(), changeFrequency: 'daily',   priority: 0.6  },
-    { url: `${baseUrl}/snipe`,        lastModified: new Date(), changeFrequency: 'weekly',  priority: 0.4  },
     { url: `${baseUrl}/verify`,       lastModified: new Date(), changeFrequency: 'monthly', priority: 0.4  },
   ];
 
@@ -30,7 +26,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const { rows } = await pool.query<{
       assetId: string;
       name: string;
-      updatedAt: Date;
+      updatedAt: string;
       sitemap_priority: number;
     }>(`
       WITH sale_counts AS (
@@ -45,7 +41,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       SELECT
         i."assetId"::text,
         i.name,
-        i."updatedAt",
+        to_char(i."updatedAt" AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "updatedAt",
         ROUND(
           CAST(
             0.1 + (COALESCE(sc.sale_count, 0) ^ 0.3 / (SELECT max_p FROM max_pow)) * 0.6
@@ -58,8 +54,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     const itemPages: MetadataRoute.Sitemap = rows.map(row => ({
       url: `${baseUrl}/item/${row.assetId}/${toSlug(row.name)}`,
-      // Wrap in new Date() — Postgres returns strings like "2026-02-16 19:42:12.481Z"
-      // (space instead of T) which is invalid ISO 8601 and causes Google to reject the sitemap
       lastModified: new Date(row.updatedAt),
       changeFrequency: 'daily' as const,
       priority: row.sitemap_priority,

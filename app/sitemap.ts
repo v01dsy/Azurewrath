@@ -58,7 +58,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     const itemPages: MetadataRoute.Sitemap = rows.map(row => ({
       url: `${baseUrl}/item/${row.assetId}/${toSlug(row.name)}`,
-      lastModified: row.updatedAt,
+      // Wrap in new Date() — Postgres returns strings like "2026-02-16 19:42:12.481Z"
+      // (space instead of T) which is invalid ISO 8601 and causes Google to reject the sitemap
+      lastModified: new Date(row.updatedAt),
       changeFrequency: 'daily' as const,
       priority: row.sitemap_priority,
     }));

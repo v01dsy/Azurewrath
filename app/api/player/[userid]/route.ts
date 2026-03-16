@@ -1,11 +1,8 @@
 // app/api/player/[userid]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { saveInventorySnapshot } from '@/lib/inventoryTracker';
 
 export const dynamic = 'force-dynamic';
-
-const ongoingScans = new Set<string>();
 
 async function canViewInventory(robloxUserId: string): Promise<boolean> {
   try {
@@ -81,79 +78,65 @@ export async function GET(
 
     const robloxUserIdString = user.robloxUserId.toString();
 
-    // Scan logic
-    console.log(`🔍 ongoingScans has ${robloxUserIdString}: ${ongoingScans.has(robloxUserIdString)}`);
-    if (ongoingScans.has(robloxUserIdString)) {
-      console.log(`⏳ Scan already in progress for ${user.username}, skipping...`);
-    } else {
-      const latestSnapshotCheck = await prisma.inventorySnapshot.findFirst({
-        where: { userId: user.robloxUserId },
-        orderBy: { createdAt: 'desc' },
-        select: { createdAt: true }
-      });
+    // ── Queue a scan job for the Python worker if needed ──────────────────
+    const latestSnapshotCheck = await prisma.inventorySnapshot.findFirst({
+      where: { userId: user.robloxUserId },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
 
-      if (!latestSnapshotCheck) {
-        const canView = await canViewInventory(robloxUserIdString);
-
-        if (!canView) {
-          return NextResponse.json({
-            user: {
-              robloxUserId: robloxUserIdString,
-              username: user.username,
-              displayName: user.displayName,
-              avatarUrl: user.avatarUrl,
-              description: user.description,
-              role: user.role ?? 'user',
-            },
-            inventory: [],
-            stats: { totalRAP: 0, totalItems: 0, uniqueItems: 0, lastScanned: null },
-            graphData: [],
-            ranks: { rapRank: null, itemsRank: null, uniqueRank: null },
-            isPrivate: true
-          });
-        }
-
-        const raceCheck = await prisma.inventorySnapshot.findFirst({
-          where: { userId: user.robloxUserId },
-          select: { id: true }
+    if (!latestSnapshotCheck) {
+      // Never been scanned — check if inventory is public then queue
+      const canView = await canViewInventory(robloxUserIdString);
+      if (!canView) {
+        return NextResponse.json({
+          user: {
+            robloxUserId: robloxUserIdString,
+            username: user.username,
+            displayName: user.displayName,
+            avatarUrl: user.avatarUrl,
+            description: user.description,
+            role: user.role ?? 'user',
+          },
+          inventory: [],
+          stats: { totalRAP: 0, totalItems: 0, uniqueItems: 0, lastScanned: null },
+          graphData: [],
+          ranks: { rapRank: null, itemsRank: null, uniqueRank: null },
+          isPrivate: true,
         });
+      }
 
-        if (!raceCheck) {
-          console.log(`📸 No snapshot for ${user.username} — creating initial scan (BLOCKING)`);
-          ongoingScans.add(robloxUserIdString);
-          try {
-            await saveInventorySnapshot(robloxUserIdString, robloxUserIdString);
-            console.log(`✅ Initial snapshot created`);
-          } catch (err) {
-            console.error('❌ Initial scan failed:', err);
-            return NextResponse.json({
-              error: 'Failed to create initial inventory snapshot',
-              details: String(err)
-            }, { status: 500 });
-          } finally {
-            ongoingScans.delete(robloxUserIdString);
-          }
+      const existingJob = await prisma.scanJob.findFirst({
+        where: { userId: user.robloxUserId, status: { in: ['pending', 'running'] } },
+      });
+      if (!existingJob) {
+        await prisma.scanJob.create({
+          data: { userId: user.robloxUserId, type: 'inventory', status: 'pending' },
+        });
+        console.log(`📋 Queued inventory scan job for ${user.username}`);
+      }
+    } else {
+      const snapshotAge = Date.now() - latestSnapshotCheck.createdAt.getTime();
+      const fiveMinutes = 5 * 60 * 1000;
+
+      if (snapshotAge > fiveMinutes) {
+        const existingJob = await prisma.scanJob.findFirst({
+          where: { userId: user.robloxUserId, status: { in: ['pending', 'running'] } },
+        });
+        if (!existingJob) {
+          await prisma.scanJob.create({
+            data: { userId: user.robloxUserId, type: 'inventory', status: 'pending' },
+          });
+          console.log(`🔄 Queued background rescan for ${user.username}`);
         } else {
-          console.log(`⏭️ Snapshot already created by concurrent request, skipping...`);
+          console.log(`⏭️ Scan already queued for ${user.username}`);
         }
       } else {
-        const snapshotAge = Date.now() - latestSnapshotCheck.createdAt.getTime();
-        const fiveMinutes = 5 * 60 * 1000;
-
-        if (snapshotAge > fiveMinutes) {
-          console.log(`🔄 Triggering background rescan for ${user.username}...`);
-          ongoingScans.add(robloxUserIdString);
-          saveInventorySnapshot(robloxUserIdString, robloxUserIdString)
-            .then(snapshot => console.log(`✅ Background scan done — Snapshot ID: ${snapshot.id}`))
-            .catch(err => console.error('❌ Background scan failed:', err))
-            .finally(() => ongoingScans.delete(robloxUserIdString));
-        } else {
-          console.log(`⏭️ Skipping scan for ${user.username} (${Math.round(snapshotAge / 1000)}s old)`);
-        }
+        console.log(`⏭️ Skipping scan for ${user.username} (${Math.round(snapshotAge / 1000)}s old)`);
       }
     }
 
-    // Run inventory, graph, avatar, and ranks in parallel — rank is now a direct DB call
+    // ── Run inventory, graph, avatar, and ranks in parallel ───────────────
     const [inventoryData, graphData, avatarResult, rankRes] = await Promise.all([
       prisma.$queryRaw<Array<{
         assetId: bigint;
@@ -237,7 +220,7 @@ export async function GET(
       fetch(
         `https://thumbnails.roblox.com/v1/users/avatar?userIds=${robloxUserIdString}&size=420x420&format=Png&isCircular=false`
       ).then(r => r.ok ? r.json() : null).catch(() => null),
-      getRank(user.robloxUserId), // ✅ direct DB call — no NEXT_PUBLIC_APP_URL needed
+      getRank(user.robloxUserId),
     ]);
 
     const avatarUrl = avatarResult?.data?.[0]?.imageUrl || user.avatarUrl;

@@ -13,7 +13,7 @@ model Item {
   imageUrl          String?
   description       String?
   manipulated       Boolean         @default(false)
-  isLimitedUnique   Boolean?        // true = Limited U, false = Limited, null = unknown
+  isLimitedUnique   Boolean?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   inventoryItems    InventoryItem[]
@@ -206,8 +206,10 @@ model SnipeDeal {
 
 model ScanJob {
   id          String   @id @default(cuid())
-  assetId     BigInt
-  status      String   @default("running") // "running" | "stopped" | "done"
+  assetId     BigInt?
+  userId      BigInt?
+  type        String   @default("owners") // "owners" | "inventory"
+  status      String   @default("pending") // "pending" | "running" | "stopped" | "done"
   total       Int      @default(0)
   processed   Int      @default(0)
   failed      Int      @default(0)
@@ -217,6 +219,8 @@ model ScanJob {
   updatedAt   DateTime @updatedAt
 
   @@index([assetId, status])
+  @@index([userId, status])
+  @@index([type, status])
   @@index([startedAt])
 }
 
@@ -306,4 +310,16 @@ model TradeAdItem {
 
   @@index([tradeAdId])
   @@index([assetId])
+}
+
+model UaidCursorCache {
+  id        String   @id @default(cuid())
+  assetId   BigInt
+  cursor    String
+  lastUaid  BigInt
+  pageNum   Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([assetId, lastUaid])
+  @@index([assetId, lastUaid])
 }

@@ -64,4 +64,4 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     console.error('sitemap: DB query failed, returning static pages only:', err);
     return staticPages;
   }
-}
+} 

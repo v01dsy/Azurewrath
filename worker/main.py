@@ -18,6 +18,7 @@ from discord_notifications import send_discord_notifications
 from snipe_events import fire_snipe_events
 from snipe_server import start_snipe_server
 from manipulation_detector import detect_manipulation
+from inventory_scanner import start_inventory_scanner
 
 load_dotenv()
 
@@ -832,7 +833,7 @@ def main():
     create_indexes()
 
     start_snipe_server()
-
+    start_inventory_scanner()
     cycle_count = 0
 
     while True:

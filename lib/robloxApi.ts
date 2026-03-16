@@ -2,10 +2,6 @@
 import axios from 'axios';
 import prisma from "./prisma";
 
-/**
- * Fetch the last owner of a UAID (user asset instance ID) from the database.
- * Returns the username of the last owner, or null if not found.
- */
 export async function getLastOwnerByUAID(userAssetId: string): Promise<string | null> {
   try {
     const response = await axios.get(
@@ -25,9 +21,6 @@ export async function getLastOwnerByUAID(userAssetId: string): Promise<string | 
   }
 }
 
-/**
- * Fetches the Roblox user's headshot thumbnail URL using the recommended API.
- */
 export async function fetchRobloxHeadshotUrl(userId: string, size: string = '150x150'): Promise<string | null> {
   try {
     const url = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=${size}&format=Png`;
@@ -76,11 +69,17 @@ export async function scanFullInventory(userId: string, maxRetries = 3) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       let res: Response;
       try {
-        res = await fetch(url, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30_000);
+        try {
+          res = await fetch(url, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
       } catch (err: any) {
-        // Network-level error (ECONNRESET, etc.) — retry
         console.error(`❌ Network error fetching page ${pageCount} (attempt ${attempt}):`, err.message);
         if (attempt < maxRetries) {
           await new Promise(r => setTimeout(r, 3000 * attempt));
@@ -181,9 +180,6 @@ export async function scanFullInventory(userId: string, maxRetries = 3) {
   return fullInventory;
 }
 
-/**
- * Fetch Roblox user info by userId
- */
 export async function fetchRobloxUserInfo(userId: string) {
   try {
     const res = await axios.get(`https://users.roblox.com/v1/users/${userId}`);
@@ -194,9 +190,6 @@ export async function fetchRobloxUserInfo(userId: string) {
   }
 }
 
-/**
- * Fetch Roblox userId from username
- */
 export async function fetchRobloxUserIdByUsername(username: string): Promise<string | null> {
   try {
     const res = await axios.get(
@@ -225,9 +218,6 @@ export interface RobloxItemData {
   isLimitedUnique?: boolean;
 }
 
-/**
- * Fetch item details from Roblox API
- */
 export async function fetchRobloxItemData(assetId: string): Promise<RobloxItemData | null> {
   try {
     const catalogRes = await axios.get(
@@ -273,9 +263,6 @@ export async function fetchRobloxItemData(assetId: string): Promise<RobloxItemDa
   }
 }
 
-/**
- * Fetch price data from Roblox's official economy API
- */
 export async function fetchPriceData(assetId: string) {
   try {
     const detailsRes = await axios.get(
@@ -360,8 +347,8 @@ export async function canViewInventory(robloxUserId: string): Promise<boolean> {
 
 /**
  * Fetch full details for a single user asset (UAID).
- * - isOnHold comes from the per-UAID collectibles endpoint
  * - created/updated come from the owners API (paginated until UAID is found)
+ * - Cursor cache allows resuming from the closest known page for this item
  *
  * Uses native fetch() instead of axios to survive background fire-and-forget
  * execution after the Next.js response has already been sent.
@@ -373,7 +360,7 @@ export async function fetchUserAssetDetails(userId: string, userAssetId: string,
 } | null> {
   try {
     const targetUAID = BigInt(userAssetId);
-    let cursor: string | null = null;
+    const assetIdBigInt = BigInt(assetId);
     let pageNum = 0;
     let requestsSinceBreak = 0;
 
@@ -381,6 +368,19 @@ export async function fetchUserAssetDetails(userId: string, userAssetId: string,
     const cleanCookie = rawCookie.replace(/^"|"$/g, '').replace(/^'|'$/g, '');
     const headers: Record<string, string> = { 'User-Agent': 'Mozilla/5.0' };
     if (cleanCookie) headers['Cookie'] = `.ROBLOSECURITY=${cleanCookie}`;
+
+    // ── Load closest cached cursor below target UAID ──────────────────────
+    const cached = await prisma.uaidCursorCache.findFirst({
+      where: { assetId: assetIdBigInt, lastUaid: { lt: targetUAID } },
+      orderBy: { lastUaid: 'desc' },
+    });
+
+    let cursor: string | null = null;
+    if (cached?.cursor) {
+      cursor = cached.cursor;
+      pageNum = cached.pageNum ?? 0;
+      console.log(`[UAID search] Resuming from cached cursor at page ~${pageNum} (lastUaid=${cached.lastUaid})`);
+    }
 
     do {
       const ownersUrl: string = `https://inventory.roblox.com/v2/assets/${assetId}/owners?limit=100&sortOrder=Asc${cursor ? `&cursor=${cursor}` : ''}`;
@@ -426,19 +426,25 @@ export async function fetchUserAssetDetails(userId: string, userAssetId: string,
 
       const nextCursor: string | null = ownersData?.nextPageCursor ?? null;
 
-      // Parse last UAID from next cursor instead of scanning entries
+      // ── Save cursor to cache after every page ──────────────────────────
       if (nextCursor) {
-        const lastUAID = BigInt(nextCursor.split('_')[0]);
-        if (lastUAID < targetUAID) {
-          console.log(`[UAID search] Page ${pageNum}: cursor lastUAID=${lastUAID} < target=${targetUAID}, skipping | nextCursor=${nextCursor.substring(0, 30)}...`);
+        const lastUaid = BigInt(nextCursor.split('_')[0]);
+
+        await prisma.uaidCursorCache.createMany({
+          data: [{ assetId: assetIdBigInt, cursor: nextCursor, lastUaid, pageNum }],
+          skipDuplicates: true,
+        });
+
+        if (lastUaid < targetUAID) {
+          console.log(`[UAID search] Page ${pageNum}: lastUaid=${lastUaid} < target=${targetUAID}, skipping | nextCursor=${nextCursor.substring(0, 30)}...`);
           cursor = nextCursor;
           requestsSinceBreak++;
           if (requestsSinceBreak >= 15) {
-            console.log(`⏸️ [UAID search] 15 requests done — taking 30s breather...`);
-            await new Promise(r => setTimeout(r, 30000));
+            console.log(`⏸️ [UAID search] 15 requests done — taking 21s breather...`);
+            await new Promise(r => setTimeout(r, 21000));
             requestsSinceBreak = 0;
           } else {
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 2000));
           }
           continue;
         }

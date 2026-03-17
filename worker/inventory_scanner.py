@@ -339,7 +339,7 @@ def fetch_uaid_timestamps(conn, asset_id, user_asset_id):
         # Save the cursor used to reach this page, with lastUaid from next_cursor
         if next_cursor:
             last_uaid_from_cursor = int(next_cursor.split('_')[0])
-            save_cursor(conn, asset_id, cursor, last_uaid_from_cursor, page_num)
+            save_cursor(conn, asset_id, cursor, last_uaid_from_cursor, page_num - 1)
 
             if last_uaid_from_cursor < target_uaid:
                 logger.info(f"[UAID search] Page {page_num}: lastUaid={last_uaid_from_cursor} < target={target_uaid}, skipping")

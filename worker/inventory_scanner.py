@@ -303,11 +303,13 @@ def fetch_uaid_timestamps(conn, asset_id, user_asset_id):
     """
     Page through the owners API to find this UAID and get its created/updated timestamps.
     Uses cursor cache to resume from closest known position.
+    If not found on the expected page, checks 1 page back and 1 page forward.
     Returns (created, updated) or (None, None).
     """
     target_uaid = int(user_asset_id)
     page_num = 0
     requests_since_break = 0
+    last_page_num_reached = 0
 
     cached_cursor, cached_page = get_cached_cursor(conn, asset_id, target_uaid)
     cursor = cached_cursor
@@ -328,6 +330,7 @@ def fetch_uaid_timestamps(conn, asset_id, user_asset_id):
 
         entries = data.get('data', [])
         page_num += 1
+        last_page_num_reached = page_num
 
         if not entries:
             break
@@ -351,15 +354,54 @@ def fetch_uaid_timestamps(conn, asset_id, user_asset_id):
                     time.sleep(UAID_SEARCH_DELAY)
                 continue
 
-        # Target should be on this page
+        # Scan every entry on this page
         for entry in entries:
             if int(entry.get('id', 0)) == target_uaid:
                 logger.info(f"[UAID search] Found on page {page_num}")
                 return entry.get('created'), entry.get('updated')
 
-        logger.info(f"[UAID search] Page {page_num}: passed target, not found")
+        logger.info(f"[UAID search] Page {page_num}: not found — trying fallback")
         break
 
+    # ── Fallback: check 1 page back and 1 page forward ────────────────────
+    pages_to_check = []
+
+    # 1 page back
+    if last_page_num_reached - 1 > 0:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT cursor FROM "UaidCursorCache"
+                WHERE "assetId" = %s AND "pageNum" = %s
+                LIMIT 1
+            """, (asset_id, last_page_num_reached - 1))
+            row = cur.fetchone()
+            if row:
+                pages_to_check.append(('back', row[0]))
+
+    # 1 page forward
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT cursor FROM "UaidCursorCache"
+            WHERE "assetId" = %s AND "pageNum" = %s
+            LIMIT 1
+        """, (asset_id, last_page_num_reached))
+        row = cur.fetchone()
+        if row:
+            pages_to_check.append(('forward', row[0]))
+
+    for direction, fallback_cursor in pages_to_check:
+        logger.info(f"[UAID search] Fallback: checking 1 page {direction} (from page {last_page_num_reached})...")
+        url = f'https://inventory.roblox.com/v2/assets/{asset_id}/owners?limit=100&sortOrder=Asc&cursor={fallback_cursor}'
+        try:
+            data = fetch_with_retry(url, max_retries=5, base_delay=3.0)
+            for entry in data.get('data', []):
+                if int(entry.get('id', 0)) == target_uaid:
+                    logger.info(f"[UAID search] Found in fallback ({direction})")
+                    return entry.get('created'), entry.get('updated')
+        except Exception as e:
+            logger.warning(f"[UAID search] Fallback fetch failed ({direction}): {e}")
+
+    logger.info(f"[UAID search] Not found after fallback — giving up")
     return None, None
 
 

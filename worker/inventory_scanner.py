@@ -83,8 +83,7 @@ def fetch_with_retry(url, max_retries=5, base_delay=3.0, extra_headers=None):
             continue
 
         if res.status_code == 429:
-            retry_after = res.headers.get('Retry-After')
-            wait = float(retry_after) if retry_after else base_delay * (2 ** attempt)
+            wait = base_delay * (2 ** attempt)
             logger.warning(f"429 rate limited — waiting {wait}s (attempt {attempt+1})")
             time.sleep(wait)
             continue

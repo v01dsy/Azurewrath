@@ -529,7 +529,7 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id):
         conn.commit()
         logger.info(f"✅ [Phase 1] FIRST snapshot created (ID: {snapshot_id}, {len(item_rows)} items)")
 
-        # Phase 2 — fire and forget
+        # Phase 2 — backfill all items
         uaids_to_backfill = [
             {'user_asset_id': item['user_asset_id'], 'asset_id': item['asset_id']}
             for item in full_inventory
@@ -683,12 +683,25 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id):
         conn.commit()
         logger.info(f"✅ [Phase 1] NEW snapshot created ({len(all_items)} items)")
 
-    # Phase 2 — backfill new UAIDs only
+    # Phase 2 — backfill new UAIDs AND existing UAIDs with null timestamps
+    uaids_to_backfill = []
+
     if new_uaids:
-        uaids_to_backfill = [
+        uaids_to_backfill += [
             {'user_asset_id': roblox_item_map[u]['user_asset_id'], 'asset_id': roblox_item_map[u]['asset_id']}
             for u in new_uaids if u in roblox_item_map
         ]
+
+    # Also pick up existing items with null timestamps
+    for item in all_items:
+        if str(item['user_asset_id']) not in new_uaids:
+            if item.get('uaid_created_at') is None or item.get('uaid_updated_at') is None:
+                uaids_to_backfill.append({
+                    'user_asset_id': item['user_asset_id'],
+                    'asset_id': item['asset_id'],
+                })
+
+    if uaids_to_backfill:
         t = threading.Thread(
             target=backfill_timestamps,
             args=(get_conn(), snapshot_id, uaids_to_backfill),
@@ -698,7 +711,6 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id):
 
     logger.info("====================================\n")
     return snapshot_id
-
 
 # ─── Backfill UAID timestamps by UAID only (no userId) ────────────────────
 

@@ -337,10 +337,10 @@ def fetch_uaid_timestamps(conn, asset_id, user_asset_id):
 
         next_cursor = data.get('nextPageCursor')
 
-        # Save cursor checkpoint
+        # Save the cursor used to reach this page, with lastUaid from next_cursor
         if next_cursor:
             last_uaid_from_cursor = int(next_cursor.split('_')[0])
-            save_cursor(conn, asset_id, next_cursor, last_uaid_from_cursor, page_num)
+            save_cursor(conn, asset_id, cursor, last_uaid_from_cursor, page_num)
 
             if last_uaid_from_cursor < target_uaid:
                 logger.info(f"[UAID search] Page {page_num}: lastUaid={last_uaid_from_cursor} < target={target_uaid}, skipping")
@@ -391,7 +391,9 @@ def fetch_uaid_timestamps(conn, asset_id, user_asset_id):
 
     for direction, fallback_cursor in pages_to_check:
         logger.info(f"[UAID search] Fallback: checking 1 page {direction} (from page {last_page_num_reached})...")
-        url = f'https://inventory.roblox.com/v2/assets/{asset_id}/owners?limit=100&sortOrder=Asc&cursor={fallback_cursor}'
+        url = f'https://inventory.roblox.com/v2/assets/{asset_id}/owners?limit=100&sortOrder=Asc'
+        if fallback_cursor:
+            url += f'&cursor={fallback_cursor}'
         try:
             data = fetch_with_retry(url, max_retries=5, base_delay=3.0)
             for entry in data.get('data', []):
@@ -609,14 +611,12 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id):
         logger.info(f"[Phase 1] Updating TODAY'S snapshot (ID: {snapshot_id})...")
 
         with conn.cursor() as cur:
-            # Remove items that are no longer in inventory
             if removed_uaids:
                 cur.execute("""
                     DELETE FROM "InventoryItem"
                     WHERE "snapshotId" = %s AND "userAssetId" = ANY(%s)
                 """, (snapshot_id, [int(u) for u in removed_uaids]))
 
-            # Insert new items
             if new_uaids:
                 new_rows = [item for item in all_items if str(item['user_asset_id']) in new_uaids]
                 psycopg2.extras.execute_values(cur, """
@@ -636,7 +636,6 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id):
                     None,
                 ) for row in new_rows])
 
-            # Refresh isOnHold for unchanged items
             for item in all_items:
                 if str(item['user_asset_id']) not in new_uaids:
                     cur.execute("""
@@ -738,7 +737,6 @@ def process_owner_entry(conn, entry, asset_id, job_id):
     entry_created = entry.get('created')
     entry_updated = entry.get('updated')
 
-    # Null owner — backfill timestamps only
     if not roblox_user_id:
         if entry_uaid:
             backfill_uaid_by_uaid(conn, entry_uaid, entry_created, entry_updated)
@@ -746,7 +744,6 @@ def process_owner_entry(conn, entry, asset_id, job_id):
 
     roblox_user_id = str(roblox_user_id)
 
-    # Check if already scanned
     with conn.cursor() as cur:
         cur.execute("""
             SELECT id, "createdAt" FROM "InventorySnapshot"
@@ -758,7 +755,6 @@ def process_owner_entry(conn, entry, asset_id, job_id):
 
     if existing:
         logger.info(f"   ⏭️ Already scanned — skipping inventory scan")
-        # Still backfill UAID timestamps
         if entry_uaid:
             with conn.cursor() as cur:
                 cur.execute("""
@@ -779,7 +775,6 @@ def process_owner_entry(conn, entry, asset_id, job_id):
             conn.commit()
         return 'skipped'
 
-    # New user — fetch info and scan inventory
     logger.info(f"   📦 New user {roblox_user_id} — fetching info and scanning inventory...")
 
     user_info = fetch_user_info(roblox_user_id)
@@ -797,7 +792,6 @@ def process_owner_entry(conn, entry, asset_id, job_id):
 
     update_job(conn, job_id, currentUser=username)
 
-    # Upsert user
     with conn.cursor() as cur:
         cur.execute("""
             INSERT INTO "User" ("robloxUserId", username, "displayName", "avatarUrl", description,
@@ -812,11 +806,9 @@ def process_owner_entry(conn, entry, asset_id, job_id):
         """, (roblox_user_id, username, display_name, avatar_url, description))
     conn.commit()
 
-    # Scan their inventory
     try:
         snapshot_id = save_inventory_snapshot(conn, roblox_user_id, roblox_user_id)
 
-        # Backfill UAID timestamps from owners API entry
         if entry_uaid and snapshot_id:
             with conn.cursor() as cur:
                 cur.execute("""
@@ -882,13 +874,11 @@ def run_owners_scan(conn, job):
         total += len(valid)
         update_job(conn, job_id, total=total, pagesFound=page_num)
 
-        # Process null owners (backfill timestamps only)
         for entry in null_entries:
             if entry.get('id'):
                 backfill_uaid_by_uaid(conn, entry['id'], entry.get('created'), entry.get('updated'))
                 null_count += 1
 
-        # Process valid owners
         for entry in valid:
             if is_stop_requested(conn, job_id):
                 break
@@ -937,7 +927,6 @@ def run_inventory_scan(conn, job):
     logger.info(f"\n📦 INVENTORY SCAN JOB — userId: {user_id}")
 
     try:
-        # Ensure user exists in DB
         with conn.cursor() as cur:
             cur.execute('SELECT "robloxUserId" FROM "User" WHERE "robloxUserId" = %s', (user_id,))
             user_exists = cur.fetchone()

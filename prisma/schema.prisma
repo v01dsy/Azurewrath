@@ -315,7 +315,7 @@ model TradeAdItem {
 model UaidCursorCache {
   id        String   @id @default(cuid())
   assetId   BigInt
-  cursor    String
+  cursor    String?  // ← just add the ?
   lastUaid  BigInt
   pageNum   Int      @default(0)
   updatedAt DateTime @updatedAt

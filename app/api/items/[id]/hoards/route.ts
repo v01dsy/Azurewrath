@@ -51,8 +51,8 @@ export async function GET(
       let copies: { userAssetId: string; serialNumber: number | null }[];
       try {
         copies = typeof row.copies === 'string' ? JSON.parse(row.copies) : row.copies;
-      } catch {
-        console.error(`Failed to parse copies JSON for user ${row.robloxUserId}:`, error);
+      } catch (error) {
+        console.error(`Failed to parse copies JSON for user ${row.robloxUserId.toString()}:`, error);
         copies = [];
       }
       return {

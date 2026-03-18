@@ -46,7 +46,7 @@ export async function GET() {
         ORDER BY timestamp DESC
         LIMIT 1
       ) ph ON true
-      WHERE i.manipulated = false
+      WHERE i.manipulated = false  -- Exclude manipulated items to avoid misleading deal recommendations
         AND ph.rap > 0
         AND ph.price IS NOT NULL
         AND ph.price > 0

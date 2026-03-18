@@ -137,7 +137,7 @@ export async function GET(
     }
 
     // ── Run inventory, graph, avatar, and ranks in parallel ───────────────
-    const [inventoryData, graphData, avatarResult, rankRes] = await Promise.all([
+    const [inventoryData, graphData, avatarResult, rankRes, activeScanJob] = await Promise.all([
       prisma.$queryRaw<Array<{
         assetId: bigint;
         name: string;
@@ -221,6 +221,12 @@ export async function GET(
         `https://thumbnails.roblox.com/v1/users/avatar?userIds=${robloxUserIdString}&size=420x420&format=Webp&isCircular=false`
       ).then(r => r.ok ? r.json() : null).catch(() => null),
       getRank(user.robloxUserId),
+      // Check whether a scan job is currently in-flight for this user so the
+      // client can show a "refreshing" indicator and auto-refresh when done.
+      prisma.scanJob.findFirst({
+        where: { userId: user.robloxUserId, status: { in: ['pending', 'running'] } },
+        select: { id: true },
+      }),
     ]);
 
     const avatarUrl = avatarResult?.data?.[0]?.imageUrl || user.avatarUrl;
@@ -286,6 +292,8 @@ export async function GET(
         uniqueRank: rankRes?.uniqueRank ?? null,
       },
       isPrivate: false,
+      // true while the Python worker is scanning this user's inventory
+      scanning: !!activeScanJob,
     });
 
   } catch (error) {

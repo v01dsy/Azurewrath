@@ -8,72 +8,62 @@ export async function GET(
 ) {
   try {
     const { id: assetId } = await params;
+    const assetIdBigInt = BigInt(assetId);
 
-    // Cast to any to avoid Prisma generated-type mismatches on relation names
-    const rows: any[] = await (prisma.inventoryItem as any).findMany({
-      where: { assetId },
-      orderBy: { scannedAt: 'desc' },
-      include: {
-        snapshot: {
-          include: { user: true },
-        },
-      },
-    });
-
-    // Group by user, keeping only each user's most recent snapshot
-    const userLatestSnapshot = new Map<string, string>();
-    const userCopies = new Map<string, { userAssetId: string; serialNumber: number | null }[]>();
-    const userMeta = new Map<string, { username: string; avatarUrl: string | null; scannedAt: string }>();
-
-    for (const row of rows) {
-      const snap = row.snapshot;
-      if (!snap?.user) continue;
-
-      const userId: string = snap.user.robloxUserId.toString();
-      const snapshotId: string = snap.id;
-
-      if (!userLatestSnapshot.has(userId)) {
-        userLatestSnapshot.set(userId, snapshotId);
-        userCopies.set(userId, []);
-        userMeta.set(userId, {
-          username: snap.user.username,
-          avatarUrl: snap.user.avatarUrl ?? null,
-          scannedAt: new Date(snap.createdAt).toISOString(),
-        });
-      }
-
-      if (userLatestSnapshot.get(userId) === snapshotId) {
-        userCopies.get(userId)!.push({
-          userAssetId: row.userAssetId.toString(),
-          serialNumber: row.serialNumber ?? null,
-        });
-      }
-    }
-
-    // Only keep users with 2+ copies
-    const hoards: {
-      robloxUserId: string;
+    // Use SQL to get only the latest snapshot per user that contains this asset,
+    // counting copies per user in a single query — avoids a full JS scan.
+    const rows = await prisma.$queryRaw<Array<{
+      robloxUserId: bigint;
       username: string;
       avatarUrl: string | null;
-      count: number;
-      copies: { userAssetId: string; serialNumber: number | null }[];
-      scannedAt: string;
-    }[] = [];
+      scannedAt: Date;
+      count: bigint;
+      copies: string; // JSON array of {userAssetId, serialNumber}
+    }>>`
+      WITH LatestSnapshots AS (
+        SELECT DISTINCT ON ("userId") id, "userId", "createdAt"
+        FROM "InventorySnapshot"
+        ORDER BY "userId", "createdAt" DESC
+      )
+      SELECT
+        u."robloxUserId",
+        u.username,
+        u."avatarUrl",
+        ls."createdAt" AS "scannedAt",
+        COUNT(ii."userAssetId") AS count,
+        JSON_AGG(
+          JSON_BUILD_OBJECT(
+            'userAssetId', ii."userAssetId"::text,
+            'serialNumber', ii."serialNumber"
+          )
+          ORDER BY ii."serialNumber" ASC NULLS LAST, ii."userAssetId" ASC
+        ) AS copies
+      FROM "InventoryItem" ii
+      INNER JOIN LatestSnapshots ls ON ii."snapshotId" = ls.id
+      INNER JOIN "User" u ON ls."userId" = u."robloxUserId"
+      WHERE ii."assetId" = ${assetIdBigInt}
+      GROUP BY u."robloxUserId", u.username, u."avatarUrl", ls."createdAt"
+      HAVING COUNT(ii."userAssetId") >= 2
+      ORDER BY count DESC
+    `;
 
-    for (const [userId, copies] of userCopies.entries()) {
-      if (copies.length < 2) continue;
-      const meta = userMeta.get(userId)!;
-      hoards.push({
-        robloxUserId: userId,
-        username: meta.username,
-        avatarUrl: meta.avatarUrl,
-        count: copies.length,
+    const hoards = rows.map(row => {
+      let copies: { userAssetId: string; serialNumber: number | null }[];
+      try {
+        copies = typeof row.copies === 'string' ? JSON.parse(row.copies) : row.copies;
+      } catch (error) {
+        console.error(`Failed to parse copies JSON for user ${row.robloxUserId.toString()}:`, error);
+        copies = [];
+      }
+      return {
+        robloxUserId: row.robloxUserId.toString(),
+        username: row.username,
+        avatarUrl: row.avatarUrl ?? null,
+        count: Number(row.count),
         copies,
-        scannedAt: meta.scannedAt,
-      });
-    }
-
-    hoards.sort((a, b) => b.count - a.count);
+        scannedAt: row.scannedAt.toISOString(),
+      };
+    });
 
     return NextResponse.json({ hoards });
   } catch (err) {

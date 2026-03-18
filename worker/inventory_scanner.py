@@ -915,12 +915,11 @@ def run_owners_scan(conn, job):
         next_cursor = data.get('nextPageCursor')
 
         # Save cursor checkpoint for future UAID searches on this asset
-        if next_cursor and entries:
+        if next_cursor:
             try:
-                last_uaid = entries[-1].get('id')
-                if last_uaid:
-                    save_cursor(conn, asset_id, next_cursor, int(last_uaid), page_num)
-                    logger.info(f"💾 Saved cursor for page {page_num}, lastUaid={last_uaid}")
+                last_uaid = int(next_cursor.split('_')[0])
+                save_cursor(conn, asset_id, cursor, last_uaid, page_num - 1)
+                logger.info(f"💾 Saved cursor for page {page_num - 1}, lastUaid={last_uaid}")
             except Exception as e:
                 logger.warning(f"Could not save cursor cache for page {page_num}: {e}")
 

@@ -63,11 +63,11 @@ function Sparkline({ data }: { data: PricePoint[] }) {
 }
 
 function FlagIcon({ size = 14 }: { size?: number }) {
-  return <img src="/Images/flag.png" alt="" style={{ width: size, height: size, objectFit: 'contain', display: 'inline-block' }} />;
+  return <img src="/Images/flag.webp" alt="" style={{ width: size, height: size, objectFit: 'contain', display: 'inline-block' }} />;
 }
 
 function UnmarkIcon({ size = 14 }: { size?: number }) {
-  return <img src="/Images/unmark.png" alt="" style={{ width: size, height: size, objectFit: 'contain', display: 'inline-block' }} />;
+  return <img src="/Images/unmark.webp" alt="" style={{ width: size, height: size, objectFit: 'contain', display: 'inline-block' }} />;
 }
 
 function Pagination({ page, total, pageSize, onChange }: {
@@ -159,12 +159,12 @@ function FlagCard({ flag, onAction, acting }: {
             />
             {isManip && (
               <div className="absolute -top-1.5 -right-1.5 bg-[#0d0d0f] rounded-full p-0.5">
-                <img src="/Images/flag.png" alt="" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+                <img src="/Images/flag.webp" alt="" style={{ width: 22, height: 22, objectFit: 'contain' }} />
               </div>
             )}
             {!isManip && (
               <div className="absolute -top-1.5 -right-1.5 bg-[#0d0d0f] rounded-full p-0.5">
-                <img src="/Images/unmark.png" alt="" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+                <img src="/Images/unmark.webp" alt="" style={{ width: 22, height: 22, objectFit: 'contain' }} />
               </div>
             )}
           </div>
@@ -314,9 +314,9 @@ function FlagCard({ flag, onAction, acting }: {
             } disabled:opacity-40`}
           >
             {isActing ? '...' : isManip ? (
-              <><img src="/Images/manipulated1.png" alt="" style={{ width: 18, height: 18, objectFit: 'contain' }} /> Mark Manipulated</>
+              <><img src="/Images/manipulated1.webp" alt="" style={{ width: 18, height: 18, objectFit: 'contain' }} /> Mark Manipulated</>
             ) : (
-              <><img src="/Images/unmark.png" alt="" style={{ width: 18, height: 18, objectFit: 'contain' }} /> Unmark Item</>
+              <><img src="/Images/unmark.webp" alt="" style={{ width: 18, height: 18, objectFit: 'contain' }} /> Unmark Item</>
             )}
           </button>
           <button

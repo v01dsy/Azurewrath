@@ -55,7 +55,7 @@ function getArrowImage(n: NotificationItem): string | null {
   if (n.read) return null;
   const isValueChange = n.type === 'rap_change' || n.type === 'price_and_rap_change' || n.type === 'price_change';
   if (!isValueChange || n.oldValue == null || n.newValue == null) return null;
-  return n.newValue > n.oldValue ? '/Images/gain.png' : '/Images/loss.png';
+  return n.newValue > n.oldValue ? '/Images/gain.webp' : '/Images/loss.webp';
 }
 
 export default function NotificationsPage() {
@@ -174,7 +174,7 @@ export default function NotificationsPage() {
         ) : (
           <div className="space-y-2">
             {notifications.map((n) => {
-              const imgSrc = n.item.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${n.item.assetId}&width=80&height=80&format=png`;
+              const imgSrc = n.item.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${n.item.assetId}&width=80&height=80&format=Webp`;
               const arrowSrc = getArrowImage(n);
               return (
                 <div
@@ -186,7 +186,7 @@ export default function NotificationsPage() {
                     src={imgSrc}
                     alt={n.item.name}
                     className="w-12 h-12 rounded-lg object-cover flex-shrink-0 border border-slate-700"
-                    onError={(e) => { (e.target as HTMLImageElement).src = '/Images/icon.png'; }}
+                    onError={(e) => { (e.target as HTMLImageElement).src = '/Images/icon.webp'; }}
                   />
                   <div className="flex-1 min-w-0">
                     <p className={`text-sm leading-snug ${!n.read ? 'text-white font-medium' : 'text-slate-300'}`}>

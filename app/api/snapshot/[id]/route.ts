@@ -89,7 +89,7 @@ export async function GET(
       items: snapshotData.map(item => ({
         assetId: item.assetId.toString(),
         name: item.name,
-        imageUrl: item.imageUrl || `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=150&height=150&format=png`,
+        imageUrl: item.imageUrl || `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=150&height=150&format=Webp`,
         manipulated: item.manipulated,
         isLimitedUnique: item.isLimitedUnique ?? false,
         rapThen: item.rapThen || 0,

@@ -218,7 +218,7 @@ export async function GET(
         LIMIT 30
       `,
       fetch(
-        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${robloxUserIdString}&size=420x420&format=Png&isCircular=false`
+        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${robloxUserIdString}&size=420x420&format=Webp&isCircular=false`
       ).then(r => r.ok ? r.json() : null).catch(() => null),
       getRank(user.robloxUserId),
     ]);

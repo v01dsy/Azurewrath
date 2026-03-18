@@ -152,7 +152,7 @@ export default function ProfileDropdown() {
         >
           <div className="relative">
             <img
-              src={user?.avatarUrl || "/Images/profile.png"}
+              src={user?.avatarUrl || "/Images/profile.webp"}
               alt="Profile"
               draggable="false"
               style={{ width: 40, height: 40, borderRadius: '50%' }}
@@ -190,22 +190,22 @@ export default function ProfileDropdown() {
           ) : (
             <>
               <DropdownLink href={`/player/${user.robloxUserId}`} onClick={() => setOpen(false)}>
-                <img src="/Images/profile.png" alt="" style={iconStyle} draggable="false" />
+                <img src="/Images/profile.webp" alt="" style={iconStyle} draggable="false" />
                 <span>Profile</span>
               </DropdownLink>
 
               <DropdownLink href="/trade" onClick={() => setOpen(false)}>
-                <img src="/Images/trade.png" alt="" style={iconStyle} draggable="false" />
+                <img src="/Images/trade.webp" alt="" style={iconStyle} draggable="false" />
                 <span>Trade Ads</span>
               </DropdownLink>
 
               <DropdownLink href="/watchlist" onClick={() => setOpen(false)}>
-                <img src="/Images/watchlist.png" alt="" style={iconStyle} draggable="false" />
+                <img src="/Images/watchlist.webp" alt="" style={iconStyle} draggable="false" />
                 <span>Watchlist</span>
               </DropdownLink>
 
               <DropdownButton onClick={handleNotificationsClick}>
-                <img src="/Images/notification.png" alt="" style={iconStyle} draggable="false" />
+                <img src="/Images/notification.webp" alt="" style={iconStyle} draggable="false" />
                 <span style={{ flex: 1 }}>Notifications</span>
                 {unreadCount > 0 && (
                   <span style={{
@@ -223,14 +223,14 @@ export default function ProfileDropdown() {
               <div className="border-t border-slate-700 my-1" />
 
               <DropdownLink href="/settings" onClick={() => setOpen(false)}>
-                <img src="/Images/settings.png" alt="" style={iconStyle} draggable="false" />
+                <img src="/Images/settings.webp" alt="" style={iconStyle} draggable="false" />
                 <span>Settings</span>
               </DropdownLink>
 
               <div className="border-t border-slate-700 my-1" />
 
               <DropdownButton onClick={handleLogout}>
-                <img src="/Images/logout.png" alt="" style={iconStyle} draggable="false" />
+                <img src="/Images/logout.webp" alt="" style={iconStyle} draggable="false" />
                 <span>Logout</span>
               </DropdownButton>
             </>

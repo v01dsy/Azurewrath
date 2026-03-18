@@ -47,7 +47,7 @@ function ItemCard({
           <div className="w-full h-full flex items-center justify-center text-white/20 text-xs">?</div>
         )}
         {item.manipulated && (
-          <img src="/Images/manipulated1.png" alt="Manipulated" title="This item's RAP may be manipulated" className="absolute top-1 left-1 w-5 h-5 z-10" />
+          <img src="/Images/manipulated1.webp" alt="Manipulated" title="This item's RAP may be manipulated" className="absolute top-1 left-1 w-5 h-5 z-10" />
         )}
       </div>
 

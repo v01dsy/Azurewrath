@@ -67,7 +67,7 @@ function ItemCard({ item }: { item: TradeItem | null }) {
           : <div className="w-full h-full flex items-center justify-center text-white/20 text-xs">?</div>
         }
         {item.manipulated && (
-          <img src="/Images/manipulated1.png" alt="manip" className="absolute top-1.5 left-1.5 w-5 h-5" />
+          <img src="/Images/manipulated1.webp" alt="manip" className="absolute top-1.5 left-1.5 w-5 h-5" />
         )}
         {serial != null && (
           <div className="absolute top-1.5 right-1.5 bg-black/70 backdrop-blur-sm px-1.5 py-0.5 rounded shadow-lg serial-sm">

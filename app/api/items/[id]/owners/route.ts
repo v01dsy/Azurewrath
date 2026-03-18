@@ -55,7 +55,7 @@ export async function GET(
     if (missingAvatarUserIds.length > 0) {
       try {
         const res = await fetch(
-          `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${missingAvatarUserIds.join(',')}&size=150x150&format=Png`
+          `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${missingAvatarUserIds.join(',')}&size=150x150&format=Webp`
         );
         const data = await res.json();
         data.data?.forEach((a: any) => {

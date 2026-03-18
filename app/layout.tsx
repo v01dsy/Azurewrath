@@ -19,8 +19,8 @@ export const metadata: Metadata = {
     'google-adsense-account': 'ca-pub-5901846749996606',
   },
     icons: {
-    icon: '/Images/icon.png',           // transparent - for browser tab
-    shortcut: '/Images/icon-black.png', // black bg - for search results
+    icon: '/Images/icon.webp',           // transparent - for browser tab
+    shortcut: '/Images/icon-black.webp', // black bg - for search results
   },
 };
 
@@ -32,8 +32,8 @@ export default function RootLayout({
   return (
     <html lang="en" role="document">
       <head>
-        <link rel="icon" type="image/png" href="/Images/icon.png" />
-        <link rel="shortcut icon" type="image/png" href="/Images/icon-black.png" />
+        <link rel="icon" type="image/webp" href="/Images/icon.webp" />
+        <link rel="shortcut icon" type="image/webp" href="/Images/icon-black.webp" />
         <style>{`
           /* Custom Scrollbar */
           ::-webkit-scrollbar {
@@ -77,26 +77,26 @@ export default function RootLayout({
         <QueryProvider>
           <nav className="navbar" aria-label="Main navigation">
             <a href="/">
-              <img src="/Images/azurewrath-logo2.png" alt="Azurewrath logo" draggable="false" />
+              <img src="/Images/icon.webp" alt="Azurewrath logo" draggable="false" />
             </a>
             <a href="/search">
-              <img src="/Images/search.png" alt="Search icon" draggable="false" />
+              <img src="/Images/search.webp" alt="Search icon" draggable="false" />
               <p>Search</p>
             </a>
             <a href="/players">
-              <img src="/Images/players.png" alt="Players icon" draggable="false" />
+              <img src="/Images/players.webp" alt="Players icon" draggable="false" />
               <p>Players</p>
             </a>
             <a href="/deals">
-              <img src="/Images/deals.png" alt="Deals icon" draggable="false" />
+              <img src="/Images/deals.webp" alt="Deals icon" draggable="false" />
               <p>Deals</p>
             </a>
             <a href="/snipe">
-              <img src="/Images/snipe.png" alt="Snipe icon" draggable="false" />
+              <img src="/Images/snipe.webp" alt="Snipe icon" draggable="false" />
               <p>Snipe</p>
             </a>
             <a href="/sales">
-              <img src="/Images/sales.png" alt="Sales icon" draggable="false" />
+              <img src="/Images/sales.webp" alt="Sales icon" draggable="false" />
               <p>Sales</p>
             </a>
             <ProfileDropdown />

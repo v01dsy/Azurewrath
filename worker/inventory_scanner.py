@@ -202,7 +202,7 @@ def fetch_user_info(roblox_user_id):
 def fetch_headshot(roblox_user_id):
     try:
         data = fetch_with_retry(
-            f'https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={roblox_user_id}&size=150x150&format=Png'
+            f'https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={roblox_user_id}&size=150x150&format=Webp'
         )
         if data and data.get('data'):
             return data['data'][0].get('imageUrl')

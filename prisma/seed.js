@@ -54,7 +54,7 @@ async function fetchRolimonsData() {
 async function fetchThumbnail(assetId) {
   try {
     const response = await axios.get(
-      `https://thumbnails.roblox.com/v1/assets?assetIds=${assetId}&size=420x420&format=Png&isCircular=false`,
+      `https://thumbnails.roblox.com/v1/assets?assetIds=${assetId}&size=420x420&format=Webp&isCircular=false`,
       { timeout: 5000 }
     );
     return response.data?.data?.[0]?.imageUrl || null;
@@ -108,7 +108,7 @@ async function main() {
 
         // Fetch thumbnail (can be slow but non-blocking)
         const imageUrl = await fetchThumbnail(assetId) 
-          || `https://www.roblox.com/asset-thumbnail/image?assetId=${assetId}&width=420&height=420&format=png`;
+          || `https://www.roblox.com/asset-thumbnail/image?assetId=${assetId}&width=420&height=420&format=Webp`;
 
         // Create item
         const item = await prisma.item.create({

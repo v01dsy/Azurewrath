@@ -23,7 +23,7 @@ export async function getLastOwnerByUAID(userAssetId: string): Promise<string | 
 
 export async function fetchRobloxHeadshotUrl(userId: string, size: string = '150x150'): Promise<string | null> {
   try {
-    const url = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=${size}&format=Png`;
+    const url = `https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${userId}&size=${size}&format=Webp`;
     const response = await axios.get(url);
     const data = response.data;
     
@@ -241,7 +241,7 @@ export async function fetchRobloxItemData(assetId: string): Promise<RobloxItemDa
     let imageUrl = '';
     try {
       const thumbRes = await axios.get(
-        `${ROBLOX_THUMBS}?assetIds=${assetId}&size=150x150&format=Png&isCircular=false`,
+        `${ROBLOX_THUMBS}?assetIds=${assetId}&size=150x150&format=Webp&isCircular=false`,
       );
       if (thumbRes.data.data && thumbRes.data.data.length > 0) {
         imageUrl = thumbRes.data.data[0].imageUrl;

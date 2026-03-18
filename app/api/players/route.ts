@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
     if (userIds.length > 0) {
       try {
         const avatarRes = await fetch(
-          `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userIds.join(',')}&size=420x420&format=Png&isCircular=false`
+          `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userIds.join(',')}&size=420x420&format=Webp&isCircular=false`
         );
         const avatarData = await avatarRes.json();
         avatarData.data?.forEach((a: any) => {

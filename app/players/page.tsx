@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image'
 
 interface Player {
   rank: number;
@@ -177,11 +178,11 @@ function PlayerCard({ p, onClick }: { p: Player; onClick: () => void }) {
         style={{ backgroundColor: color + '11', padding: '16px 12px' }}
       >
         {p.avatarUrl ? (
-          <img
+          <Image
             src={p.avatarUrl}
             alt={p.username}
-            className="h-full w-auto object-contain"
-            loading="lazy"
+            fill
+            className="object-contain"
             style={{
               maskImage: 'radial-gradient(ellipse at center, black 50%, transparent 72%)',
               WebkitMaskImage: 'radial-gradient(ellipse at center, black 50%, transparent 72%)',

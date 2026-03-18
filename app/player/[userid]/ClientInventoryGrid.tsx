@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import Script from 'next/script';
 import { useRouter } from 'next/navigation';
 import { getSerialTier, getGhostTier, getCardGlowClass } from '@/lib/specialSerial';
 import { SpecialSerialText } from '@/components/specialSerialText';
@@ -21,9 +22,14 @@ interface InventoryItemDisplay {
   uaidUpdatedAts?: (Date | null)[];
 }
 
+
+const ITEMS_PER_PAGE = 280;
+
 export default function ClientInventoryGrid({ items }: { items: InventoryItemDisplay[] }) {
   const router = useRouter();
+  const gridRef = useRef<HTMLDivElement>(null);
   const [sortBy, setSortBy] = useState('rap-high');
+  const [currentPage, setCurrentPage] = useState(1);
   const [showUAIDModal, setShowUAIDModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItemDisplay | null>(null);
   const [uaidSortBy, setUaidSortBy] = useState('index-reverse');
@@ -67,14 +73,14 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
     const days = Math.floor(hours / 24);
     const months = Math.floor(days / 30);
     const years = Math.floor(months / 12);
-    if (years > 0) return `${years}y ${months % 12}mo ago`;
+    if (years > 0) return `${years}y ${months % 12}mo ${days % 30}d ago`;
     if (months > 0) return `${months}mo ${days % 30}d ago`;
     if (days > 0) return `${days}d ${hours % 24}h ago`;
     if (hours > 0) return `${hours}h ${mins % 60}m ago`;
     return `${mins}m ago`;
   };
 
-  const sortedItems = [...items].sort((a: any, b: any) => {
+  const sortedItems = [...items].sort((a, b) => {
     switch (sortBy) {
       case 'rap-high': return b.rap - a.rap;
       case 'rap-low': return a.rap - b.rap;
@@ -88,6 +94,9 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
       default: return 0;
     }
   });
+
+  const totalPages = Math.ceil(sortedItems.length / ITEMS_PER_PAGE);
+  const pagedItems = sortedItems.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   const openModal = (item: InventoryItemDisplay, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -104,12 +113,15 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
 
   return (
     <>
-      <div className="bg-[#1e1e1e] rounded-xl border border-white/10 p-8 shadow-lg min-h-[400px] flex flex-col justify-center">
+      <div ref={gridRef} className="bg-[#1e1e1e] rounded-xl border border-white/10 p-8 shadow-lg flex flex-col" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-white">Inventory</h2>
+          <h2 className="text-2xl font-bold text-white">
+            Inventory
+            <span className="text-[#555] font-normal text-base ml-2">{items.length} items</span>
+          </h2>
           <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
+            onChange={(e) => { setSortBy(e.target.value); setCurrentPage(1); }}
             className="bg-[#1e1e1e] text-[#ccc] px-4 py-2 rounded-lg border border-white/10 focus:border-white/30 outline-none"
           >
             <option value="rap-high">RAP: High to Low</option>
@@ -122,7 +134,7 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4">
-          {sortedItems.map((item: any) => {
+          {pagedItems.map((item: any) => {
             const validSerials = item.serialNumbers?.filter((s: number | null) => s !== null).sort((a: number, b: number) => a - b) || [];
             const hasSerials = validSerials.length > 0;
             const showUAIDButton = item.count === 1 && item.userAssetIds && item.userAssetIds.length === 1;
@@ -146,32 +158,28 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                 <div className="aspect-square bg-white/5 rounded mb-2 overflow-hidden relative flex items-center justify-center">
                   <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
 
-                  {/* Manipulated — top-left */}
                   {item.manipulated && (
                     <div className="absolute top-1 left-1">
-                      <img src="/Images/manipulated1.png" alt="Manipulated"
+                      <img src="/Images/manipulated1.webp" alt="Manipulated"
                         title="This item's RAP may be manipulated"
                         className="w-6 h-6" />
                     </div>
                   )}
 
-                  {/* On Hold — bottom-right */}
                   {item.isOnHold === true && (
                     <div className="absolute bottom-1 right-1">
-                      <img src="/Images/hold.png" alt="On Hold"
+                      <img src="/Images/hold.webp" alt="On Hold"
                         title="This item is on hold and cannot be traded"
                         className="w-6 h-6" />
                     </div>
                   )}
 
-                  {/* Copy count — bottom-left */}
                   {item.count > 1 && (
                     <div className="absolute bottom-0 left-1 translate-y-0">
                       <span className="text-sm font-bold italic leading-none block" style={{ color: '#4fc3f7', marginBottom: '3px' }}>x{item.count}</span>
                     </div>
                   )}
 
-                  {/* Serial badge — top-right */}
                   {(hasSerials || isGhost) && (
                     <div className="absolute top-1 right-1 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded shadow-lg">
                       {isSpecial
@@ -209,34 +217,33 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
 
                 {/* ── Bottom section ── */}
                 <div className="mt-auto pt-2">
-                  {/* Only show Acquired At for single copies */}
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[#888] text-xs">Acquired</span>
-                      <div className="relative group">
-                        <span className="text-white font-medium text-xs whitespace-nowrap cursor-default">
-                          {item.uaidUpdatedAts?.[0] ? acquiredTimeSince(item.uaidUpdatedAts[0]) : 'Pending'}
-                        </span>
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-20 hidden group-hover:block pointer-events-none">
-                          <div className="bg-[#111] border border-white/10 rounded-lg px-3 py-1.5 text-xs shadow-xl whitespace-nowrap">
-                            {item.uaidUpdatedAts?.[0] ? (
-                              <>
-                                <p className="text-[#ccc] font-bold mb-1 text-center">
-                                  {acquiredTimeLong(item.uaidUpdatedAts[0])}
-                                </p>
-                                <p className="text-[#ccc] font-bold">
-                                  {new Date(item.uaidUpdatedAts[0]).toLocaleString(undefined, {
-                                    year: 'numeric', month: '2-digit', day: '2-digit',
-                                    hour: '2-digit', minute: '2-digit',
-                                  })}
-                                </p>
-                              </>
-                            ) : (
-                              <span className="text-[#666]">Unknown</span>
-                            )}
-                          </div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-[#888] text-xs">Acquired</span>
+                    <div className="relative group">
+                      <span className="text-white font-medium text-xs whitespace-nowrap cursor-default">
+                        {item.uaidUpdatedAts?.[0] ? acquiredTimeSince(item.uaidUpdatedAts[0]) : 'Pending'}
+                      </span>
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-20 hidden group-hover:block pointer-events-none">
+                        <div className="bg-[#111] border border-white/10 rounded-lg px-3 py-1.5 text-xs shadow-xl whitespace-nowrap">
+                          {item.uaidUpdatedAts?.[0] ? (
+                            <>
+                              <p className="text-[#ccc] font-bold mb-1 text-center">
+                                {acquiredTimeLong(item.uaidUpdatedAts[0])}
+                              </p>
+                              <p className="text-[#ccc] font-bold">
+                                {new Date(item.uaidUpdatedAts[0]).toLocaleString(undefined, {
+                                  year: 'numeric', month: '2-digit', day: '2-digit',
+                                  hour: '2-digit', minute: '2-digit',
+                                })}
+                              </p>
+                            </>
+                          ) : (
+                            <span className="text-[#666]">Unknown</span>
+                          )}
                         </div>
                       </div>
                     </div>
+                  </div>
                   {item.count > 1 && (
                     <button
                       onClick={(e) => openModal(item, e)}
@@ -259,6 +266,27 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
             );
           })}
         </div>
+
+        {/* ── Pagination ── */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-3 mt-8">
+            <button
+              onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); gridRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); }}
+              disabled={currentPage === 1}
+              className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm disabled:opacity-30 hover:bg-white/10 transition"
+            >
+              ← Prev
+            </button>
+            <span className="text-[#888] text-sm">{currentPage} / {totalPages}</span>
+            <button
+              onClick={() => { setCurrentPage(p => Math.min(totalPages, p + 1)); gridRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); }}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm disabled:opacity-30 hover:bg-white/10 transition"
+            >
+              Next →
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── UAID Modal ── */}
@@ -330,7 +358,6 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                         className={`py-2 rounded-lg text-center transition-colors truncate block
                           bg-white/5 hover:bg-white/10 border
                           ${isSpecialBtn ? getCardGlowClass(btnTier) : (serial ? 'border-orange-500/40' : 'border-white/10')}`}
-                        title=""
                         onClick={(e) => e.stopPropagation()}>
                         {serial != null
                           ? isSpecialBtn
@@ -341,26 +368,23 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                             : <span className="text-blue-400 text-xs font-bold">{uaid}</span>
                         }
                       </a>
-                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-20 hidden group-hover:block pointer-events-none">
-                          <div className="bg-[#111] border border-white/10 rounded-lg px-3 py-1.5 text-xs shadow-xl whitespace-nowrap">
-                            {uaidUpdatedAt ? (
-                              <>
-                                <p className="text-[#ccc] font-bold mb-1 text-center">{acquiredTimeLong(uaidUpdatedAt)}</p>
-                                <p className="text-[#ccc] font-bold">
-                                  {new Date(uaidUpdatedAt).toLocaleString(undefined, {
-                                    year: 'numeric', month: '2-digit', day: '2-digit',
-                                    hour: '2-digit', minute: '2-digit',
-                                  })}
-                                </p>
-                              </>
-                            ) : (
-                              <>
-                                <p className="text-[#ccc] font-bold mb-1 text-center">Pending</p>
-                                <p className="text-[#666]">Unknown</p>
-                              </>
-                            )}
-                          </div>
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-20 hidden group-hover:block pointer-events-none">
+                        <div className="bg-[#111] border border-white/10 rounded-lg px-3 py-1.5 text-xs shadow-xl whitespace-nowrap">
+                          {uaidUpdatedAt ? (
+                            <>
+                              <p className="text-[#ccc] font-bold mb-1 text-center">{acquiredTimeSince(uaidUpdatedAt)}</p>
+                              <p className="text-[#ccc] font-bold">
+                                {new Date(uaidUpdatedAt).toLocaleString(undefined, {
+                                  year: 'numeric', month: '2-digit', day: '2-digit',
+                                  hour: '2-digit', minute: '2-digit',
+                                })}
+                              </p>
+                            </>
+                          ) : (
+                            <span className="text-[#666]">Unknown</span>
+                          )}
                         </div>
+                      </div>
                     </div>
                   );
                 });

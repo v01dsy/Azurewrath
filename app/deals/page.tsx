@@ -371,7 +371,7 @@ export default function Deals() {
                       </h2>
                       {item.manipulated && (
                         <img
-                          src="/Images/manipulated1.png"
+                          src="/Images/manipulated1.webp"
                           alt="Manipulated"
                           title="This item's RAP may be manipulated"
                           className="w-6 h-6 flex-shrink-0 mt-0.5"
@@ -380,7 +380,7 @@ export default function Deals() {
                     </div>
                     <div className="flex flex-row items-start w-full gap-3">
                       <img
-                        src={item.imageUrl || `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=220&height=220&format=png`}
+                        src={item.imageUrl || `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=220&height=220&format=Webp`}
                         alt={item.name}
                         className="w-24 h-24 object-contain flex-shrink-0"
                         style={{ background: 'transparent', boxShadow: 'none', border: 'none' }}

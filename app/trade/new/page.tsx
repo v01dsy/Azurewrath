@@ -164,7 +164,7 @@ function InventoryCard({
         <SerialBadge serialNumbers={serialNumbers} isLimitedUnique={isLimitedUnique} />
         {/* Manipulated badge */}
         {manipulated && (
-          <img src="/Images/manipulated1.png" alt="Manipulated" title="This item's RAP may be manipulated" className="absolute top-1 left-1 w-5 h-5 z-10" />
+          <img src="/Images/manipulated1.webp" alt="Manipulated" title="This item's RAP may be manipulated" className="absolute top-1 left-1 w-5 h-5 z-10" />
         )}
       </div>
 

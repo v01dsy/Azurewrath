@@ -96,7 +96,7 @@ export default function SnapshotModal({ isOpen, onClose, snapshotId, snapshotDat
                     <div className="relative">
                       <img src={item.imageUrl} alt={item.name} className="w-full aspect-square rounded mb-2 object-cover" />
                       {item.manipulated && (
-                        <img src="/Images/manipulated1.png" alt="Manipulated"
+                        <img src="/Images/manipulated1.webp" alt="Manipulated"
                           title="This item's RAP may be manipulated"
                           className="absolute top-1 left-1 w-5 h-5" />
                       )}

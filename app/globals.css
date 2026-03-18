@@ -36,7 +36,7 @@ body {
       rgba(10, 10, 10, 1) 80%,
       rgba(10, 10, 10, 1) 100%
     ),
-    url('/Images/azurewrath-bg.png');
+    url('/Images/azurewrath-bg.webp');
   background-attachment: fixed;
   background-size: cover;
   background-position: center top;

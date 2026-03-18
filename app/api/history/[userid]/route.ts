@@ -23,7 +23,7 @@ export async function GET(
     let avatarUrl: string | null = null;
     try {
       const avatarResponse = await fetch(
-        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${user.robloxUserId}&size=420x420&format=Png&isCircular=false`
+        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${user.robloxUserId}&size=420x420&format=Webp&isCircular=false`
       );
       if (avatarResponse.ok) {
         const avatarData = await avatarResponse.json();

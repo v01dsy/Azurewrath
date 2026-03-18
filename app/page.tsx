@@ -28,12 +28,12 @@ export default function Home() {
   }, []);
 
   const cards = [
-    { img: "/Images/search.png",    title: "Item Search",        desc: "Look up any Roblox limited - RAP history, price trends, and resale data.",              accent: "#419de7", href: "/search"    },
-    { img: "/Images/deals.png",     title: "Live Deals",         desc: "Spot underpriced items the moment they hit the market before anyone else.",              accent: "#e4b74f", href: "/deals"     },
-    { img: "/Images/sales.png",     title: "Recent Sales",       desc: "Watch limited sales happen in real time and track RAP changes as they occur.",           accent: "#e5ff00", href: "/sales"     },
-    { img: "/Images/snipe.png",     title: "Item Sniper",        desc: "Automatically fire the Roblox item page the moment a deal matching your filters drops.", accent: "#bf6fe7", href: "/snipe"     },
-    { img: "/Images/players.png",   title: "Leaderboard",        desc: "See who holds the most valuable inventories. Rankings updated in real time.",            accent: "#4edd4e", href: "/players"   },
-    { img: "/Images/watchlist.png", title: "Watchlist",          desc: "Track your favorite items and get alerted via Discord or browser when prices change.",   accent: "#bbc8ff", href: "/watchlist" },
+    { img: "/Images/search.webp",    title: "Item Search",        desc: "Look up any Roblox limited - RAP history, price trends, and resale data.",              accent: "#419de7", href: "/search"    },
+    { img: "/Images/deals.webp",     title: "Live Deals",         desc: "Spot underpriced items the moment they hit the market before anyone else.",              accent: "#e4b74f", href: "/deals"     },
+    { img: "/Images/sales.webp",     title: "Recent Sales",       desc: "Watch limited sales happen in real time and track RAP changes as they occur.",           accent: "#e5ff00", href: "/sales"     },
+    { img: "/Images/snipe.webp",     title: "Item Sniper",        desc: "Automatically fire the Roblox item page the moment a deal matching your filters drops.", accent: "#bf6fe7", href: "/snipe"     },
+    { img: "/Images/players.webp",   title: "Leaderboard",        desc: "See who holds the most valuable inventories. Rankings updated in real time.",            accent: "#4edd4e", href: "/players"   },
+    { img: "/Images/watchlist.webp", title: "Watchlist",          desc: "Track your favorite items and get alerted via Discord or browser when prices change.",   accent: "#bbc8ff", href: "/watchlist" },
   ];
 
   const steps = [

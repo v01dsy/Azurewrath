@@ -5,6 +5,7 @@ import { LocalTime } from "@/components/LocalTime";
 import { getSerialTier, getGhostTier, getCardGlowClass } from '@/lib/specialSerial';
 import { SpecialSerialText } from '@/components/specialSerialText';
 import { timeSince } from '@/lib/timeSince';
+import Image from 'next/image';
 
 interface UAIDPageProps {
   params: Promise<{ uaid: string }>;
@@ -133,7 +134,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
   if (avatarUserId) {
     try {
       const avatarResponse = await fetch(
-        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${avatarUserId}&size=420x420&format=Png&isCircular=false`,
+        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${avatarUserId}&size=420x420&format=Webp&isCircular=false`,
         { cache: "no-store" }
       );
       const avatarData = await avatarResponse.json();
@@ -141,19 +142,26 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
     } catch {}
   }
 
+  const avatarMap = new Map<string, string>();
+
+  // Reuse already-fetched owner avatar so we don't request it twice
+  if (currentOwnerAvatar && avatarUserId) {
+    avatarMap.set(avatarUserId, currentOwnerAvatar);
+  }
+
   const historyUserIds = [
     ...new Set(
       dedupedHistory
         .map((i) => i.snapshot?.user?.robloxUserId?.toString())
         .filter(Boolean)
+        .filter((id) => !avatarMap.has(id))
     ),
   ];
-  const avatarMap = new Map<string, string>();
 
   if (historyUserIds.length > 0) {
     try {
       const avatarResponse = await fetch(
-        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${historyUserIds.join(",")}&size=150x150&format=Png&isCircular=false`,
+        `https://thumbnails.roblox.com/v1/users/avatar?userIds=${historyUserIds.join(",")}&size=150x150&format=Webp&isCircular=false`,
         { cache: "no-store" }
       );
       const avatarData = await avatarResponse.json();
@@ -174,10 +182,11 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
           <div className="flex items-start gap-6">
             <div className="relative w-48 h-48 bg-white/5 rounded-lg overflow-hidden flex-shrink-0">
               {itemData?.imageUrl ? (
-                <img
+                <Image
                   src={itemData.imageUrl}
                   alt={itemData.name || "Item"}
-                  className="w-full h-full object-cover"
+                  fill
+                  className="object-cover"
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
@@ -187,12 +196,13 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                 </div>
               )}
               {itemData?.manipulated && (
-                <div className="absolute top-1.5 left-1.5">
-                  <img
-                    src="/Images/manipulated1.png"
+                <div className="absolute top-1.5 left-1.5 z-10">
+                  <Image
+                    src="/Images/manipulated1.webp"
                     alt="Manipulated"
                     title="This item's RAP may be manipulated"
-                    className="w-7 h-7"
+                    width={28}
+                    height={28}
                   />
                 </div>
               )}
@@ -358,11 +368,12 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
             </div>
 
             {currentOwnerAvatar && (
-              <div className="w-40 h-40 bg-white/5 rounded-lg overflow-hidden flex items-center justify-center">
-                <img
+              <div className="relative w-40 h-40 bg-white/5 rounded-lg overflow-hidden flex-shrink-0">
+                <Image
                   src={currentOwnerAvatar}
                   alt={`${currentOwner ?? lastKnownOwnerUsername}'s avatar`}
-                  className="w-full h-full object-cover"
+                  fill
+                  className="object-cover"
                 />
               </div>
             )}
@@ -373,7 +384,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
         <div className="bg-[#111] rounded-xl border border-white/10 overflow-hidden">
           <div className="px-6 py-5 border-b border-white/10">
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <img src="/Images/hold.png" alt="" className="w-5 h-5" style={{ filter: 'invert(58%) sepia(60%) saturate(500%) hue-rotate(230deg) brightness(110%)' }} />
+              <img src="/Images/hold.webp" alt="" className="w-5 h-5" style={{ filter: 'invert(58%) sepia(60%) saturate(500%) hue-rotate(230deg) brightness(110%)' }} />
               Ownership History
             </h2>
             <p className="text-slate-400 text-sm mt-1">All tracked owners — most recent first</p>
@@ -395,7 +406,6 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                     const avatarUrl = userId ? avatarMap.get(userId) : null;
                     const isCurrentTracked = i === 0 && ownerStillHasIt;
 
-                    // Hide current owner from history table while still verifying
                     if (isCurrentTracked && awaitingScan) return null;
 
                     return (
@@ -403,11 +413,12 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             {avatarUrl ? (
-                              <div className="w-12 h-12 bg-white/5 rounded-lg overflow-hidden flex-shrink-0">
-                                <img
+                              <div className="relative w-12 h-12 bg-white/5 rounded-lg overflow-hidden flex-shrink-0">
+                                <Image
                                   src={avatarUrl}
                                   alt={`${username}'s avatar`}
-                                  className="w-full h-full object-cover"
+                                  fill
+                                  className="object-cover"
                                 />
                               </div>
                             ) : (

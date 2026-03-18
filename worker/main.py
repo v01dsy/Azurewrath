@@ -419,7 +419,7 @@ def send_push_notifications(cursor, notification_rows):
         payload = json.dumps({
             'title': 'Azurewrath',
             'body': body,
-            'icon': '/Images/icon.png',
+            'icon': '/Images/icon.webp',
             'url': f"/item/{info['item_id']}" if count == 1 else '/notifications',
         })
 

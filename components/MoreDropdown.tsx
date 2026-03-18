@@ -10,14 +10,14 @@ import { hasRole } from '@/lib/roles';
 const staticItems = [
   {
     href: '/news',
-    icon: '/Images/news.png',
+    icon: '/Images/news.webp',
     label: 'News',
     description: 'Latest updates',
     external: false,
   },
   {
     href: 'https://chromewebstore.google.com/detail/azuresniper/mpbklfiemgpdbcghjpbepnkbjbbickdm',
-    icon: '/Images/azuresniper.png',
+    icon: '/Images/azuresniper.webp',
     label: 'Azuresniper',
     description: 'Snipe tool',
     external: true,
@@ -85,7 +85,7 @@ export default function MoreDropdown() {
       <div className="flex flex-col items-center gap-[3px] cursor-pointer transition-transform duration-200 hover:-translate-y-0.5 relative">
         <div className="relative">
           <img
-            src="/Images/more.png"
+            src="/Images/more.webp"
             alt="More"
             draggable="false"
             style={{ height: 40, width: 'auto', objectFit: 'contain', userSelect: 'none' } as React.CSSProperties}
@@ -188,7 +188,7 @@ export default function MoreDropdown() {
               >
                 <div className="relative flex-shrink-0 w-7 h-7 flex items-center justify-center">
                   <img
-                    src="/Images/admin.png"
+                    src="/Images/admin.webp"
                     alt="Admin"
                     draggable="false"
                     style={{ width: 28, height: 28, objectFit: 'contain' }}

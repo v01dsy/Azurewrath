@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       assetId: String(user.robloxUserId),
       name: user.username,
       displayName: user.displayName || user.username,
-      imageUrl: user.avatarUrl || `https://www.roblox.com/headshot-thumbnail/image?userId=${user.robloxUserId}&width=150&height=150&format=png`,
+      imageUrl: user.avatarUrl || `https://www.roblox.com/headshot-thumbnail/image?userId=${user.robloxUserId}&width=150&height=150&format=Webp`,
     }));
 
     console.log(`Player search query: "${query}", found: ${players.length} players`);

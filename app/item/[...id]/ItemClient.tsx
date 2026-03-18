@@ -351,7 +351,7 @@ export default function ItemClient({ item: initialItem }: Props) {
   const formatXTick = (ts: number) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const formatTooltipLabel = (ts: number) => new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 
-  const displayImageUrl = item?.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${item?.assetId}&width=420&height=420&format=png`;
+  const displayImageUrl = item?.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${item?.assetId}&width=420&height=420&format=Webp`;
 
   // ── Render ─────────────────────────────────────────────────────────────
 
@@ -376,11 +376,11 @@ export default function ItemClient({ item: initialItem }: Props) {
                 <h1 className="text-2xl font-bold text-white leading-tight">{item.name}</h1>
                 {canToggleManipulated ? (
                   <button onClick={handleManipulatedToggle} disabled={manipulatedLoading} title={item.manipulated ? 'Unmark as manipulated' : 'Mark as manipulated'} className="hover:opacity-80 transition disabled:opacity-40">
-                    <img src="/Images/manipulated1.png" alt="manipulated" className={`w-5 h-5 ${item.manipulated ? 'opacity-100' : 'opacity-20'}`} />
+                    <img src="/Images/manipulated1.webp" alt="manipulated" className={`w-5 h-5 ${item.manipulated ? 'opacity-100' : 'opacity-20'}`} />
                   </button>
                 ) : item.manipulated ? (
                   <span className="flex items-center gap-1 text-red-400 text-xs font-bold">
-                    <img src="/Images/manipulated1.png" alt="" className="w-4 h-4" /> Manipulated
+                    <img src="/Images/manipulated1.webp" alt="" className="w-4 h-4" /> Manipulated
                   </span>
                 ) : null}
               </div>
@@ -416,7 +416,7 @@ export default function ItemClient({ item: initialItem }: Props) {
                 <button onClick={handleWatchlistToggle} disabled={watchlistLoading} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition disabled:opacity-50 ${isWatchlisted ? 'bg-purple-600/30 border-purple-500/40 text-purple-300 hover:bg-red-500/20 hover:border-red-500/40 hover:text-red-300' : 'bg-blue-600/10 border-blue-500/20 text-blue-300 hover:bg-blue-600/20 hover:border-blue-400/40'}`}>
                   {watchlistLoading
                     ? <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                    : <img src="/Images/watchlist.png" alt="" className={`w-3.5 h-3.5 ${isWatchlisted ? '' : 'opacity-60'}`} />}
+                    : <img src="/Images/watchlist.webp" alt="" className={`w-3.5 h-3.5 ${isWatchlisted ? '' : 'opacity-60'}`} />}
                   {isWatchlisted ? 'Watchlisted' : 'Add to Watchlist'}
                 </button>
                 <a href={`https://www.roblox.com/catalog/${item.assetId}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 transition">

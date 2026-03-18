@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import HistoryGraph from './HistoryGraph';
 import { getSerialTier, getGhostTier, getCardGlowClass } from '@/lib/specialSerial';
 import { SpecialSerialText } from '@/components/specialSerialText';
+import Image from 'next/image';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -154,9 +155,9 @@ function SnapshotItemCard({ item, onOwnedCopiesClick }: { item: SnapshotItem; on
       onClick={() => router.push(`/item/${item.assetId}`)}
     >
       <div className="aspect-square bg-white/5 rounded mb-2 overflow-hidden relative flex items-center justify-center">
-        <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+        <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
         {item.manipulated && (
-          <img src="/Images/manipulated1.png" alt="Manipulated" title="This item's RAP may be manipulated" className="w-6 h-6 absolute top-1 left-1" />
+          <Image src="/Images/manipulated1.webp" alt="Manipulated" title="This item's RAP may be manipulated" width={24} height={24} className="absolute top-1 left-1" />
         )}
         {item.count > 1 && (
           <div className="absolute top-1 right-1 bg-black/70 backdrop-blur-sm px-1.5 py-0.5 rounded">
@@ -210,7 +211,7 @@ function SnapshotItemCard({ item, onOwnedCopiesClick }: { item: SnapshotItem; on
           <div className="flex items-center gap-1 mb-1">
             <p className={`text-[10px] uppercase tracking-widest font-bold ${isUp ? 'text-[#5dd678]' : isDown ? 'text-[#d85a5a]' : 'text-[#aaa]'}`}>Change</p>
             {Math.abs(diff) > 0.01 && (
-              <img src={isUp ? '/Images/gain.png' : '/Images/loss.png'} alt={isUp ? 'gain' : 'loss'} className="w-3 h-3 flex-shrink-0" />
+              <img src={isUp ? '/Images/gain.webp' : '/Images/loss.webp'} alt={isUp ? 'gain' : 'loss'} className="w-3 h-3 flex-shrink-0" />
             )}
           </div>
           {Math.abs(diff) > 0.01 ? (
@@ -345,7 +346,7 @@ export default function HistoryPage({ params }: { params: Promise<{ userid: stri
               {user.role && user.role !== 'user' && (
                 <div className="absolute top-4 left-4 group z-10">
                   <img
-                    src={`/Images/${user.role}.png`}
+                    src={`/Images/${user.role}.webp`}
                     alt={user.role}
                     className="w-7 h-7 object-contain opacity-90 hover:opacity-100 transition"
                   />
@@ -368,7 +369,9 @@ export default function HistoryPage({ params }: { params: Promise<{ userid: stri
               )}
 
               {user.avatarUrl ? (
-                <img src={user.avatarUrl} alt={user.displayName || user.username} className="w-full h-auto rounded-lg mb-5" />
+                <div className="relative w-full aspect-square rounded-lg overflow-hidden mb-5">
+                  <Image src={user.avatarUrl} alt={user.displayName || user.username} fill className="object-cover" />
+                </div>
               ) : (
                 <div className="w-full aspect-square bg-white/5 rounded-lg flex items-center justify-center mb-5">
                   <span className="text-[#888]">No avatar</span>

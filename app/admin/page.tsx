@@ -45,7 +45,7 @@ export default function AdminPage() {
             className="group rounded-2xl border border-red-500/20 bg-red-950/10 hover:bg-red-950/25 hover:border-red-500/40 p-6 transition space-y-3"
           >
             <div className="flex items-center justify-between">
-              <img src="/Images/flag.png" alt="" style={{ width: 24, height: 24, objectFit: 'contain' }} />
+              <img src="/Images/flag.webp" alt="" style={{ width: 24, height: 24, objectFit: 'contain' }} />
               {pendingFlags != null && pendingFlags > 0 && (
                 <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
                   {pendingFlags} pending

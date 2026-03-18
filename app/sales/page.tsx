@@ -242,11 +242,13 @@ export default function SalesPage() {
                           {sale.itemName}
                         </h3>
                         {sale.manipulated && (
-                          <img
-                            src="/Images/manipulated1.png"
+                          <Image
+                            src="/Images/manipulated1.webp"
                             alt="Manipulated"
                             title="This item's RAP may be manipulated"
-                            className="w-5 h-5 flex-shrink-0"
+                            width={20}
+                            height={20}
+                            className="flex-shrink-0"
                           />
                         )}
                       </div>

@@ -269,7 +269,7 @@ export default function SnipePage() {
               title={hideManipulated ? 'Manipulated items are hidden' : 'Manipulated items are shown'}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition ring-1 ${hideManipulated ? 'bg-red-950/60 ring-red-500/40 text-red-300' : 'bg-zinc-900 ring-zinc-700 text-zinc-400 hover:ring-zinc-500'}`}
             >
-              <img src="/Images/manipulated1.png" alt="" className="w-4 h-4" />
+              <img src="/Images/manipulated1.webp" alt="" className="w-4 h-4" />
               {hideManipulated ? 'Hiding manipulated' : 'Showing manipulated'}
             </button>
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 ring-1 ${statusConfig.ring}`}>
@@ -372,7 +372,7 @@ export default function SnipePage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="font-medium text-zinc-100 truncate group-hover:text-white">{d.name}</p>
-                      {d.manipulated && <img src="/Images/manipulated1.png" alt="Manipulated" title="RAP may be manipulated" className="w-4 h-4 flex-shrink-0" />}
+                      {d.manipulated && <img src="/Images/manipulated1.webp" alt="Manipulated" title="RAP may be manipulated" className="w-4 h-4 flex-shrink-0" />}
                     </div>
                     <p className="text-xs text-zinc-500">{ago(d.firedAt)}</p>
                   </div>

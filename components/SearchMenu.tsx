@@ -162,13 +162,13 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
                     {/* Thumbnail with manipulated overlay */}
                     <div className="relative flex-shrink-0">
                       <img
-                        src={item.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=100&height=100&format=png`}
+                        src={item.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=100&height=100&format=Webp`}
                         alt={item.name}
                         className="w-10 h-10 rounded object-cover"
                       />
                       {item.manipulated && (
                         <img
-                          src="/Images/manipulated1.png"
+                          src="/Images/manipulated1.webp"
                           alt="Manipulated"
                           title="This item's RAP may be manipulated"
                           className="absolute -top-1 -left-1 w-4 h-4"

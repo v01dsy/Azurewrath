@@ -60,7 +60,7 @@ async function fetchPlayerData(userid: string) {
   ] = await Promise.all([
     canViewInventory(robloxUserIdString).then(v => !v),
     fetch(
-      `https://thumbnails.roblox.com/v1/users/avatar?userIds=${robloxUserIdString}&size=420x420&format=Png&isCircular=false`,
+      `https://thumbnails.roblox.com/v1/users/avatar?userIds=${robloxUserIdString}&size=420x420&format=Webp&isCircular=false`,
       { next: { revalidate: 300 } }
     ).then(r => r.ok ? r.json() : null).catch(() => null),
     prisma.$queryRaw<Array<{
@@ -228,7 +228,7 @@ export default async function PlayerPage({ params }: PageProps) {
               {/* Role badge */}
               {user.role && user.role !== 'user' && (
                 <div className="absolute top-4 left-4 group z-10">
-                  <img src={`/Images/${user.role}.png`} alt={user.role ?? ''} className="w-7 h-7 object-contain opacity-90 hover:opacity-100 transition" />
+                  <img src={`/Images/${user.role}.webp`} alt={user.role ?? ''} className="w-7 h-7 object-contain opacity-90 hover:opacity-100 transition" />
                   {(() => {
                     const s = roleStyles[user.role ?? ''] ?? roleStyles.owner;
                     const label = user.role === 'mod' ? 'Moderator' : user.role === 'admin' ? 'Admin' : user.role === 'owner' ? 'Owner' : user.role;

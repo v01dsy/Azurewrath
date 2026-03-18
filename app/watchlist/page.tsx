@@ -133,7 +133,7 @@ export default function WatchlistPage() {
 
         <div className="space-y-3">
           {items.map((item) => {
-            const imgSrc = item.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=150&height=150&format=png`;
+            const imgSrc = item.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${item.assetId}&width=150&height=150&format=Webp`;
             const isRemoving = removing.has(item.assetId);
             return (
               <div
@@ -148,10 +148,10 @@ export default function WatchlistPage() {
                     src={imgSrc}
                     alt={item.name}
                     className="w-full h-full object-cover"
-                    onError={(e) => { (e.target as HTMLImageElement).src = '/Images/icon.png'; }}
+                    onError={(e) => { (e.target as HTMLImageElement).src = '/Images/icon.webp'; }}
                   />
                   {item.manipulated && (
-                    <img src="/Images/manipulated1.png" alt="Manipulated" title="This item's RAP may be manipulated" className="absolute top-0.5 left-0.5 w-5 h-5" />
+                    <img src="/Images/manipulated1.webp" alt="Manipulated" title="This item's RAP may be manipulated" className="absolute top-0.5 left-0.5 w-5 h-5" />
                   )}
                 </div>
 

@@ -3,6 +3,14 @@
 import { useEffect, useState } from 'react';
 import { SPECIAL_SERIAL_CSS, type SerialTier } from '@/lib/specialSerial';
 
+// ── Sync helper ────────────────────────────────────────────────────────────
+// Returns a negative animationDelay that places the element at the correct
+// point in the global clock, so every badge — no matter when it mounts —
+// breathes in perfect unison with every other badge of the same duration.
+function syncDelay(durationMs: number): string {
+  return `-${(Date.now() % durationMs) / 1000}s`;
+}
+
 const LEET_MAP: Record<string, string[]> = {
   '1': ['1', '|', '!', 'i'],
   '3': ['3', 'E', '€', '£'],
@@ -14,13 +22,11 @@ function GlitchChar({ char }: { char: string }) {
   const variants = LEET_MAP[char] ?? null;
 
   useEffect(() => {
-    // If this character has no map variants, don't animate it
     if (!variants) return;
 
     const delay = Math.random() * 3000;
     const timeout = setTimeout(() => {
       const interval = setInterval(() => {
-        // Only cycle through this character's own leet variants, then snap back
         const frames = [
           variants[Math.floor(Math.random() * variants.length)],
           variants[Math.floor(Math.random() * variants.length)],
@@ -41,27 +47,6 @@ function GlitchChar({ char }: { char: string }) {
   return <span>{display}</span>;
 }
 
-function LeetSerial({ serial }: { serial: number }) {
-  const chars = `#${serial}`.split('');
-  return (
-    <span
-      style={{
-        color: '#4ade80',
-        fontFamily: '"Courier New", Courier, monospace',
-        fontWeight: 900,
-        textShadow: '0 0 8px #16a34a, 0 0 16px #15803d',
-        animation: 'leetFlicker 4s infinite',
-        letterSpacing: '0.05em',
-      }}
-      title="Special: lol hax for dayz"
-    >
-      {chars.map((c, i) =>
-        LEET_MAP[c] ? <GlitchChar key={i} char={c} /> : <span key={i}>{c}</span>
-      )}
-    </span>
-  );
-}
-
 function CrownSerial({ serial }: { serial: number }) {
   return (
     <span
@@ -72,6 +57,7 @@ function CrownSerial({ serial }: { serial: number }) {
         WebkitTextFillColor: 'transparent',
         backgroundClip: 'text',
         animation: 'crownShimmer 2s linear infinite',
+        animationDelay: syncDelay(2000),
         fontWeight: 900,
         filter: 'drop-shadow(0 0 4px rgba(250,204,21,0.5))',
       }}
@@ -88,6 +74,7 @@ function EliteSerial({ serial }: { serial: number }) {
         color: '#c4b5fd',
         fontWeight: 900,
         animation: 'eliteGlow 2s ease-in-out infinite',
+        animationDelay: syncDelay(2000),
       }}
     >
       #{serial}
@@ -105,6 +92,7 @@ function SpecialSerial({ serial }: { serial: number }) {
         WebkitTextFillColor: 'transparent',
         backgroundClip: 'text',
         animation: 'specialSweep 2.5s linear infinite',
+        animationDelay: syncDelay(2500),
         fontWeight: 900,
         filter: 'drop-shadow(0 0 3px rgba(103,232,249,0.6))',
       }}
@@ -114,45 +102,40 @@ function SpecialSerial({ serial }: { serial: number }) {
   );
 }
 
-/**
- * GhostSerial — LimitedU item with no serial (null).
- * Displays "#???" with a haunting fade/drift animation.
- */
 function GhostSerial() {
   const chars = '#???'.split('');
   return (
-      <span
-    style={{
-      fontFamily: 'Papyrus, fantasy',
-      fontWeight: 900,
-      letterSpacing: '0.15em',
-      display: 'inline-block',  // 👈 was inline-flex
-      animation: 'ghostFlicker 4s ease-in-out infinite',
-      filter: 'drop-shadow(0 0 3px #3d3a47)',
-      fontSize: '1.2em',
-    }}
-  >
-    {chars.map((c, i) => (
-      <span
-        key={i}
-        style={{
-          color: '#6b6875',
-          display: 'inline-block',  // this is what makes translateY work on inline elements
-          animation: 'ghostWave 2.5s ease-in-out infinite, ghostFade 3s ease-in-out infinite',
-          animationDelay: `${i * 0.2}s, ${i * 0.15}s`,
-        }}
-      >
-        {c}
-      </span>
-    ))}
-  </span>
+    <span
+      style={{
+        fontFamily: 'Papyrus, fantasy',
+        fontWeight: 900,
+        letterSpacing: '0.15em',
+        display: 'inline-block',
+        animation: 'ghostFlicker 4s ease-in-out infinite',
+        animationDelay: syncDelay(4000),
+        filter: 'drop-shadow(0 0 3px #3d3a47)',
+        fontSize: '1.2em',
+      }}
+    >
+      {chars.map((c, i) => (
+        <span
+          key={i}
+          style={{
+            color: '#6b6875',
+            display: 'inline-block',
+            // Per-character wave offsets are intentional (the wave effect),
+            // but they're anchored to the global ghost clock via a base sync delay.
+            animation: 'ghostWave 2.5s ease-in-out infinite, ghostFade 3s ease-in-out infinite',
+            animationDelay: `calc(${syncDelay(2500)} + ${i * 0.2}s), calc(${syncDelay(3000)} + ${i * 0.15}s)`,
+          }}
+        >
+          {c}
+        </span>
+      ))}
+    </span>
   );
 }
 
-/**
- * RobloxSerial — serial is 0, meaning Roblox Corp owns this copy.
- * Displays "#0" with a red Roblox-branded glow.
- */
 function RobloxSerial() {
   return (
     <span
@@ -160,11 +143,34 @@ function RobloxSerial() {
         color: '#f87171',
         fontWeight: 900,
         animation: 'robloxPulse 2.5s ease-in-out infinite',
+        animationDelay: syncDelay(2500),
         letterSpacing: '0.05em',
       }}
       title="Owned by Roblox"
     >
       #0
+    </span>
+  );
+}
+
+function LeetSerial({ serial }: { serial: number }) {
+  const chars = `#${serial}`.split('');
+  return (
+    <span
+      style={{
+        color: '#4ade80',
+        fontFamily: '"Courier New", Courier, monospace',
+        fontWeight: 900,
+        textShadow: '0 0 8px #16a34a, 0 0 16px #15803d',
+        animation: 'leetFlicker 4s infinite',
+        animationDelay: syncDelay(4000),
+        letterSpacing: '0.05em',
+      }}
+      title="Special: lol hax for dayz"
+    >
+      {chars.map((c, i) =>
+        LEET_MAP[c] ? <GlitchChar key={i} char={c} /> : <span key={i}>{c}</span>
+      )}
     </span>
   );
 }
@@ -191,7 +197,7 @@ export function SpecialSerialText({ serial, tier, variant = 'badge' }: SpecialSe
         {tier === 'special' && serial != null && <SpecialSerial serial={serial} />}
         {tier === 'leet'    && serial != null && <LeetSerial    serial={serial} />}
         {tier === 'ghost'   && serial == null && <GhostSerial />}
-        {tier === 'roblox'  && serial === 0 && <RobloxSerial />}
+        {tier === 'roblox'  && serial === 0   && <RobloxSerial />}
       </span>
     </>
   );

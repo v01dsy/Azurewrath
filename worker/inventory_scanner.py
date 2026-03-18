@@ -405,51 +405,54 @@ def fetch_uaid_timestamps(conn, asset_id, user_asset_id):
     logger.info(f"[UAID search] Not found after fallback — giving up")
     return None, None
 
+# ─── Phase 2 concurrency limiter ──────────────────────────────────────────
+PHASE2_SEMAPHORE = threading.Semaphore(4)
 
-# ─── Phase 2: backfill UAID timestamps ────────────────────────────────────
 
 def backfill_timestamps(conn, snapshot_id, uaids_to_backfill):
     """
     For each new UAID, find its created/updated timestamps from the owners API
     and update the InventoryItem row.
+    Max 4 concurrent Phase 2 threads via semaphore.
     """
-    logger.info(f"🕐 [Phase 2] Backfilling timestamps for {len(uaids_to_backfill)} UAIDs...")
+    with PHASE2_SEMAPHORE:
+        logger.info(f"🕐 [Phase 2] Backfilling timestamps for {len(uaids_to_backfill)} UAIDs...")
 
-    for uaid_info in uaids_to_backfill:
-        user_asset_id = uaid_info['user_asset_id']
-        asset_id = uaid_info['asset_id']
+        for uaid_info in uaids_to_backfill:
+            user_asset_id = uaid_info['user_asset_id']
+            asset_id = uaid_info['asset_id']
 
-        try:
-            created, updated = fetch_uaid_timestamps(conn, asset_id, user_asset_id)
+            try:
+                created, updated = fetch_uaid_timestamps(conn, asset_id, user_asset_id)
 
-            if not created and not updated:
-                logger.info(f"[Phase 2 UAID {user_asset_id}] No timestamps found")
-                time.sleep(5)
-                continue
+                if not created and not updated:
+                    logger.info(f"[Phase 2 UAID {user_asset_id}] No timestamps found")
+                    time.sleep(30)
+                    continue
 
-            with conn.cursor() as cur:
-                cur.execute("""
-                    UPDATE "InventoryItem"
-                    SET
-                        "uaidCreatedAt" = COALESCE("uaidCreatedAt", %s),
-                        "uaidUpdatedAt" = %s
-                    WHERE "snapshotId" = %s AND "userAssetId" = %s
-                """, (
-                    datetime.fromisoformat(created.replace('Z', '+00:00')) if created else None,
-                    datetime.fromisoformat(updated.replace('Z', '+00:00')) if updated else None,
-                    snapshot_id,
-                    user_asset_id
-                ))
-            conn.commit()
-            logger.info(f"[Phase 2 UAID {user_asset_id}] ✅ created={created} updated={updated}")
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE "InventoryItem"
+                        SET
+                            "uaidCreatedAt" = COALESCE("uaidCreatedAt", %s),
+                            "uaidUpdatedAt" = %s
+                        WHERE "snapshotId" = %s AND "userAssetId" = %s
+                    """, (
+                        datetime.fromisoformat(created.replace('Z', '+00:00')) if created else None,
+                        datetime.fromisoformat(updated.replace('Z', '+00:00')) if updated else None,
+                        snapshot_id,
+                        user_asset_id
+                    ))
+                conn.commit()
+                logger.info(f"[Phase 2 UAID {user_asset_id}] ✅ created={created} updated={updated}")
 
-        except Exception as e:
-            conn.rollback()
-            logger.warning(f"[Phase 2 UAID {user_asset_id}] Failed: {e}")
+            except Exception as e:
+                conn.rollback()
+                logger.warning(f"[Phase 2 UAID {user_asset_id}] Failed: {e}")
 
-        time.sleep(5)
+            time.sleep(30)
 
-    logger.info("✅ [Phase 2] Timestamp backfill complete")
+        logger.info("✅ [Phase 2] Timestamp backfill complete")
 
 
 # ─── Save inventory snapshot ───────────────────────────────────────────────

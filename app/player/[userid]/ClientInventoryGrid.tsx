@@ -5,6 +5,8 @@ import Script from 'next/script';
 import { useRouter } from 'next/navigation';
 import { getSerialTier, getGhostTier, getCardGlowClass } from '@/lib/specialSerial';
 import { SpecialSerialText } from '@/components/specialSerialText';
+import Image from 'next/image';
+
 
 interface InventoryItemDisplay {
   assetId: string;
@@ -156,21 +158,24 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
               >
                 {/* ── Image ── */}
                 <div className="aspect-square bg-white/5 rounded mb-2 overflow-hidden relative flex items-center justify-center">
-                  <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                  <Image
+                    src={item.imageUrl || '/fallback.png'}
+                    alt={item.name}
+                    fill
+                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 15vw"
+                    className="object-cover"
+                    loading="lazy"
+                  />
 
                   {item.manipulated && (
                     <div className="absolute top-1 left-1">
-                      <img src="/Images/manipulated1.webp" alt="Manipulated"
-                        title="This item's RAP may be manipulated"
-                        className="w-6 h-6" />
+                      <Image src="/Images/manipulated1.png" alt="Manipulated" title="This item's RAP may be manipulated" width={24} height={24} />
                     </div>
                   )}
 
                   {item.isOnHold === true && (
                     <div className="absolute bottom-1 right-1">
-                      <img src="/Images/hold.webp" alt="On Hold"
-                        title="This item is on hold and cannot be traded"
-                        className="w-6 h-6" />
+                      <Image src="/Images/hold.png" alt="On Hold" title="This item is on hold and cannot be traded" width={24} height={24} />
                     </div>
                   )}
 

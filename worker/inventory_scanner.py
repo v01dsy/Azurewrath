@@ -912,7 +912,19 @@ def run_owners_scan(conn, job):
             update_job(conn, job_id, processed=processed + skipped, failed=failed)
             time.sleep(USER_PROCESS_DELAY)
 
-        cursor = data.get('nextPageCursor')
+        next_cursor = data.get('nextPageCursor')
+
+        # Save cursor checkpoint for future UAID searches on this asset
+        if next_cursor and entries:
+            try:
+                last_uaid = entries[-1].get('id')
+                if last_uaid:
+                    save_cursor(conn, asset_id, next_cursor, int(last_uaid), page_num)
+                    logger.info(f"💾 Saved cursor for page {page_num}, lastUaid={last_uaid}")
+            except Exception as e:
+                logger.warning(f"Could not save cursor cache for page {page_num}: {e}")
+
+        cursor = next_cursor
         if not cursor:
             break
 
@@ -924,7 +936,6 @@ def run_owners_scan(conn, job):
 
     logger.info(f"\n{'🛑 SCAN STOPPED' if final_status == 'stopped' else '🎉 SCAN COMPLETE'} — Asset: {asset_id}")
     logger.info(f"   ✅ Scanned: {processed} | ⏭️ Skipped: {skipped} | ❌ Failed: {failed} | 🚫 Null: {null_count}")
-
 
 # ─── Inventory scan job ────────────────────────────────────────────────────
 

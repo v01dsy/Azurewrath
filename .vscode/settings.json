@@ -1,0 +1,7 @@
+{
+  "css.validate": false,
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportMissingModuleSource": "none",
+    "reportMissingImports": "none"
+  }
+}

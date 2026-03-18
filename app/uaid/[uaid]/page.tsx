@@ -6,6 +6,7 @@ import { getSerialTier, getGhostTier, getCardGlowClass } from '@/lib/specialSeri
 import { SpecialSerialText } from '@/components/specialSerialText';
 import { timeSince } from '@/lib/timeSince';
 import Image from 'next/image';
+import TradeModal from "./TradeModal";
 
 interface UAIDPageProps {
   params: Promise<{ uaid: string }>;
@@ -88,24 +89,34 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
     );
   }
 
+  // Fetch all records for this UAID, ordered newest first (no distinct — we need all)
   const allOwnerships = await prisma.inventoryItem.findMany({
     where: { userAssetId: uaidBigInt },
     orderBy: { scannedAt: "desc" },
-    distinct: ["snapshotId"],
     include: {
       snapshot: { include: { user: true } },
     },
   });
 
-  const dedupedHistory: typeof allOwnerships = [];
+  // Step 1: keep only the most recent entry per user
+  // (a user appears in many snapshots over time — we only want their latest)
+  const seenUsers = new Set<string>();
+  const uniqueByUser: typeof allOwnerships = [];
   for (const entry of allOwnerships) {
-    const lastEntry = dedupedHistory[dedupedHistory.length - 1];
+    const uid = entry.snapshot?.user?.robloxUserId?.toString();
+    if (!uid || seenUsers.has(uid)) continue;
+    seenUsers.add(uid);
+    uniqueByUser.push(entry);
+  }
+
+  // Step 2: collapse consecutive same-owner entries to build true ownership chain
+  const dedupedHistory: typeof allOwnerships = [];
+  for (const entry of uniqueByUser) {
+    const last = dedupedHistory[dedupedHistory.length - 1];
     const sameOwner =
-      lastEntry?.snapshot?.user?.robloxUserId?.toString() ===
+      last?.snapshot?.user?.robloxUserId?.toString() ===
       entry.snapshot?.user?.robloxUserId?.toString();
-    if (!sameOwner) {
-      dedupedHistory.push(entry);
-    }
+    if (!sameOwner) dedupedHistory.push(entry);
   }
 
   const lastKnownOwner = allOwnerships[0]?.snapshot?.user;
@@ -144,7 +155,6 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
 
   const avatarMap = new Map<string, string>();
 
-  // Reuse already-fetched owner avatar so we don't request it twice
   if (currentOwnerAvatar && avatarUserId) {
     avatarMap.set(avatarUserId, currentOwnerAvatar);
   }
@@ -409,53 +419,66 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                     if (isCurrentTracked && awaitingScan) return null;
 
                     return (
-                      <tr key={`${entry.snapshotId}-${i}`} className="hover:bg-white/5/20 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            {avatarUrl ? (
-                              <div className="relative w-12 h-12 bg-white/5 rounded-lg overflow-hidden flex-shrink-0">
-                                <Image
-                                  src={avatarUrl}
-                                  alt={`${username}'s avatar`}
-                                  fill
-                                  className="object-cover"
-                                />
-                              </div>
-                            ) : (
-                              <div className="w-12 h-12 rounded-lg bg-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0">
-                                {(username || "?")[0].toUpperCase()}
-                              </div>
-                            )}
-                            <div>
-                              <a
-                                href={`/player/${userId}`}
-                                className="font-semibold text-white hover:text-purple-300 transition-colors"
-                              >
-                                {username || "Unknown"}
-                              </a>
-                              {isCurrentTracked && !awaitingScan && (
-                                <div className="flex items-center gap-1 mt-0.5">
-                                  <img src="/Images/verify.png" alt="" className="w-3 h-3" style={{ filter: 'brightness(0.3) sepia(1) saturate(10) hue-rotate(90deg)' }} />
-                                  <span className="text-xs text-green-400">Current owner</span>
+                      <React.Fragment key={`${userId}-${i}`}>
+                        <tr className="hover:bg-white/5/20 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              {avatarUrl ? (
+                                <div className="relative w-12 h-12 bg-white/5 rounded-lg overflow-hidden flex-shrink-0">
+                                  <Image
+                                    src={avatarUrl}
+                                    alt={`${username}'s avatar`}
+                                    fill
+                                    className="object-cover"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="w-12 h-12 rounded-lg bg-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0">
+                                  {(username || "?")[0].toUpperCase()}
                                 </div>
                               )}
-                              {i === 0 && itemTraded && (
-                                <div className="text-xs text-yellow-400 mt-0.5">Last known owner</div>
-                              )}
+                              <div>
+                                <a
+                                  href={`/player/${userId}`}
+                                  className="font-semibold text-white hover:text-purple-300 transition-colors"
+                                >
+                                  {username || "Unknown"}
+                                </a>
+                                {isCurrentTracked && !awaitingScan && (
+                                  <div className="flex items-center gap-1 mt-0.5">
+                                    <img src="/Images/verify.png" alt="" className="w-3 h-3" style={{ filter: 'brightness(0.3) sepia(1) saturate(10) hue-rotate(90deg)' }} />
+                                    <span className="text-xs text-green-400">Current owner</span>
+                                  </div>
+                                )}
+                                {i === 0 && itemTraded && (
+                                  <div className="text-xs text-yellow-400 mt-0.5">Last known owner</div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          {entry.uaidUpdatedAt ? (
-                            <div>
-                              <div className="text-white text-sm font-medium">{timeSince(entry.uaidUpdatedAt)}</div>
-                              <div className="text-slate-500 text-xs mt-0.5">{formatDate(entry.uaidUpdatedAt)}</div>
-                            </div>
-                          ) : (
-                            <span className="text-slate-500 text-sm">—</span>
-                          )}
-                        </td>
-                      </tr>
+                          </td>
+                          <td className="px-6 py-4">
+                            {entry.uaidUpdatedAt ? (
+                              <div>
+                                <div className="text-white text-sm font-medium">{timeSince(entry.uaidUpdatedAt)}</div>
+                                <div className="text-slate-500 text-xs mt-0.5">{formatDate(entry.uaidUpdatedAt)}</div>
+                              </div>
+                            ) : (
+                              <span className="text-slate-500 text-sm">—</span>
+                            )}
+                          </td>
+                        </tr>
+                        {/* Trade button between first and second row */}
+                        {i === 0 && dedupedHistory.length > 1 && (
+                          <tr>
+                            <td colSpan={2} className="px-6 py-3 bg-purple-500/5 border-y border-purple-500/20">
+                              <div className="flex items-center gap-3">
+                                <TradeModal uaid={uaid} uaidUpdatedAt={entry.uaidUpdatedAt} />
+                                <span className="text-slate-500 text-xs">Infer what was exchanged in this transfer</span>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>

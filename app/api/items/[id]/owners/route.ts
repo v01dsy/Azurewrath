@@ -12,6 +12,8 @@ export async function GET(
 
     // For each user, get only their latest snapshot, then check if they hold this item in it.
     // We group by userAssetId (UAID) — one row per copy, showing current holder.
+    // app/api/items/[id]/owners/route.ts
+
     const owners = await prisma.$queryRaw<Array<{
       userAssetId: bigint;
       serialNumber: number | null;
@@ -29,21 +31,29 @@ export async function GET(
           "createdAt"
         FROM "InventorySnapshot"
         ORDER BY "userId", "createdAt" DESC
+      ),
+      RankedItems AS (
+        SELECT
+          ii."userAssetId",
+          ii."serialNumber",
+          u.username,
+          u."displayName",
+          u."robloxUserId",
+          u."avatarUrl",
+          ii."scannedAt",
+          ii."uaidUpdatedAt",
+          ROW_NUMBER() OVER (PARTITION BY ii."userAssetId" ORDER BY ls."createdAt" DESC) AS rn
+        FROM "InventoryItem" ii
+        INNER JOIN LatestSnapshots ls ON ii."snapshotId" = ls.id
+        INNER JOIN "User" u ON ls."userId" = u."robloxUserId"
+        WHERE ii."assetId" = ${assetIdBigInt}
       )
       SELECT
-        ii."userAssetId",
-        ii."serialNumber",
-        u.username,
-        u."displayName",
-        u."robloxUserId",
-        u."avatarUrl",
-        ii."scannedAt",
-        ii."uaidUpdatedAt"
-      FROM "InventoryItem" ii
-      INNER JOIN LatestSnapshots ls ON ii."snapshotId" = ls.id
-      INNER JOIN "User" u ON ls."userId" = u."robloxUserId"
-      WHERE ii."assetId" = ${assetIdBigInt}
-      ORDER BY ii."serialNumber" ASC NULLS LAST, ii."userAssetId" ASC
+        "userAssetId", "serialNumber", username, "displayName",
+        "robloxUserId", "avatarUrl", "scannedAt", "uaidUpdatedAt"
+      FROM RankedItems
+      WHERE rn = 1
+      ORDER BY "serialNumber" ASC NULLS LAST, "userAssetId" ASC
     `;
 
     // Fetch avatars in bulk for any missing ones

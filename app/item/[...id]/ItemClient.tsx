@@ -187,7 +187,13 @@ export default function ItemClient({ item: initialItem }: Props) {
   const fetchOwners = useCallback(async () => {
     try {
       const res = await axios.get(`/api/items/${itemId}/owners`);
-      setOwners(res.data.owners || []);
+      const seen = new Set<string>();
+      const deduped = (res.data.owners || []).filter((o: Owner) => {
+        if (seen.has(o.userAssetId)) return false;
+        seen.add(o.userAssetId);
+        return true;
+      });
+      setOwners(deduped);
     } catch { setOwners([]); }
     finally { setOwnersLoading(false); }
   }, [itemId]);

@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react';
 import { SPECIAL_SERIAL_CSS, type SerialTier } from '@/lib/specialSerial';
 
 // ── Sync helper ────────────────────────────────────────────────────────────
-// Returns a negative animationDelay that places the element at the correct
-// point in the global clock, so every badge — no matter when it mounts —
-// breathes in perfect unison with every other badge of the same duration.
-function syncDelay(durationMs: number): string {
-  return `-${(Date.now() % durationMs) / 1000}s`;
+// Must run client-side only to avoid SSR/client hydration mismatch.
+function useSyncDelay(durationMs: number): string {
+  const [delay, setDelay] = useState('0s');
+  useEffect(() => {
+    setDelay(`-${(Date.now() % durationMs) / 1000}s`);
+  }, [durationMs]);
+  return delay;
 }
 
 const LEET_MAP: Record<string, string[]> = {
@@ -48,6 +50,7 @@ function GlitchChar({ char }: { char: string }) {
 }
 
 function CrownSerial({ serial }: { serial: number }) {
+  const delay = useSyncDelay(2000);
   return (
     <span
       style={{
@@ -57,7 +60,7 @@ function CrownSerial({ serial }: { serial: number }) {
         WebkitTextFillColor: 'transparent',
         backgroundClip: 'text',
         animation: 'crownShimmer 2s linear infinite',
-        animationDelay: syncDelay(2000),
+        animationDelay: delay,
         fontWeight: 900,
         filter: 'drop-shadow(0 0 4px rgba(250,204,21,0.5))',
       }}
@@ -68,13 +71,14 @@ function CrownSerial({ serial }: { serial: number }) {
 }
 
 function EliteSerial({ serial }: { serial: number }) {
+  const delay = useSyncDelay(2000);
   return (
     <span
       style={{
         color: '#c4b5fd',
         fontWeight: 900,
         animation: 'eliteGlow 2s ease-in-out infinite',
-        animationDelay: syncDelay(2000),
+        animationDelay: delay,
       }}
     >
       #{serial}
@@ -83,6 +87,7 @@ function EliteSerial({ serial }: { serial: number }) {
 }
 
 function SpecialSerial({ serial }: { serial: number }) {
+  const delay = useSyncDelay(2500);
   return (
     <span
       style={{
@@ -92,7 +97,7 @@ function SpecialSerial({ serial }: { serial: number }) {
         WebkitTextFillColor: 'transparent',
         backgroundClip: 'text',
         animation: 'specialSweep 2.5s linear infinite',
-        animationDelay: syncDelay(2500),
+        animationDelay: delay,
         fontWeight: 900,
         filter: 'drop-shadow(0 0 3px rgba(103,232,249,0.6))',
       }}
@@ -103,6 +108,9 @@ function SpecialSerial({ serial }: { serial: number }) {
 }
 
 function GhostSerial() {
+  const delay1 = useSyncDelay(4000);
+  const delay2 = useSyncDelay(2500);
+  const delay3 = useSyncDelay(3000);
   const chars = '#???'.split('');
   return (
     <span
@@ -112,7 +120,7 @@ function GhostSerial() {
         letterSpacing: '0.15em',
         display: 'inline-block',
         animation: 'ghostFlicker 4s ease-in-out infinite',
-        animationDelay: syncDelay(4000),
+        animationDelay: delay1,
         filter: 'drop-shadow(0 0 3px #3d3a47)',
         fontSize: '1.2em',
       }}
@@ -123,10 +131,8 @@ function GhostSerial() {
           style={{
             color: '#6b6875',
             display: 'inline-block',
-            // Per-character wave offsets are intentional (the wave effect),
-            // but they're anchored to the global ghost clock via a base sync delay.
             animation: 'ghostWave 2.5s ease-in-out infinite, ghostFade 3s ease-in-out infinite',
-            animationDelay: `calc(${syncDelay(2500)} + ${i * 0.2}s), calc(${syncDelay(3000)} + ${i * 0.15}s)`,
+            animationDelay: `calc(${delay2} + ${i * 0.2}s), calc(${delay3} + ${i * 0.15}s)`,
           }}
         >
           {c}
@@ -137,13 +143,14 @@ function GhostSerial() {
 }
 
 function RobloxSerial() {
+  const delay = useSyncDelay(2500);
   return (
     <span
       style={{
         color: '#f87171',
         fontWeight: 900,
         animation: 'robloxPulse 2.5s ease-in-out infinite',
-        animationDelay: syncDelay(2500),
+        animationDelay: delay,
         letterSpacing: '0.05em',
       }}
       title="Owned by Roblox"
@@ -154,6 +161,7 @@ function RobloxSerial() {
 }
 
 function LeetSerial({ serial }: { serial: number }) {
+  const delay = useSyncDelay(4000);
   const chars = `#${serial}`.split('');
   return (
     <span
@@ -163,7 +171,7 @@ function LeetSerial({ serial }: { serial: number }) {
         fontWeight: 900,
         textShadow: '0 0 8px #16a34a, 0 0 16px #15803d',
         animation: 'leetFlicker 4s infinite',
-        animationDelay: syncDelay(4000),
+        animationDelay: delay,
         letterSpacing: '0.05em',
       }}
       title="Special: lol hax for dayz"

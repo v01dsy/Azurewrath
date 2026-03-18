@@ -28,26 +28,31 @@ export async function GET(
     
     // Convert itemId to BigInt for database query
     const itemIdBigInt = BigInt(itemIdString);
-    
-    const item = await prisma.item.findUnique({
-      where: {
-        assetId: itemIdBigInt
-      },
-      include: {
-        priceHistory: {
-          select: {
-            id: true,
-            itemId: true,
-            price: true,
-            rap: true,
-            salesVolume: true,
-            timestamp: true,
+
+    // Fetch item (latest price) and sales in parallel.
+    const [item, sales] = await Promise.all([
+      prisma.item.findUnique({
+        where: { assetId: itemIdBigInt },
+        include: {
+          priceHistory: {
+            select: {
+              id: true,
+              itemId: true,
+              price: true,
+              rap: true,
+              salesVolume: true,
+              timestamp: true,
+            },
+            orderBy: { timestamp: 'desc' },
+            take: 1,
           },
-          orderBy: { timestamp: 'desc' },
-          take: 1
-        }
-      }
-    });
+        },
+      }),
+      prisma.sale.findMany({
+        where: { itemId: itemIdBigInt },
+        orderBy: { saleDate: 'desc' },
+      }),
+    ]);
 
     if (!item) {
       return NextResponse.json(
@@ -55,14 +60,6 @@ export async function GET(
         { status: 404 }
       );
     }
-
-    // Fetch sales - now with oldRap and newRap
-    const sales = await prisma.sale.findMany({
-      where: { itemId: itemIdBigInt },
-      orderBy: {
-        saleDate: 'desc',
-      },
-    });
 
     // Transform sales data to match frontend expectations
     const salesWithCalculatedPrices = sales.map((sale) => {

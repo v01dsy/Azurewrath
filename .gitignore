@@ -16,3 +16,4 @@ prisma/*.db
 
 .vercel
 .env*.local
+tsconfig.tsbuildinfo

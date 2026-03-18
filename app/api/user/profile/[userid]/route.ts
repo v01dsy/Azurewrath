@@ -9,29 +9,34 @@ export async function GET(
   const { userid } = await params;
 
   try {
-    // Fetch user with latest snapshot
-    const dbUser = await prisma.user.findUnique({
-      where: { robloxUserId: BigInt(userid) },
-      include: {
-        inventorySnapshots: {
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-          include: {
-            items: {
-              include: {
-                item: {
-                  include: {
-                    priceHistory: {
-                      select: {
-                        id: true,
-                        itemId: true,
-                        price: true,
-                        rap: true,
-                        salesVolume: true,
-                        timestamp: true,
+    const robloxUserId = BigInt(userid);
+
+    // Fetch user and all snapshots in parallel — the snapshot list (summary
+    // fields only) is needed for graphData regardless of whether the user exists.
+    const [dbUser, allSnapshots] = await Promise.all([
+      prisma.user.findUnique({
+        where: { robloxUserId },
+        include: {
+          inventorySnapshots: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            include: {
+              items: {
+                include: {
+                  item: {
+                    include: {
+                      priceHistory: {
+                        select: {
+                          id: true,
+                          itemId: true,
+                          price: true,
+                          rap: true,
+                          salesVolume: true,
+                          timestamp: true,
+                        },
+                        orderBy: { timestamp: 'desc' },
+                        take: 1,
                       },
-                      orderBy: { timestamp: 'desc' },
-                      take: 1,
                     },
                   },
                 },
@@ -39,8 +44,20 @@ export async function GET(
             },
           },
         },
-      },
-    });
+      }),
+      // Only select the pre-computed summary columns — no items needed here.
+      prisma.inventorySnapshot.findMany({
+        where: { userId: robloxUserId },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          createdAt: true,
+          totalRAP: true,
+          totalItems: true,
+          uniqueItems: true,
+        },
+      }),
+    ]);
 
     if (!dbUser) {
       return NextResponse.json(
@@ -64,11 +81,11 @@ export async function GET(
     }>();
 
     latestSnapshot?.items.forEach(invItem => {
-      const assetIdString = invItem.assetId.toString(); // Convert BigInt to string
-      
+      const assetIdString = invItem.assetId.toString();
+
       if (!inventoryMap.has(assetIdString)) {
         const latestPrice = invItem.item?.priceHistory[0];
-        
+
         inventoryMap.set(assetIdString, {
           assetId: assetIdString,
           name: invItem.item?.name || 'Unknown Item',
@@ -82,74 +99,32 @@ export async function GET(
 
       const entry = inventoryMap.get(assetIdString)!;
       entry.count += 1;
-      entry.userAssetIds.push(invItem.userAssetId.toString()); // Convert BigInt to string
+      entry.userAssetIds.push(invItem.userAssetId.toString());
       entry.serialNumbers.push(invItem.serialNumber);
     });
 
     const inventory = Array.from(inventoryMap.values());
 
-    // Calculate stats
-    const totalRAP = inventory.reduce((sum, item) => sum + (item.rap * item.count), 0);
-    const totalItems = inventory.reduce((sum, item) => sum + item.count, 0);
-    const uniqueItems = inventory.length;
+    // Use the pre-computed snapshot totals where available; fall back to
+    // summing the latest inventory items so the stats are always correct.
+    // Note: totalRAP/totalItems/uniqueItems may be null on older snapshots
+    // that were created before these columns were added to the schema.
+    const totalRAP = latestSnapshot?.totalRAP ?? inventory.reduce((sum, item) => sum + (item.rap * item.count), 0);
+    const totalItems = latestSnapshot?.totalItems ?? inventory.reduce((sum, item) => sum + item.count, 0);
+    const uniqueItems = latestSnapshot?.uniqueItems ?? inventory.length;
 
-    // Fetch all snapshots with items for graph data
-    const allSnapshots = await prisma.inventorySnapshot.findMany({
-      where: { userId: dbUser.robloxUserId }, 
-      orderBy: { createdAt: 'asc' },
-      include: {
-        items: {
-          include: {
-            item: {
-              include: {
-                priceHistory: {
-                  select: {
-                    id: true,
-                    itemId: true,
-                    price: true,
-                    rap: true,
-                    salesVolume: true,
-                    timestamp: true,
-                  },
-                  orderBy: { timestamp: 'desc' },
-                  take: 1,
-                },
-              },
-            },
-          },
-        },
-      },
-    });
+    // Build graphData from the lightweight summary snapshots — no item scan needed.
+    const graphData = allSnapshots.map(snapshot => ({
+      snapshotId: snapshot.id,
+      date: snapshot.createdAt.toISOString(),
+      rap: Number(snapshot.totalRAP ?? 0),
+      itemCount: Number(snapshot.totalItems ?? 0),
+      uniqueCount: Number(snapshot.uniqueItems ?? 0),
+    }));
 
-    // Calculate metrics for each snapshot
-    const graphData = allSnapshots.map(snapshot => {
-      const snapshotInventoryMap = new Map<string, number>();
-      let snapshotTotalRAP = 0;
-      let snapshotTotalItems = 0;
-
-      snapshot.items.forEach(invItem => {
-        const latestPrice = invItem.item?.priceHistory[0];
-        const rap = latestPrice?.rap || 0;
-        
-        snapshotTotalRAP += rap;
-        snapshotTotalItems += 1;
-        const assetIdString = invItem.assetId.toString(); // Convert BigInt to string
-        snapshotInventoryMap.set(assetIdString, (snapshotInventoryMap.get(assetIdString) || 0) + 1);
-      });
-
-      return {
-        snapshotId: snapshot.id,
-        date: snapshot.createdAt.toISOString(),
-        rap: snapshotTotalRAP,
-        itemCount: snapshotTotalItems,
-        uniqueCount: snapshotInventoryMap.size,
-      };
-    });
-
-    // Return the complete player data
     return NextResponse.json({
       user: {
-        robloxUserId: dbUser.robloxUserId.toString(), // Convert BigInt to string
+        robloxUserId: dbUser.robloxUserId.toString(),
         username: dbUser.username,
         displayName: dbUser.displayName,
         avatarUrl: dbUser.avatarUrl,

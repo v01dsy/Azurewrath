@@ -27,13 +27,9 @@ export async function fetchRobloxHeadshotUrl(userId: string, size: string = '150
     const response = await axios.get(url);
     const data = response.data;
     
-    console.log('Headshot API response:', JSON.stringify(data, null, 2));
-    
     if (data && data.data && data.data.length > 0 && data.data[0].imageUrl) {
-      console.log('Returning imageUrl:', data.data[0].imageUrl);
       return data.data[0].imageUrl;
     }
-    console.log('No imageUrl found in response');
     return null;
   } catch (error) {
     console.error(`Failed to fetch Roblox headshot for userId ${userId}:`, error);
@@ -226,28 +222,29 @@ export async function fetchRobloxItemData(assetId: string): Promise<RobloxItemDa
 
     const catalogData = catalogRes.data;
 
+    // Fetch economy details and thumbnail in parallel — they are independent.
+    const [economyRes, thumbRes] = await Promise.allSettled([
+      axios.get(`https://economy.roblox.com/v2/assets/${assetId}/details`),
+      axios.get(`${ROBLOX_THUMBS}?assetIds=${assetId}&size=150x150&format=Webp&isCircular=false`),
+    ]);
+
     let isLimitedUnique: boolean | undefined = undefined;
-    try {
-      const economyRes = await axios.get(
-        `https://economy.roblox.com/v2/assets/${assetId}/details`
-      );
-      if (typeof economyRes.data?.IsLimitedUnique === 'boolean') {
-        isLimitedUnique = economyRes.data.IsLimitedUnique;
+    if (economyRes.status === 'fulfilled') {
+      if (typeof economyRes.value.data?.IsLimitedUnique === 'boolean') {
+        isLimitedUnique = economyRes.value.data.IsLimitedUnique;
       }
-    } catch (err) {
-      console.warn(`Economy details fetch failed for asset ${assetId}:`, err);
+    } else {
+      console.warn(`Economy details fetch failed for asset ${assetId}:`, economyRes.reason);
     }
 
     let imageUrl = '';
-    try {
-      const thumbRes = await axios.get(
-        `${ROBLOX_THUMBS}?assetIds=${assetId}&size=150x150&format=Webp&isCircular=false`,
-      );
-      if (thumbRes.data.data && thumbRes.data.data.length > 0) {
-        imageUrl = thumbRes.data.data[0].imageUrl;
+    if (thumbRes.status === 'fulfilled') {
+      const thumbData = thumbRes.value.data;
+      if (thumbData.data && thumbData.data.length > 0) {
+        imageUrl = thumbData.data[0].imageUrl;
       }
-    } catch (err) {
-      console.warn(`Thumbnail fetch failed for asset ${assetId}:`, err);
+    } else {
+      console.warn(`Thumbnail fetch failed for asset ${assetId}:`, thumbRes.reason);
     }
 
     return {

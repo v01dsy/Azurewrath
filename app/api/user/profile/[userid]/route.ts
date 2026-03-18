@@ -105,13 +105,13 @@ export async function GET(
 
     const inventory = Array.from(inventoryMap.values());
 
-    // Use the pre-computed snapshot totals where available; fall back to
-    // summing the latest inventory items so the stats are always correct.
-    // Note: totalRAP/totalItems/uniqueItems may be null on older snapshots
-    // that were created before these columns were added to the schema.
-    const totalRAP = latestSnapshot?.totalRAP ?? inventory.reduce((sum, item) => sum + (item.rap * item.count), 0);
-    const totalItems = latestSnapshot?.totalItems ?? inventory.reduce((sum, item) => sum + item.count, 0);
-    const uniqueItems = latestSnapshot?.uniqueItems ?? inventory.length;
+    // Always compute stats from the current inventory prices — `item.rap` is
+    // already loaded from the latest PriceHistory entry, so this reflects any
+    // price changes that occurred since the last scan without an extra DB query.
+    // (latestSnapshot.totalRAP was captured at scan time and can be stale.)
+    const totalRAP = inventory.reduce((sum, item) => sum + (item.rap * item.count), 0);
+    const totalItems = inventory.reduce((sum, item) => sum + item.count, 0);
+    const uniqueItems = inventory.length;
 
     // Build graphData from the lightweight summary snapshots — no item scan needed.
     const graphData = allSnapshots.map(snapshot => ({

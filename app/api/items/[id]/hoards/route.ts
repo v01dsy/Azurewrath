@@ -52,7 +52,7 @@ export async function GET(
       try {
         copies = typeof row.copies === 'string' ? JSON.parse(row.copies) : row.copies;
       } catch {
-        console.error(`Failed to parse copies JSON for user ${row.robloxUserId}`);
+        console.error(`Failed to parse copies JSON for user ${row.robloxUserId}:`, error);
         copies = [];
       }
       return {

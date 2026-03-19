@@ -225,7 +225,7 @@ export default async function PlayerPage({ params }: PageProps) {
           <div className="w-80 flex-shrink-0">
             <div className="bg-[#1e1e1e] rounded-xl border border-white/10 p-6 h-full relative">
 
-              {/* Role badge */}
+              {/* Role badgelol */}
               {user.role && user.role !== 'user' && (
                 <div className="absolute top-4 left-4 group z-10">
                   <img src={`/Images/${user.role}.webp`} alt={user.role ?? ''} className="w-7 h-7 object-contain opacity-90 hover:opacity-100 transition" />

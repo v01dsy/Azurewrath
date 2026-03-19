@@ -950,8 +950,8 @@ def run_owners_full_scan(conn, job):
     asset_id = job['assetId']
     job_id = job['id']
 
-    logger.info(f"\n🚀 ========== FULL OWNER SCAN START ==========")
-    logger.info(f"📦 Asset: {asset_id} | Job: {job_id}")
+    logger.info(f"\n[inventory_scanner] 🚀 ========== FULL OWNER SCAN START ==========")
+    logger.info(f"[inventory_scanner] 📦 Asset: {asset_id} | Job: {job_id}")
 
     base_url = f'https://inventory.roblox.com/v2/assets/{asset_id}/owners?limit=100&sortOrder=Asc'
     cursor = None

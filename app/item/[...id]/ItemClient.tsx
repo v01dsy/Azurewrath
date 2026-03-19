@@ -57,12 +57,14 @@ interface Owner {
   scannedAt: string;
   uaidUpdatedAt: string | null;
 }
+
 interface ScanProgress {
   total: number;
   processed: number;
   failed: number;
   currentUser: string | null;
   startedAt: number;
+  pagesFound?: number;
 }
 
 interface ScanState {
@@ -152,7 +154,6 @@ function AcquiredCell({ uaidUpdatedAt }: { uaidUpdatedAt: string | null }) {
 // ── Component ─────────────────────────────────────────────────────────────
 
 export default function ItemClient({ item: initialItem }: Props) {
-  const params = useParams();
   const router = useRouter();
 
   const itemId = initialItem.assetId;
@@ -172,6 +173,9 @@ export default function ItemClient({ item: initialItem }: Props) {
 
   const [scanState, setScanState] = useState<ScanState>({ scanning: false, stopRequested: false, progress: null });
   const [scanStarting, setScanStarting] = useState(false);
+  // 'timestamps' | 'full' | null — tracks which button was clicked so we can
+  // show the spinner on the correct button only
+  const [activeScanType, setActiveScanType] = useState<'timestamps' | 'full' | null>(null);
   const [scanMessage, setScanMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [activeTab, setActiveTab] = useState<'owners' | 'hoards'>('owners');
 
@@ -214,46 +218,63 @@ export default function ItemClient({ item: initialItem }: Props) {
           clearInterval(pollRef.current!);
           pollRef.current = null;
           setScanMessage({ text: '✅ Scan complete', ok: true });
+          setActiveScanType(null);
           fetchOwners();
         }
       } catch {
         clearInterval(pollRef.current!);
         pollRef.current = null;
         setScanState(prev => ({ ...prev, scanning: false }));
+        setActiveScanType(null);
       }
     }, 2000);
   }, [itemId, fetchOwners]);
 
+  // Update timestamps only — uses the default 'owners' job type
   const handleScanOwners = async () => {
     const user = getUserSession();
     if (!user) return;
-    setScanMessage(null); setScanStarting(true);
+    setScanMessage(null);
+    setScanStarting(true);
+    setActiveScanType('timestamps');
     try {
-      const res = await axios.post(`/api/items/${itemId}/scan-owners`, { userId: user.robloxUserId });
+      const res = await axios.post(`/api/items/${itemId}/scan-owners`, {
+        userId: user.robloxUserId,
+        // no action field → defaults to 'owners' job type in the route
+      });
       setScanState({ scanning: true, stopRequested: false, progress: null });
       setScanMessage({ text: `🔄 ${res.data.message}`, ok: true });
       startPolling();
     } catch (err: any) {
       setScanMessage({ text: `❌ ${err.response?.data?.error || 'Scan failed'}`, ok: false });
-    } finally { setScanStarting(false); }
+      setActiveScanType(null);
+    } finally {
+      setScanStarting(false);
+    }
   };
 
+  // Full scan — explicitly sends action: 'full' → creates 'owners_full' job
   const handleFullScan = async () => {
-  const user = getUserSession();
-  if (!user) return;
-  setScanMessage(null); setScanStarting(true);
-  try {
-    const res = await axios.post(`/api/items/${itemId}/scan-owners`, { 
-      userId: user.robloxUserId, 
-      action: 'full' 
-    });
-    setScanState({ scanning: true, stopRequested: false, progress: null });
-    setScanMessage({ text: `🔄 ${res.data.message}`, ok: true });
-    startPolling();
-  } catch (err: any) {
-    setScanMessage({ text: `❌ ${err.response?.data?.error || 'Scan failed'}`, ok: false });
-  } finally { setScanStarting(false); }
-};
+    const user = getUserSession();
+    if (!user) return;
+    setScanMessage(null);
+    setScanStarting(true);
+    setActiveScanType('full');
+    try {
+      const res = await axios.post(`/api/items/${itemId}/scan-owners`, {
+        userId: user.robloxUserId,
+        action: 'full',
+      });
+      setScanState({ scanning: true, stopRequested: false, progress: null });
+      setScanMessage({ text: `🔄 ${res.data.message}`, ok: true });
+      startPolling();
+    } catch (err: any) {
+      setScanMessage({ text: `❌ ${err.response?.data?.error || 'Scan failed'}`, ok: false });
+      setActiveScanType(null);
+    } finally {
+      setScanStarting(false);
+    }
+  };
 
   const handleStopScan = async () => {
     const user = getUserSession();
@@ -262,7 +283,9 @@ export default function ItemClient({ item: initialItem }: Props) {
       await axios.post(`/api/items/${itemId}/scan-owners`, { userId: user.robloxUserId, action: 'stop' });
       setScanState(prev => ({ ...prev, stopRequested: true }));
       setScanMessage({ text: '🛑 Stopping after current user…', ok: true });
-    } catch { setScanMessage({ text: '❌ Failed to send stop request', ok: false }); }
+    } catch {
+      setScanMessage({ text: '❌ Failed to send stop request', ok: false });
+    }
   };
 
   // ── Effects ────────────────────────────────────────────────────────────
@@ -272,7 +295,12 @@ export default function ItemClient({ item: initialItem }: Props) {
     axios.get(`/api/items/${itemId}/scan-owners`).then(res => {
       const data: ScanState = res.data;
       setScanState(data);
-      if (data.scanning) { setScanMessage({ text: '🔄 Scan already running…', ok: true }); startPolling(); }
+      if (data.scanning) {
+        setScanMessage({ text: '🔄 Scan already running…', ok: true });
+        // We don't know which type is running on page load, so leave activeScanType null
+        // — both buttons will be disabled anyway since scanning=true
+        startPolling();
+      }
     }).catch(() => { });
   }, [itemId, startPolling]);
 
@@ -350,10 +378,14 @@ export default function ItemClient({ item: initialItem }: Props) {
   const ownerTotalPages = Math.max(1, Math.ceil(sortedOwners.length / ownerPageSize));
   const pagedOwners = sortedOwners.slice((ownerPage - 1) * ownerPageSize, ownerPage * ownerPageSize);
 
-  const progressPct = progress && progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
+  // Progress bar: only show percentage when total is known and > 0
+  const hasKnownTotal = progress && progress.total > 0;
+  const progressPct = hasKnownTotal ? Math.round((progress!.processed / progress!.total) * 100) : null;
   const elapsed = progress ? Math.round((Date.now() - progress.startedAt) / 1000) : 0;
   const rate = elapsed > 0 && progress ? progress.processed / elapsed : 0;
-  const etaSec = rate > 0 && progress ? Math.round((progress.total - progress.processed) / rate) : null;
+  const etaSec = rate > 0 && progress && hasKnownTotal
+    ? Math.round((progress.total - progress.processed) / rate)
+    : null;
 
   const chartData = [...(item?.priceHistory ?? [])]
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
@@ -535,7 +567,11 @@ export default function ItemClient({ item: initialItem }: Props) {
               <div className="px-5 py-3 border-b border-slate-700 space-y-3">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <span className="text-slate-400 text-sm">
-                    {scanning && progress ? `Scanning… ${progress.processed}/${progress.total}` : `${owners.length.toLocaleString()} tracked owners`}
+                    {scanning && progress
+                      ? progress.total > 0
+                        ? `Scanning… ${progress.processed}/${progress.total}`
+                        : `Scanning… page ${progress.pagesFound ?? '?'}`
+                      : `${owners.length.toLocaleString()} tracked owners`}
                   </span>
                   <div className="flex items-center gap-2 flex-wrap">
                     <select value={ownerSort} onChange={e => setOwnerSort(e.target.value as any)}
@@ -556,18 +592,32 @@ export default function ItemClient({ item: initialItem }: Props) {
 
                     {isAdmin && (
                       <>
-                        <button onClick={handleScanOwners} disabled={scanning || scanStarting}
-                          className={`flex items-center gap-1.5 bg-gradient-to-r from-blue-500 to-indigo-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-3 py-1.5 rounded-lg transition`}>
-                          {scanning
+                        {/* Update Timestamps button */}
+                        <button
+                          onClick={handleScanOwners}
+                          disabled={scanning || scanStarting}
+                          className="flex items-center gap-1.5 bg-gradient-to-r from-blue-500 to-indigo-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-3 py-1.5 rounded-lg transition"
+                        >
+                          {scanning && activeScanType === 'timestamps'
                             ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Scanning…</>
-                            : scanStarting ? 'Starting…'
-                              : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>Update Timestamps</>}
+                            : scanStarting && activeScanType === 'timestamps'
+                            ? 'Starting…'
+                            : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>Update Timestamps</>}
                         </button>
-                        <button onClick={handleFullScan} disabled={scanning || scanStarting}
-                          className={`flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-red-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-3 py-1.5 rounded-lg transition`}>
-                          {scanStarting ? 'Starting…'
+
+                        {/* Full Scan button */}
+                        <button
+                          onClick={handleFullScan}
+                          disabled={scanning || scanStarting}
+                          className="flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-red-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-3 py-1.5 rounded-lg transition"
+                        >
+                          {scanning && activeScanType === 'full'
+                            ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Scanning…</>
+                            : scanStarting && activeScanType === 'full'
+                            ? 'Starting…'
                             : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>Full Scan</>}
                         </button>
+
                         {scanning && !stopRequested && (
                           <button onClick={handleStopScan} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-red-900/30 border border-red-500/30 text-red-300 hover:bg-red-900/50 transition">
                             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" /></svg>Stop
@@ -579,16 +629,54 @@ export default function ItemClient({ item: initialItem }: Props) {
                   </div>
                 </div>
 
-                {scanning && progress && (
+                {/* Progress bar — only shown while scanning */}
+                {scanning && (
                   <div className="space-y-1.5">
                     <div className="flex justify-between text-xs text-slate-500">
-                      <span>{progress.processed}/{progress.total}{progress.failed > 0 && <span className="text-red-400 ml-2">{progress.failed} failed</span>}</span>
-                      <span className="flex gap-3">{etaSec !== null && etaSec > 0 && <span>~{fmtEta(etaSec)} left</span>}<span className="text-purple-400 font-bold">{progressPct}%</span></span>
+                      <span>
+                        {progress
+                          ? progress.total > 0
+                            ? `${progress.processed}/${progress.total}${progress.failed > 0 ? ` · ${progress.failed} failed` : ''}`
+                            : progress.pagesFound
+                            ? `${progress.pagesFound} pages scanned…`
+                            : 'Starting…'
+                          : 'Starting…'}
+                      </span>
+                      <span className="flex gap-3">
+                        {etaSec !== null && etaSec > 0 && <span>~{fmtEta(etaSec)} left</span>}
+                        {progressPct !== null && (
+                          <span className="text-purple-400 font-bold">{progressPct}%</span>
+                        )}
+                      </span>
                     </div>
                     <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                      <div className="bg-gradient-to-r from-orange-500 to-red-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${progressPct}%` }} />
+                      {progressPct !== null ? (
+                        /* Known progress — solid fill */
+                        <div
+                          className="bg-gradient-to-r from-orange-500 to-red-500 h-1.5 rounded-full transition-all duration-500"
+                          style={{ width: `${progressPct}%` }}
+                        />
+                      ) : (
+                        /* Unknown progress — indeterminate sliding animation */
+                        <div className="h-1.5 rounded-full relative overflow-hidden bg-slate-700">
+                          <div
+                            className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-orange-500 to-red-500 rounded-full"
+                            style={{ animation: 'slide 1.5s ease-in-out infinite' }}
+                          />
+                          <style>{`
+                            @keyframes slide {
+                              0%   { left: -33%; }
+                              100% { left: 100%; }
+                            }
+                          `}</style>
+                        </div>
+                      )}
                     </div>
-                    {progress.currentUser && <p className="text-slate-500 text-xs truncate">Scanning: <span className="text-slate-300">{progress.currentUser}</span></p>}
+                    {progress?.currentUser && (
+                      <p className="text-slate-500 text-xs truncate">
+                        Scanning: <span className="text-slate-300">{progress.currentUser}</span>
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -609,7 +697,7 @@ export default function ItemClient({ item: initialItem }: Props) {
                 <div className="py-14 text-center">
                   <div className="text-3xl mb-3">👤</div>
                   <p className="text-slate-400 text-sm">No tracked owners found.</p>
-                  {isAdmin && <p className="text-slate-500 text-xs mt-1">Click "Scan Owners" above to begin.</p>}
+                  {isAdmin && <p className="text-slate-500 text-xs mt-1">Click "Full Scan" to index all owners, or "Update Timestamps" to refresh existing ones.</p>}
                 </div>
               ) : (
                 <>

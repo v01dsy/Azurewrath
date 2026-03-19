@@ -68,8 +68,8 @@ export async function POST(
     return NextResponse.json({
       success: true,
       message: action === 'full'
-        ? 'Full scan queued — new owners will be added and timestamps filled.'
-        : 'Scan queued — the worker will pick it up shortly.',
+        ? '[inventory_scanner] Full scan queued — new owners will be added and timestamps filled.'
+        : '[inventory_scanner] Scan queued — the worker will pick it up shortly.',
     });
 
   } catch (error) {

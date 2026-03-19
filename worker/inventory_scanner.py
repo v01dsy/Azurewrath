@@ -1215,6 +1215,7 @@ def scanner_loop():
 
 def start_inventory_scanner():
     """Start the scanner in a background daemon thread."""
+    logger.info(f"[inventory_scanner] Cookie present: {bool(ROBLOX_COOKIE)}, length: {len(ROBLOX_COOKIE)}, prefix: {ROBLOX_COOKIE[:20] if ROBLOX_COOKIE else 'MISSING'}")
     t = threading.Thread(target=scanner_loop, daemon=True)
     t.start()
     logger.info("[inventory_scanner] ✅ Inventory scanner thread started")

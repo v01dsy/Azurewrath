@@ -58,12 +58,18 @@ export async function POST(
     }
 
     await prisma.scanJob.create({
-      data: { assetId: BigInt(itemIdString), type: 'owners', status: 'pending' },
+      data: { 
+        assetId: BigInt(itemIdString), 
+        type: action === 'full' ? 'owners_full' : 'owners', 
+        status: 'pending' 
+      },
     });
 
     return NextResponse.json({
       success: true,
-      message: 'Scan queued — the worker will pick it up shortly.',
+      message: action === 'full'
+        ? 'Full scan queued — new owners will be added and timestamps filled.'
+        : 'Scan queued — the worker will pick it up shortly.',
     });
 
   } catch (error) {

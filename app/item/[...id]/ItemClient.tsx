@@ -238,6 +238,23 @@ export default function ItemClient({ item: initialItem }: Props) {
     } finally { setScanStarting(false); }
   };
 
+  const handleFullScan = async () => {
+  const user = getUserSession();
+  if (!user) return;
+  setScanMessage(null); setScanStarting(true);
+  try {
+    const res = await axios.post(`/api/items/${itemId}/scan-owners`, { 
+      userId: user.robloxUserId, 
+      action: 'full' 
+    });
+    setScanState({ scanning: true, stopRequested: false, progress: null });
+    setScanMessage({ text: `🔄 ${res.data.message}`, ok: true });
+    startPolling();
+  } catch (err: any) {
+    setScanMessage({ text: `❌ ${err.response?.data?.error || 'Scan failed'}`, ok: false });
+  } finally { setScanStarting(false); }
+};
+
   const handleStopScan = async () => {
     const user = getUserSession();
     if (!user) return;
@@ -540,11 +557,16 @@ export default function ItemClient({ item: initialItem }: Props) {
                     {isAdmin && (
                       <>
                         <button onClick={handleScanOwners} disabled={scanning || scanStarting}
-                          className="flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-red-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-3 py-1.5 rounded-lg transition">
+                          className={`flex items-center gap-1.5 bg-gradient-to-r from-blue-500 to-indigo-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-3 py-1.5 rounded-lg transition`}>
                           {scanning
                             ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Scanning…</>
                             : scanStarting ? 'Starting…'
-                              : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>Scan Owners</>}
+                              : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>Update Timestamps</>}
+                        </button>
+                        <button onClick={handleFullScan} disabled={scanning || scanStarting}
+                          className={`flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-red-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-3 py-1.5 rounded-lg transition`}>
+                          {scanStarting ? 'Starting…'
+                            : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>Full Scan</>}
                         </button>
                         {scanning && !stopRequested && (
                           <button onClick={handleStopScan} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-red-900/30 border border-red-500/30 text-red-300 hover:bg-red-900/50 transition">

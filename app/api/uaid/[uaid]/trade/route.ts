@@ -31,14 +31,15 @@ export async function GET(
       return NextResponse.json({ error: 'No trade timestamp found for this UAID' }, { status: 404 });
     }
 
-    // Most recent owner = receiver (person who currently/most recently holds the UAID)
     const sorted = [...ownerRows].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     const receiverRow = sorted[0];
     const { uaidUpdatedAt: tradeTimestamp, userId: receiverId } = receiverRow;
+    const prevOwnerRow = sorted[1] ?? null;
+    const senderId = prevOwnerRow?.userId ?? null;
 
-    // ── Step 2: Find receiver's snapshot BEFORE the trade (previous snapshot) ──
+    // ── Step 2: Find receiver's snapshot BEFORE the trade ──
     const { rows: prevSnapRows } = await pool.query(`
       SELECT id, "createdAt"
       FROM "InventorySnapshot"
@@ -71,9 +72,15 @@ export async function GET(
           ii."assetId",
           ii."serialNumber",
           i.name,
-          i."imageUrl"
+          i."imageUrl",
+          COALESCE(ph.rap, 0) as rap
         FROM "InventoryItem" ii
         JOIN "Item" i ON i."assetId" = ii."assetId"
+        LEFT JOIN LATERAL (
+          SELECT rap FROM "PriceHistory"
+          WHERE "itemId" = ii."assetId"
+          ORDER BY timestamp DESC LIMIT 1
+        ) ph ON true
         WHERE ii."snapshotId" = $1
           AND ii."userAssetId" NOT IN (
             SELECT "userAssetId" FROM "InventoryItem" WHERE "snapshotId" = $2
@@ -81,47 +88,55 @@ export async function GET(
         ORDER BY ii."serialNumber" ASC NULLS LAST
       `, [afterSnapshotId, prevSnapshotId]);
       receivedItems = rows;
-    } else if (afterSnapshotId) {
-      // No previous snapshot — everything in the after snapshot was "received"
-      // (first scan after acquiring). Just show the UAID itself.
-      receivedItems = [];
     }
 
-    // ── Step 5: Items sent = in before snapshot but NOT in after snapshot ──
+    // ── Step 5: Items sent = sender's items with matching uaidUpdatedAt ──
     let sentItems: any[] = [];
-    if (prevSnapshotId && afterSnapshotId) {
+    if (senderId) {
       const { rows } = await pool.query(`
-        SELECT
+        SELECT DISTINCT ON (ii."userAssetId")
           ii."userAssetId",
           ii."assetId",
           ii."serialNumber",
           i.name,
-          i."imageUrl"
+          i."imageUrl",
+          COALESCE(ph.rap, 0) as rap
         FROM "InventoryItem" ii
         JOIN "Item" i ON i."assetId" = ii."assetId"
-        WHERE ii."snapshotId" = $1
-          AND ii."userAssetId" NOT IN (
-            SELECT "userAssetId" FROM "InventoryItem" WHERE "snapshotId" = $2
+        LEFT JOIN LATERAL (
+          SELECT rap FROM "PriceHistory"
+          WHERE "itemId" = ii."assetId"
+          ORDER BY timestamp DESC LIMIT 1
+        ) ph ON true
+        WHERE ii."uaidUpdatedAt" BETWEEN $2::timestamp - INTERVAL '5 minutes'
+                                        AND $2::timestamp + INTERVAL '5 minutes'
+          AND ii."userAssetId" IN (
+            SELECT ii2."userAssetId"
+            FROM "InventoryItem" ii2
+            JOIN "InventorySnapshot" snap ON snap.id = ii2."snapshotId"
+            WHERE snap."userId" = $1
           )
-        ORDER BY ii."serialNumber" ASC NULLS LAST
-      `, [prevSnapshotId, afterSnapshotId]);
+          AND ii."userAssetId" != $3::bigint
+        ORDER BY ii."userAssetId"
+      `, [senderId, tradeTimestamp, uaid]);
       sentItems = rows;
     }
 
     // ── Step 6: Fetch the UAID's own item details ──
     const { rows: uaidItemRows } = await pool.query(`
-      SELECT i.name, i."imageUrl"
+      SELECT i.name, i."imageUrl", COALESCE(ph.rap, 0) as rap
       FROM "Item" i
+      LEFT JOIN LATERAL (
+        SELECT rap FROM "PriceHistory"
+        WHERE "itemId" = i."assetId"
+        ORDER BY timestamp DESC LIMIT 1
+      ) ph ON true
       WHERE i."assetId" = $1
     `, [receiverRow.assetId]);
 
     const uaidItem = uaidItemRows[0] ?? null;
 
     // ── Step 7: Fetch receiver + sender user info ──
-    // Sender = previous owner of this UAID (if any)
-    const prevOwnerRow = sorted[1] ?? null;
-    const senderId = prevOwnerRow?.userId ?? null;
-
     const { rows: receiverUserRows } = await pool.query(`
       SELECT username, "displayName", "avatarUrl", "robloxUserId"
       FROM "User" WHERE "robloxUserId" = $1
@@ -135,7 +150,6 @@ export async function GET(
     const receiver = receiverUserRows[0] ?? null;
     const sender = senderUserRows[0] ?? null;
 
-    // Ensure the UAID itself appears in received if not already included
     const uaidAlreadyInReceived = receivedItems.some(
       r => r.userAssetId.toString() === uaid
     );
@@ -146,6 +160,7 @@ export async function GET(
         serialNumber: receiverRow.serialNumber ?? null,
         name: uaidItem?.name ?? null,
         imageUrl: uaidItem?.imageUrl ?? null,
+        rap: uaidItem?.rap ? Number(uaidItem.rap) : null,
       }]),
       ...receivedItems.map(r => ({
         userAssetId: r.userAssetId.toString(),
@@ -153,6 +168,7 @@ export async function GET(
         serialNumber: r.serialNumber ?? null,
         name: r.name,
         imageUrl: r.imageUrl,
+        rap: r.rap ? Number(r.rap) : null,
       })),
     ];
 
@@ -177,6 +193,7 @@ export async function GET(
         serialNumber: s.serialNumber ?? null,
         name: s.name,
         imageUrl: s.imageUrl,
+        rap: s.rap ? Number(s.rap) : null,
       })),
     });
   } catch (err) {

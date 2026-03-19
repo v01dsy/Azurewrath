@@ -457,7 +457,7 @@ def backfill_timestamps(conn, snapshot_id, uaids_to_backfill):
 
 # ─── Save inventory snapshot ───────────────────────────────────────────────
 
-def save_inventory_snapshot(conn, user_id, roblox_user_id):
+def save_inventory_snapshot(conn, user_id, roblox_user_id, skip_phase2=False):
     """
     Full port of inventoryTracker.ts saveInventorySnapshot.
     Phase 1: save snapshot immediately with isOnHold.
@@ -536,12 +536,13 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id):
             {'user_asset_id': item['user_asset_id'], 'asset_id': item['asset_id']}
             for item in full_inventory
         ]
-        t = threading.Thread(
-            target=backfill_timestamps,
-            args=(get_conn(), snapshot_id, uaids_to_backfill),
-            daemon=True
-        )
-        t.start()
+        if uaids_to_backfill and not skip_phase2:
+            t = threading.Thread(
+                target=backfill_timestamps,
+                args=(get_conn(), snapshot_id, uaids_to_backfill),
+                daemon=True
+            )
+            t.start()
         return snapshot_id
 
     # ── SUBSEQUENT SCAN ───────────────────────────────────────────────────
@@ -703,7 +704,7 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id):
                     'asset_id': item['asset_id'],
                 })
 
-    if uaids_to_backfill:
+    if uaids_to_backfill and not skip_phase2:
         t = threading.Thread(
             target=backfill_timestamps,
             args=(get_conn(), snapshot_id, uaids_to_backfill),
@@ -844,6 +845,7 @@ def process_owner_entry(conn, entry, asset_id, job_id):
         logger.error(f"   ❌ Failed to scan inventory for {roblox_user_id}: {e}")
         return 'failed'
 
+# ─── owner scan job ────────────────────────────────────────────────────
 
 def run_owners_scan(conn, job):
     """Full owner scan for an item — port of scanOwnersStreaming."""
@@ -936,6 +938,190 @@ def run_owners_scan(conn, job):
     logger.info(f"\n{'🛑 SCAN STOPPED' if final_status == 'stopped' else '🎉 SCAN COMPLETE'} — Asset: {asset_id}")
     logger.info(f"   ✅ Scanned: {processed} | ⏭️ Skipped: {skipped} | ❌ Failed: {failed} | 🚫 Null: {null_count}")
 
+
+# ─── FULL owner scan job ────────────────────────────────────────────────────
+
+def run_owners_full_scan(conn, job):
+    """
+    Full owner scan — like run_owners_scan but also processes unknown users.
+    For unknown users: add to DB, scan inventory, grab timestamps for this UAID only.
+    For known users: only update null timestamps for this asset's UAIDs.
+    """
+    asset_id = job['assetId']
+    job_id = job['id']
+
+    logger.info(f"\n🚀 ========== FULL OWNER SCAN START ==========")
+    logger.info(f"📦 Asset: {asset_id} | Job: {job_id}")
+
+    base_url = f'https://inventory.roblox.com/v2/assets/{asset_id}/owners?limit=100&sortOrder=Asc'
+    cursor = None
+    page_num = 0
+    processed = 0
+    skipped = 0
+    failed = 0
+    null_count = 0
+    total = 0
+
+    time.sleep(3)
+
+    while True:
+        if is_stop_requested(conn, job_id):
+            logger.info("🛑 Stop requested — halting")
+            break
+
+        url = base_url + (f'&cursor={cursor}' if cursor else '')
+
+        try:
+            data = fetch_with_retry(url, max_retries=5, base_delay=3.0)
+        except Exception as e:
+            logger.error(f"❌ Failed to fetch page {page_num + 1}: {e}")
+            break
+
+        page_num += 1
+        entries = data.get('data', [])
+        valid = [e for e in entries if e.get('owner') and e['owner'].get('id')]
+        null_entries = [e for e in entries if not (e.get('owner') and e['owner'].get('id'))]
+
+        logger.info(f"📄 Page {page_num}: {len(valid)} valid, {len(null_entries)} null")
+
+        total += len(valid)
+        update_job(conn, job_id, total=total, pagesFound=page_num)
+
+        # Handle null-owner entries the same as regular scan
+        for entry in null_entries:
+            if entry.get('id'):
+                backfill_uaid_by_uaid(conn, entry['id'], entry.get('created'), entry.get('updated'))
+                null_count += 1
+
+        for entry in valid:
+            if is_stop_requested(conn, job_id):
+                break
+
+            owner_id = str(entry['owner']['id'])
+            entry_uaid = entry.get('id')
+            entry_created = entry.get('created')
+            entry_updated = entry.get('updated')
+
+            logger.info(f"\n👤 [{processed + skipped + 1}/{total}] userId: {owner_id}")
+            update_job(conn, job_id, currentUser=f'userId:{owner_id}', processed=processed + skipped)
+
+            # Check if user exists in DB
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id FROM "InventorySnapshot"
+                    WHERE "userId" = %s
+                    ORDER BY "createdAt" DESC
+                    LIMIT 1
+                """, (owner_id,))
+                existing_snapshot = cur.fetchone()
+
+            if existing_snapshot:
+                # User already in DB — only update null timestamps for this UAID
+                if entry_uaid and (entry_created or entry_updated):
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            UPDATE "InventoryItem" ii
+                            SET
+                                "uaidCreatedAt" = COALESCE(ii."uaidCreatedAt", %s),
+                                "uaidUpdatedAt" = COALESCE(ii."uaidUpdatedAt", %s)
+                            FROM "InventorySnapshot" snap
+                            WHERE ii."snapshotId" = snap.id
+                              AND snap."userId" = %s
+                              AND ii."userAssetId" = %s
+                              AND (ii."uaidCreatedAt" IS NULL OR ii."uaidUpdatedAt" IS NULL)
+                        """, (
+                            datetime.fromisoformat(entry_created.replace('Z', '+00:00')) if entry_created else None,
+                            datetime.fromisoformat(entry_updated.replace('Z', '+00:00')) if entry_updated else None,
+                            owner_id,
+                            entry_uaid
+                        ))
+                    conn.commit()
+                    logger.info(f"   ✅ Updated timestamps for existing user {owner_id}")
+                else:
+                    logger.info(f"   ⏭️ Timestamps already set for {owner_id} — skipping")
+                skipped += 1
+            else:
+                # New user — add to DB, scan inventory, timestamps for this UAID only
+                logger.info(f"   📦 New user {owner_id} — fetching info and scanning inventory...")
+
+                user_info = fetch_user_info(owner_id)
+                headshot = fetch_headshot(owner_id)
+
+                username = f'user_{owner_id}'
+                display_name = username
+                if user_info:
+                    username = user_info.get('name') or username
+                    display_name = user_info.get('displayName') or username
+
+                update_job(conn, job_id, currentUser=username)
+
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO "User" ("robloxUserId", username, "displayName", "avatarUrl",
+                                           "createdAt", "updatedAt")
+                        VALUES (%s, %s, %s, %s, NOW(), NOW())
+                        ON CONFLICT ("robloxUserId") DO UPDATE SET
+                            username = EXCLUDED.username,
+                            "displayName" = EXCLUDED."displayName",
+                            "avatarUrl" = EXCLUDED."avatarUrl",
+                            "updatedAt" = NOW()
+                    """, (owner_id, username, display_name, headshot))
+                conn.commit()
+
+                try:
+                    # Scan inventory but skip Phase 2 (we handle this UAID's timestamps manually)
+                    snapshot_id = save_inventory_snapshot(conn, owner_id, owner_id, skip_phase2=True)
+
+                    # Now set timestamps for just this UAID
+                    if entry_uaid and snapshot_id:
+                        with conn.cursor() as cur:
+                            cur.execute("""
+                                UPDATE "InventoryItem"
+                                SET
+                                    "uaidCreatedAt" = COALESCE("uaidCreatedAt", %s),
+                                    "uaidUpdatedAt" = COALESCE("uaidUpdatedAt", %s)
+                                WHERE "snapshotId" = %s AND "userAssetId" = %s
+                            """, (
+                                datetime.fromisoformat(entry_created.replace('Z', '+00:00')) if entry_created else None,
+                                datetime.fromisoformat(entry_updated.replace('Z', '+00:00')) if entry_updated else None,
+                                snapshot_id,
+                                entry_uaid
+                            ))
+                        conn.commit()
+                        logger.info(f"   ✅ Set timestamps for UAID {entry_uaid}")
+
+                    processed += 1
+                except Exception as e:
+                    logger.error(f"   ❌ Failed to process new user {owner_id}: {e}")
+                    failed += 1
+
+            update_job(conn, job_id, processed=processed + skipped, failed=failed)
+            time.sleep(USER_PROCESS_DELAY)
+
+        next_cursor = data.get('nextPageCursor')
+        if next_cursor:
+            try:
+                last_uaid = int(next_cursor.split('_')[0])
+                save_cursor(conn, asset_id, cursor, last_uaid, page_num - 1)
+            except Exception as e:
+                logger.warning(f"Could not save cursor: {e}")
+
+        cursor = next_cursor
+        if not cursor:
+            break
+
+        time.sleep(OWNER_PAGE_DELAY)
+
+    final_status = 'stopped' if is_stop_requested(conn, job_id) else 'done'
+    update_job(conn, job_id, status=final_status, currentUser=None,
+               processed=processed + skipped, failed=failed)
+
+    logger.info(f"\n{'🛑 SCAN STOPPED' if final_status == 'stopped' else '🎉 FULL SCAN COMPLETE'}")
+    logger.info(f"   ✅ New users: {processed} | ⏭️ Skipped: {skipped} | ❌ Failed: {failed} | 🚫 Null: {null_count}")
+
+
+
+
 # ─── Inventory scan job ────────────────────────────────────────────────────
 
 def run_inventory_scan(conn, job):
@@ -1009,6 +1195,8 @@ def scanner_loop():
                 run_inventory_scan(conn, job)
             elif job_type == 'owners':
                 run_owners_scan(conn, job)
+            elif job_type == 'owners_full':       
+                run_owners_full_scan(conn, job)       
             else:
                 logger.warning(f"Unknown job type: {job_type}")
                 update_job(conn, job['id'], status='done')

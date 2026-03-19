@@ -1,10 +1,12 @@
 # worker/main.py
 
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
 import requests
 import json
 import time
-import os
-from dotenv import load_dotenv
 import logging
 import psycopg2
 from psycopg2 import pool
@@ -19,8 +21,6 @@ from snipe_events import fire_snipe_events
 from snipe_server import start_snipe_server
 from manipulation_detector import detect_manipulation
 from inventory_scanner import start_inventory_scanner
-
-load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Pagination from '@/components/Pagination';
 
 type Tab = 'limited' | 'player';
@@ -24,30 +25,23 @@ interface PlayerResult {
 
 const PAGE_SIZE = 24;
 
-// ── Item card (mirrors trade/new request side exactly) ─────────────────────────
-function ItemCard({
-  item,
-  onClick,
-}: {
-  item: LimitedResult;
-  onClick: () => void;
-}) {
+function ItemCard({ item }: { item: LimitedResult }) {
   const rap = item.priceHistory?.[0]?.rap ?? null;
 
   return (
-    <button
-      onClick={onClick}
+    <Link
+      href={`/item/${item.assetId}`}
       className="relative flex flex-col items-center rounded-xl border border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.06] transition-all cursor-pointer text-left w-full"
       style={{ padding: '14px 10px 12px' }}
     >
       <div className="relative w-24 h-24 rounded-lg overflow-hidden bg-black/40 flex-shrink-0 mb-2">
         {item.imageUrl ? (
-          <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+          <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover pointer-events-none" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-white/20 text-xs">?</div>
         )}
         {item.manipulated && (
-          <img src="/Images/manipulated1.webp" alt="Manipulated" title="This item's RAP may be manipulated" className="absolute top-1 left-1 w-5 h-5 z-10" />
+          <img src="/Images/manipulated1.webp" alt="Manipulated" title="This item's RAP may be manipulated" className="absolute top-1 left-1 w-5 h-5 z-10 pointer-events-none" />
         )}
       </div>
 
@@ -57,12 +51,11 @@ function ItemCard({
       {typeof rap === 'number' && rap > 0 && (
         <p className="text-white font-bold text-[11px] mt-1">{rap.toLocaleString()} R$</p>
       )}
-    </button>
+    </Link>
   );
 }
 
 export default function SearchPage() {
-  const router = useRouter();
   const [tab, setTab] = useState<Tab>('limited');
   const [query, setQuery] = useState('');
   const [limitedResults, setLimitedResults] = useState<LimitedResult[]>([]);
@@ -82,7 +75,7 @@ export default function SearchPage() {
   // Reset page on query/tab change
   useEffect(() => { setPage(1); }, [query, tab]);
 
-  // Fetch — always fires (empty query shows all items sorted by RAP)
+  // Fetch
   useEffect(() => {
     let cancelled = false;
 
@@ -116,7 +109,6 @@ export default function SearchPage() {
       }
     };
 
-    // Debounce typing, but fire immediately on page/tab changes
     const delay = query.trim().length > 0 ? 300 : 0;
     const t = setTimeout(run, delay);
     return () => { cancelled = true; clearTimeout(t); };
@@ -237,11 +229,7 @@ export default function SearchPage() {
           <>
             <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
               {limitedResults.map(item => (
-                <ItemCard
-                  key={item.assetId}
-                  item={item}
-                  onClick={() => router.push(`/item/${item.assetId}`)}
-                />
+                <ItemCard key={item.assetId} item={item} />
               ))}
             </div>
 
@@ -266,16 +254,16 @@ export default function SearchPage() {
         {tab === 'player' && !loading && playerResults.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {playerResults.map(p => (
-              <button
+              <Link
                 key={p.id}
-                onClick={() => router.push(`/player/${p.id}`)}
+                href={`/player/${p.id}`}
                 className="flex flex-col items-center rounded-xl border border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.06] transition-all cursor-pointer p-4 gap-2"
               >
                 {p.imageUrl ? (
                   <img
                     src={p.imageUrl}
                     alt={p.name}
-                    className="w-16 h-16 rounded-full object-cover bg-black/40"
+                    className="w-16 h-16 rounded-full object-cover bg-black/40 pointer-events-none"
                   />
                 ) : (
                   <div className="w-16 h-16 rounded-full bg-black/40 flex items-center justify-center text-white/20 text-xs">
@@ -290,7 +278,7 @@ export default function SearchPage() {
                     <p className="text-slate-500 text-[10px] truncate max-w-[110px]">@{p.name}</p>
                   )}
                 </div>
-              </button>
+              </Link>
             ))}
           </div>
         )}

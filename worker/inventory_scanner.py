@@ -1040,7 +1040,7 @@ def run_owners_full_scan(conn, job):
                     cur.execute("""
                         INSERT INTO "User" ("robloxUserId", username, "displayName", "avatarUrl",
                                            "createdAt", "updatedAt")
-                        VALUES (%s, %s, %s, NOW(), NOW())
+                        VALUES (%s, %s, %s, %s, NOW(), NOW())
                         ON CONFLICT ("robloxUserId") DO UPDATE SET
                             username = EXCLUDED.username,
                             "displayName" = EXCLUDED."displayName",

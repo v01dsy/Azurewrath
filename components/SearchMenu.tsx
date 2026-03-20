@@ -150,7 +150,7 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
             <ul className="divide-y divide-slate-700">
               {results.map((item, index) => (
                 <li key={item.assetId}>
-                  <a
+                  <link
                     href={mode === 'player' ? `/player/${item.assetId}` : `/item/${item.assetId}`}
                     onClick={(e) => { setQuery(''); setIsOpen(false); }}
                     className={`px-4 py-3 cursor-pointer transition flex items-start gap-3 ${
@@ -206,7 +206,7 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
                         </>
                       )}
                     </div>
-                  </a>
+                  </link>
                 </li>
               ))}
             </ul>

@@ -1045,12 +1045,11 @@ def run_owners_full_scan(job):
                             UPDATE "InventoryItem" ii
                             SET
                                 "uaidCreatedAt" = COALESCE(ii."uaidCreatedAt", %s),
-                                "uaidUpdatedAt" = COALESCE(ii."uaidUpdatedAt", %s)
+                                "uaidUpdatedAt" = %s
                             FROM "InventorySnapshot" snap
                             WHERE ii."snapshotId" = snap.id
-                              AND snap."userId" = %s
-                              AND ii."userAssetId" = %s
-                              AND (ii."uaidCreatedAt" IS NULL OR ii."uaidUpdatedAt" IS NULL)
+                            AND snap."userId" = %s
+                            AND ii."userAssetId" = %s
                         """, (
                             datetime.fromisoformat(entry_created.replace('Z', '+00:00')) if entry_created else None,
                             datetime.fromisoformat(entry_updated.replace('Z', '+00:00')) if entry_updated else None,
@@ -1060,7 +1059,7 @@ def run_owners_full_scan(job):
                     conn.commit()
                     logger.info(f"[inventory_scanner] {tag} ✅ Updated timestamps for existing user {owner_id}")
                 else:
-                    logger.info(f"[inventory_scanner] {tag} ⏭️ Timestamps already set for {owner_id} — skipping")
+                    logger.info(f"[inventory_scanner] {tag} ⏭️ No UAID/timestamps in entry for {owner_id} — skipping")
                 skipped += 1
             else:
                 logger.info(f"[inventory_scanner] {tag} 📦 New user {owner_id} — fetching info and scanning inventory...")
@@ -1098,7 +1097,7 @@ def run_owners_full_scan(job):
                                 UPDATE "InventoryItem"
                                 SET
                                     "uaidCreatedAt" = COALESCE("uaidCreatedAt", %s),
-                                    "uaidUpdatedAt" = COALESCE("uaidUpdatedAt", %s)
+                                    "uaidUpdatedAt" = %s
                                 WHERE "snapshotId" = %s AND "userAssetId" = %s
                             """, (
                                 datetime.fromisoformat(entry_created.replace('Z', '+00:00')) if entry_created else None,

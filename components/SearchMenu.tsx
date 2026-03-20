@@ -149,16 +149,16 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
           {results.length > 0 ? (
             <ul className="divide-y divide-slate-700">
               {results.map((item, index) => (
-                <li
-                  key={item.assetId}
-                  onClick={() => handleSelectResult(item)}
-                  className={`px-4 py-3 cursor-pointer transition ${
-                    index === selectedIndex
-                      ? 'bg-neon-blue/20 border-l-2 border-neon-blue'
-                      : 'hover:bg-slate-800/50 border-l-2 border-transparent'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
+                <li key={item.assetId}>
+                  <a
+                    href={mode === 'player' ? `/player/${item.assetId}` : `/item/${item.assetId}`}
+                    onClick={(e) => { setQuery(''); setIsOpen(false); }}
+                    className={`px-4 py-3 cursor-pointer transition flex items-start gap-3 ${
+                      index === selectedIndex
+                        ? 'bg-neon-blue/20 border-l-2 border-neon-blue'
+                        : 'hover:bg-slate-800/50 border-l-2 border-transparent'
+                    }`}
+                  >
                     {/* Thumbnail with manipulated overlay */}
                     <div className="relative flex-shrink-0">
                       <img
@@ -177,9 +177,9 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
                     </div>
 
                     <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-white truncate">
-                          {item.name}
-                        </h3>
+                      <h3 className="font-semibold text-white truncate">
+                        {item.name}
+                      </h3>
 
                       {mode === 'player' ? (
                         <>
@@ -193,8 +193,8 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
                           <p className="text-xs text-slate-400">Asset ID: {item.assetId}</p>
                           {item.priceHistory?.[0] && (
                             <p className="text-sm text-neon-blue mt-1">
-                              {(item.priceHistory[0].lowestResale ?? item.priceHistory[0].price) === -1 
-                                ? 'No Sellers' 
+                              {(item.priceHistory[0].lowestResale ?? item.priceHistory[0].price) === -1
+                                ? 'No Sellers'
                                 : `Price: ${(item.priceHistory[0].lowestResale ?? item.priceHistory[0].price).toLocaleString()} Robux`}
                               {item.priceHistory[0].rap && (
                                 <span className="text-slate-400 ml-2">
@@ -206,7 +206,7 @@ export default function SearchMenu({ mode }: SearchMenuProps) {
                         </>
                       )}
                     </div>
-                  </div>
+                  </a>
                 </li>
               ))}
             </ul>

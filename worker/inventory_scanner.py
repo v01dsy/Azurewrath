@@ -100,6 +100,7 @@ def roblox_headers():
 def fetch_with_retry(url, max_retries=5, base_delay=3.0, extra_headers=None):
     """GET a URL with exponential backoff on 429 and network errors."""
     headers = roblox_headers()
+    tag = thread_tag()
     if extra_headers:
         headers.update(extra_headers)
 
@@ -108,29 +109,29 @@ def fetch_with_retry(url, max_retries=5, base_delay=3.0, extra_headers=None):
             res = requests.get(url, headers=headers, timeout=30)
         except requests.RequestException as e:
             wait = base_delay * (2 ** attempt)
-            logger.warning(f"[inventory_scanner] Network error (attempt {attempt+1}): {e} — retrying in {wait}s")
+            logger.warning(f"[inventory_scanner] {tag} Network error (attempt {attempt+1}): {e} — retrying in {wait}s")
             time.sleep(wait)
             continue
 
         if res.status_code == 429:
             wait = base_delay * (2 ** attempt)
-            logger.warning(f"[inventory_scanner] 429 rate limited — waiting {wait}s (attempt {attempt+1})")
+            logger.warning(f"[inventory_scanner] {tag} 429 rate limited — waiting {wait}s (attempt {attempt+1})")
             time.sleep(wait)
             continue
 
         if res.status_code == 400:
-            raise Exception(f"[inventory_scanner] 400 Bad Request: {url}")
+            raise Exception(f"[inventory_scanner] {tag} 400 Bad Request: {url}")
         if res.status_code == 404:
-            raise Exception(f"[inventory_scanner] 404 Not Found: {url}")
+            raise Exception(f"[inventory_scanner] {tag} 404 Not Found: {url}")
         if not res.ok:
             wait = base_delay * (2 ** attempt)
-            logger.warning(f"[inventory_scanner] HTTP {res.status_code} — retrying in {wait}s")
+            logger.warning(f"[inventory_scanner] {tag} HTTP {res.status_code} — retrying in {wait}s")
             time.sleep(wait)
             continue
 
         return res.json()
 
-    raise Exception(f"[inventory_scanner] All {max_retries} retries exhausted for {url}")
+    raise Exception(f"[inventory_scanner] {tag} All {max_retries} retries exhausted for {url}")
 
 
 # ─── Job queue helpers ─────────────────────────────────────────────────────
@@ -221,15 +222,17 @@ def calculate_snapshot_totals(conn, items):
 # ─── Fetch Roblox user info ────────────────────────────────────────────────
 
 def fetch_user_info(roblox_user_id):
+    tag = thread_tag()
     try:
         data = fetch_with_retry(f'https://users.roblox.com/v1/users/{roblox_user_id}')
         return data
     except Exception as e:
-        logger.warning(f"[inventory_scanner] Could not fetch user info for {roblox_user_id}: {e}")
+        logger.warning(f"[inventory_scanner] {tag} Could not fetch user info for {roblox_user_id}: {e}")
         return None
 
 
 def fetch_headshot(roblox_user_id):
+    tag = thread_tag()
     try:
         data = fetch_with_retry(
             f'https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={roblox_user_id}&size=150x150&format=Webp'
@@ -237,7 +240,7 @@ def fetch_headshot(roblox_user_id):
         if data and data.get('data'):
             return data['data'][0].get('imageUrl')
     except Exception as e:
-        logger.warning(f"[inventory_scanner] Could not fetch headshot for {roblox_user_id}: {e}")
+        logger.warning(f"[inventory_scanner] {tag} Could not fetch headshot for {roblox_user_id}: {e}")
     return None
 
 
@@ -248,6 +251,7 @@ def scan_full_inventory(roblox_user_id):
     full_inventory = []
     cursor = None
     page_count = 0
+    tag = thread_tag()
 
     logger.info(f"🔍 Starting inventory scan for userId: {roblox_user_id}")
 
@@ -262,12 +266,12 @@ def scan_full_inventory(roblox_user_id):
         try:
             data = fetch_with_retry(url)
         except Exception as e:
-            logger.error(f"[inventory_scanner] Failed to fetch inventory page {page_count}: {e}")
+            logger.error(f"[inventory_scanner] {tag} Failed to fetch inventory page {page_count}: {e}")
             break
 
         items = data.get('data', [])
         if not items and page_count == 1:
-            logger.info("[inventory_scanner] ✅ User has empty collectibles inventory")
+            logger.info(f"[inventory_scanner] {tag} ✅ User has empty collectibles inventory")
             break
 
         for item in items:
@@ -281,7 +285,7 @@ def scan_full_inventory(roblox_user_id):
                 'is_on_hold': item.get('isOnHold', False),
             })
 
-        logger.info(f"[inventory_scanner] ✅ Page {page_count} added {len(items)} items. Total: {len(full_inventory)}")
+        logger.info(f"[inventory_scanner] {tag} ✅ Page {page_count} added {len(items)} items. Total: {len(full_inventory)}")
 
         cursor = data.get('nextPageCursor')
         if not cursor:
@@ -289,7 +293,7 @@ def scan_full_inventory(roblox_user_id):
 
         time.sleep(PAGE_DELAY)
 
-    logger.info(f"[inventory_scanner] ✅ Fetched {len(full_inventory)} items in {page_count} pages")
+    logger.info(f"[inventory_scanner] {tag} ✅ Fetched {len(full_inventory)} items in {page_count} pages")
     return full_inventory
 
 
@@ -313,6 +317,7 @@ def get_cached_cursor(conn, asset_id, target_uaid):
 
 def save_cursor(conn, asset_id, cursor_str, last_uaid, page_num):
     """Save a cursor checkpoint, skip if duplicate."""
+    tag = thread_tag()
     try:
         with conn.cursor() as cur:
             cur.execute("""
@@ -323,7 +328,7 @@ def save_cursor(conn, asset_id, cursor_str, last_uaid, page_num):
         conn.commit()
     except Exception as e:
         conn.rollback()
-        logger.warning(f"[inventory_scanner] Could not save cursor cache: {e}")
+        logger.warning(f"[inventory_scanner] {tag} Could not save cursor cache: {e}")
 
 
 # ─── Fetch UAID timestamps from owners API ────────────────────────────────
@@ -333,6 +338,7 @@ def fetch_uaid_timestamps(conn, asset_id, user_asset_id):
     page_num = 0
     requests_since_break = 0
     last_page_num_reached = 0
+    tag = thread_tag()
 
     cached_cursor, cached_page = get_cached_cursor(conn, asset_id, target_uaid)
     cursor = cached_cursor
@@ -348,7 +354,7 @@ def fetch_uaid_timestamps(conn, asset_id, user_asset_id):
         try:
             data = fetch_with_retry(url, max_retries=5, base_delay=3.0)
         except Exception as e:
-            logger.warning(f"[UAID search] Failed to fetch page: {e}")
+            logger.warning(f"[inventory_scanner] {tag} Failed to fetch page: {e}")
             break
 
         entries = data.get('data', [])
@@ -365,11 +371,11 @@ def fetch_uaid_timestamps(conn, asset_id, user_asset_id):
             save_cursor(conn, asset_id, cursor, last_uaid_from_cursor, page_num - 1)
 
             if last_uaid_from_cursor < target_uaid:
-                logger.info(f"[inventory_scanner] [UAID search] Page {page_num}: lastUaid={last_uaid_from_cursor} < target={target_uaid}, skipping")
+                logger.info(f"[inventory_scanner] {tag} [UAID search] Page {page_num}: lastUaid={last_uaid_from_cursor} < target={target_uaid}, skipping")
                 cursor = next_cursor
                 requests_since_break += 1
                 if requests_since_break >= BREATHER_INTERVAL:
-                    logger.info(f"[inventory_scanner] ⏸️ [UAID search] Taking {BREATHER_DURATION}s breather...")
+                    logger.info(f"[inventory_scanner] {tag} ⏸️ [UAID search] Taking {BREATHER_DURATION}s breather...")
                     time.sleep(BREATHER_DURATION)
                     requests_since_break = 0
                 else:
@@ -378,10 +384,10 @@ def fetch_uaid_timestamps(conn, asset_id, user_asset_id):
 
         for entry in entries:
             if int(entry.get('id', 0)) == target_uaid:
-                logger.info(f"[inventory_scanner] [UAID search] Found on page {page_num}")
+                logger.info(f"[inventory_scanner] {tag} [UAID search] Found on page {page_num}")
                 return entry.get('created'), entry.get('updated')
 
-        logger.info(f"[inventory_scanner] [UAID search] Page {page_num}: not found — trying fallback")
+        logger.info(f"[inventory_scanner] {tag} [UAID search] Page {page_num}: not found — trying fallback")
         break
 
     pages_to_check = []
@@ -408,7 +414,7 @@ def fetch_uaid_timestamps(conn, asset_id, user_asset_id):
             pages_to_check.append(('forward', row[0]))
 
     for direction, fallback_cursor in pages_to_check:
-        logger.info(f"[inventory_scanner] [UAID search] Fallback: checking 1 page {direction}...")
+        logger.info(f"[inventory_scanner] {tag} [UAID search] Fallback: checking 1 page {direction}...")
         url = f'https://inventory.roblox.com/v2/assets/{asset_id}/owners?limit=100&sortOrder=Asc'
         if fallback_cursor:
             url += f'&cursor={fallback_cursor}'
@@ -416,12 +422,12 @@ def fetch_uaid_timestamps(conn, asset_id, user_asset_id):
             data = fetch_with_retry(url, max_retries=5, base_delay=3.0)
             for entry in data.get('data', []):
                 if int(entry.get('id', 0)) == target_uaid:
-                    logger.info(f"[inventory_scanner] [UAID search] Found in fallback ({direction})")
+                    logger.info(f"[inventory_scanner] {tag} [UAID search] Found in fallback ({direction})")
                     return entry.get('created'), entry.get('updated')
         except Exception as e:
-            logger.warning(f"[inventory_scanner] [UAID search] Fallback fetch failed ({direction}): {e}")
+            logger.warning(f"[inventory_scanner] {tag} [UAID search] Fallback fetch failed ({direction}): {e}")
 
-    logger.info(f"[inventory_scanner] [UAID search] Not found after fallback — giving up")
+    logger.info(f"[inventory_scanner] {tag} [UAID search] Not found after fallback — giving up")
     return None, None
 
 
@@ -430,6 +436,7 @@ PHASE2_SEMAPHORE = threading.Semaphore(4)
 
 
 def backfill_timestamps(conn, snapshot_id, uaids_to_backfill):
+    tag = thread_tag()
     with PHASE2_SEMAPHORE:
         logger.info(f"[inventory_scanner] 🕐 [Phase 2] Backfilling timestamps for {len(uaids_to_backfill)} UAIDs...")
 
@@ -441,7 +448,7 @@ def backfill_timestamps(conn, snapshot_id, uaids_to_backfill):
                 created, updated = fetch_uaid_timestamps(conn, asset_id, user_asset_id)
 
                 if not created and not updated:
-                    logger.info(f"[inventory_scanner] [Phase 2 UAID {user_asset_id}] No timestamps found")
+                    logger.info(f"[inventory_scanner] {tag} [Phase 2 UAID {user_asset_id}] No timestamps found")
                     time.sleep(30)
                     continue
 
@@ -459,22 +466,23 @@ def backfill_timestamps(conn, snapshot_id, uaids_to_backfill):
                         user_asset_id
                     ))
                 conn.commit()
-                logger.info(f"[inventory_scanner] [Phase 2 UAID {user_asset_id}] ✅ created={created} updated={updated}")
+                logger.info(f"[inventory_scanner] {tag} [Phase 2 UAID {user_asset_id}] ✅ created={created} updated={updated}")
 
             except Exception as e:
                 conn.rollback()
-                logger.warning(f"[inventory_scanner] [Phase 2 UAID {user_asset_id}] Failed: {e}")
+                logger.warning(f"[inventory_scanner] {tag} [Phase 2 UAID {user_asset_id}] Failed: {e}")
 
             time.sleep(30)
 
-        logger.info("[inventory_scanner] ✅ [Phase 2] Timestamp backfill complete")
+        logger.info(f"[inventory_scanner] {tag} ✅ [Phase 2] Timestamp backfill complete")
 
 
 # ─── Save inventory snapshot ───────────────────────────────────────────────
 
 def save_inventory_snapshot(conn, user_id, roblox_user_id, skip_phase2=False):
+    tag = thread_tag()
     logger.info(f"\n========== INVENTORY SCAN ==========")
-    logger.info(f"userId: {user_id} | robloxUserId: {roblox_user_id}")
+    logger.info(f"[inventory_scanner] {tag} userId: {user_id} | robloxUserId: {roblox_user_id}")
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute("""
@@ -497,7 +505,7 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id, skip_phase2=False):
     now = datetime.now(timezone.utc)
 
     if not latest_snapshot:
-        logger.info("[inventory_scanner] FIRST EVER scan — Phase 1: saving snapshot...")
+        logger.info(f"[inventory_scanner] {tag} FIRST EVER scan — Phase 1: saving snapshot...")
 
         item_rows = []
         for item in full_inventory:
@@ -535,7 +543,7 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id, skip_phase2=False):
             ) for row in item_rows])
 
         conn.commit()
-        logger.info(f"[inventory_scanner] ✅ [Phase 1] FIRST snapshot created (ID: {snapshot_id}, {len(item_rows)} items)")
+        logger.info(f"[inventory_scanner] {tag} ✅ [Phase 1] FIRST snapshot created (ID: {snapshot_id}, {len(item_rows)} items)")
 
         uaids_to_backfill = [
             {'user_asset_id': item['user_asset_id'], 'asset_id': item['asset_id']}
@@ -570,7 +578,7 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id, skip_phase2=False):
     new_uaids = current_uaid_set - prev_uaid_set
     removed_uaids = prev_uaid_set - current_uaid_set
 
-    logger.info(f"[inventory_scanner] Changes: {len(new_uaids)} new, {len(removed_uaids)} removed")
+    logger.info(f"[inventory_scanner] {tag} Changes: {len(new_uaids)} new, {len(removed_uaids)} removed")
 
     all_items = []
     unchanged_count = 0
@@ -604,7 +612,7 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id, skip_phase2=False):
             'is_on_hold': item.get('is_on_hold', False),
         })
 
-    logger.info(f"[inventory_scanner] Total items for snapshot: {len(all_items)}")
+    logger.info(f"[inventory_scanner] {tag} Total items for snapshot: {len(all_items)}")
     total_rap, total_items, unique_items = calculate_snapshot_totals(conn, all_items)
 
     with conn.cursor() as cur:
@@ -617,7 +625,7 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id, skip_phase2=False):
 
     if todays_snapshot:
         snapshot_id = todays_snapshot[0]
-        logger.info(f"[inventory_scanner] [Phase 1] Updating TODAY'S snapshot (ID: {snapshot_id})...")
+        logger.info(f"[inventory_scanner] {tag} [Phase 1] Updating TODAY'S snapshot (ID: {snapshot_id})...")
 
         with conn.cursor() as cur:
             if removed_uaids:
@@ -660,11 +668,11 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id, skip_phase2=False):
             """, (total_rap, total_items, unique_items, snapshot_id))
 
         conn.commit()
-        logger.info(f"[inventory_scanner] ✅ [Phase 1] UPDATED today's snapshot ({len(all_items)} items)")
+        logger.info(f"[inventory_scanner] {tag} ✅ [Phase 1] UPDATED today's snapshot ({len(all_items)} items)")
 
     else:
         snapshot_id = make_cuid()
-        logger.info(f"[inventory_scanner] [Phase 1] Creating NEW snapshot for new day (ID: {snapshot_id})...")
+        logger.info(f"[inventory_scanner] {tag} [Phase 1] Creating NEW snapshot for new day (ID: {snapshot_id})...")
 
         with conn.cursor() as cur:
             cur.execute("""
@@ -690,7 +698,7 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id, skip_phase2=False):
             ) for item in all_items])
 
         conn.commit()
-        logger.info(f"[inventory_scanner] ✅ [Phase 1] NEW snapshot created ({len(all_items)} items)")
+        logger.info(f"[inventory_scanner] {tag} ✅ [Phase 1] NEW snapshot created ({len(all_items)} items)")
 
     uaids_to_backfill = []
 
@@ -729,6 +737,7 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id, skip_phase2=False):
 # ─── Backfill UAID timestamps by UAID only ────────────────────────────────
 
 def backfill_uaid_by_uaid(conn, uaid, created, updated):
+    tag = thread_tag()
     if not created and not updated:
         return
     try:
@@ -746,10 +755,10 @@ def backfill_uaid_by_uaid(conn, uaid, created, updated):
             ))
         conn.commit()
         if cur.rowcount > 0:
-            logger.info(f"📅 Backfilled null-owner UAID {uaid}: created={created}, updated={updated}")
+            logger.info(f"[inventory_scanner] {tag} Backfilled null-owner UAID {uaid}: created={created}, updated={updated}")
     except Exception as e:
         conn.rollback()
-        logger.warning(f"Could not backfill UAID {uaid}: {e}")
+        logger.warning(f"[inventory_scanner] {tag} Could not backfill UAID {uaid}: {e}")
 
 
 # ─── Owner scan ────────────────────────────────────────────────────────────
@@ -760,6 +769,7 @@ def process_owner_entry(conn, entry, asset_id, job_id):
     entry_uaid = entry.get('id')
     entry_created = entry.get('created')
     entry_updated = entry.get('updated')
+    tag = thread_tag()
 
     if not roblox_user_id:
         if entry_uaid:
@@ -778,7 +788,7 @@ def process_owner_entry(conn, entry, asset_id, job_id):
         existing = cur.fetchone()
 
     if existing:
-        logger.info(f"[inventory_scanner] ⏭️ Already scanned — skipping inventory scan")
+        logger.info(f"[inventory_scanner] {tag} ⏭️ Already scanned — skipping inventory scan")
         if entry_uaid:
             with conn.cursor() as cur:
                 cur.execute("""
@@ -799,7 +809,7 @@ def process_owner_entry(conn, entry, asset_id, job_id):
             conn.commit()
         return 'skipped'
 
-    logger.info(f"[inventory_scanner] 📦 New user {roblox_user_id} — fetching info and scanning inventory...")
+    logger.info(f"[inventory_scanner] {tag} 📦 New user {roblox_user_id} — fetching info and scanning inventory...")
 
     user_info = fetch_user_info(roblox_user_id)
     headshot = fetch_headshot(roblox_user_id)
@@ -851,7 +861,7 @@ def process_owner_entry(conn, entry, asset_id, job_id):
 
         return 'processed'
     except Exception as e:
-        logger.error(f"[inventory_scanner] ❌ Failed to scan inventory for {roblox_user_id}: {e}")
+        logger.error(f"[inventory_scanner] {tag} ❌ Failed to scan inventory for {roblox_user_id}: {e}")
         return 'failed'
 
 

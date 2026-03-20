@@ -28,13 +28,13 @@ logger = logging.getLogger(__name__)
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 ROBLOX_COOKIE = os.getenv('ROBLOX_SECURITY_COOKIE', '').strip('"').strip("'")
 
-POLL_INTERVAL = 2          # seconds between job queue polls
-PAGE_DELAY = 2.0           # seconds between inventory pages
-OWNER_PAGE_DELAY = 2.5     # seconds between owner scan pages
-UAID_SEARCH_DELAY = 2.0    # seconds between UAID search pages
-BREATHER_INTERVAL = 15     # requests before taking a breather
-BREATHER_DURATION = 21     # seconds to rest after BREATHER_INTERVAL requests
-USER_PROCESS_DELAY = 2.5   # seconds between processing each owner
+PAGE_DELAY = 1.0
+OWNER_PAGE_DELAY = 1.5
+UAID_SEARCH_DELAY = 1.0
+USER_PROCESS_DELAY = 1.5
+BREATHER_INTERVAL = 25     # was 15 — more requests before needing a break
+BREATHER_DURATION = 10     # was 21 — shorter rest period
+USER_PROCESS_DELAY = 1.0   # was 2.5 — faster between owners
 
 
 # ─── DB helpers ────────────────────────────────────────────────────────────

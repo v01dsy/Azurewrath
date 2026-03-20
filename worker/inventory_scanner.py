@@ -82,6 +82,12 @@ def make_cuid():
 
 # ─── Roblox API helpers ────────────────────────────────────────────────────
 
+def thread_tag() -> str:
+    """Return a log prefix like [Cookie 2] for the current thread."""
+    idx = getattr(_thread_local, 'cookie_index', '?')
+    return f"[Cookie {idx}]"
+
+
 def roblox_headers():
     """Use the thread-local cookie if set, otherwise fall back to global."""
     cookie = getattr(_thread_local, 'cookie', ROBLOX_COOKIE)
@@ -536,9 +542,15 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id, skip_phase2=False):
             for item in full_inventory
         ]
         if uaids_to_backfill and not skip_phase2:
+            parent_cookie = getattr(_thread_local, 'cookie', ROBLOX_COOKIE)
+            parent_cookie_index = getattr(_thread_local, 'cookie_index', '?')
+            def _run_backfill(cookie, cookie_index, snapshot_id, uaids):
+                _thread_local.cookie = cookie
+                _thread_local.cookie_index = cookie_index
+                backfill_timestamps(get_conn(), snapshot_id, uaids)
             t = threading.Thread(
-                target=backfill_timestamps,
-                args=(get_conn(), snapshot_id, uaids_to_backfill),
+                target=_run_backfill,
+                args=(parent_cookie, parent_cookie_index, snapshot_id, uaids_to_backfill),
                 daemon=True
             )
             t.start()
@@ -697,9 +709,15 @@ def save_inventory_snapshot(conn, user_id, roblox_user_id, skip_phase2=False):
                 })
 
     if uaids_to_backfill and not skip_phase2:
+        parent_cookie = getattr(_thread_local, 'cookie', ROBLOX_COOKIE)
+        parent_cookie_index = getattr(_thread_local, 'cookie_index', '?')
+        def _run_backfill2(cookie, cookie_index, snapshot_id, uaids):
+            _thread_local.cookie = cookie
+            _thread_local.cookie_index = cookie_index
+            backfill_timestamps(get_conn(), snapshot_id, uaids)
         t = threading.Thread(
-            target=backfill_timestamps,
-            args=(get_conn(), snapshot_id, uaids_to_backfill),
+            target=_run_backfill2,
+            args=(parent_cookie, parent_cookie_index, snapshot_id, uaids_to_backfill),
             daemon=True
         )
         t.start()
@@ -839,12 +857,14 @@ def process_owner_entry(conn, entry, asset_id, job_id):
 
 # ─── Owner scan job ────────────────────────────────────────────────────────
 
-def run_owners_scan(conn, job):
+def run_owners_scan(job):
+    conn = get_conn()
     asset_id = job['assetId']
     job_id = job['id']
+    tag = thread_tag()
 
-    logger.info(f"\n[inventory_scanner] 🚀 ========== OWNER SCAN START ==========")
-    logger.info(f"[inventory_scanner] 📦 Asset: {asset_id} | Job: {job_id}")
+    logger.info(f"\n[inventory_scanner] {tag} 🚀 ========== OWNER SCAN START ==========")
+    logger.info(f"[inventory_scanner] {tag} 📦 Asset: {asset_id} | Job: {job_id}")
 
     base_url = f'https://inventory.roblox.com/v2/assets/{asset_id}/owners?limit=100&sortOrder=Asc'
     cursor = None
@@ -855,12 +875,12 @@ def run_owners_scan(conn, job):
     null_count = 0
     total = 0
 
-    logger.info("[inventory_scanner] ⏳ Cold start delay 3s...")
+    logger.info(f"[inventory_scanner] {tag} ⏳ Cold start delay 3s...")
     time.sleep(3)
 
     while True:
         if is_stop_requested(conn, job_id):
-            logger.info("[inventory_scanner] 🛑 Stop requested — halting")
+            logger.info(f"[inventory_scanner] {tag} 🛑 Stop requested — halting")
             break
 
         url = base_url + (f'&cursor={cursor}' if cursor else '')
@@ -868,7 +888,7 @@ def run_owners_scan(conn, job):
         try:
             data = fetch_with_retry(url, max_retries=5, base_delay=3.0)
         except Exception as e:
-            logger.error(f"[inventory_scanner] ❌ Failed to fetch page {page_num + 1}: {e}")
+            logger.error(f"[inventory_scanner] {tag} ❌ Failed to fetch page {page_num + 1}: {e}")
             break
 
         page_num += 1
@@ -876,7 +896,7 @@ def run_owners_scan(conn, job):
         valid = [e for e in entries if e.get('owner') and e['owner'].get('id')]
         null_entries = [e for e in entries if not (e.get('owner') and e['owner'].get('id'))]
 
-        logger.info(f"[inventory_scanner] 📄 Page {page_num}: {len(valid)} valid, {len(null_entries)} null")
+        logger.info(f"[inventory_scanner] {tag} 📄 Page {page_num}: {len(valid)} valid, {len(null_entries)} null")
 
         total += len(valid)
         update_job(conn, job_id, total=total, pagesFound=page_num)
@@ -886,12 +906,14 @@ def run_owners_scan(conn, job):
                 backfill_uaid_by_uaid(conn, entry['id'], entry.get('created'), entry.get('updated'))
                 null_count += 1
 
+        stop_inner = False
         for entry in valid:
             if is_stop_requested(conn, job_id):
+                stop_inner = True
                 break
 
             owner_id = entry['owner']['id']
-            logger.info(f"[inventory_scanner] 👤 [{processed + skipped + 1}/{total}] userId: {owner_id}")
+            logger.info(f"[inventory_scanner] {tag} 👤 [{processed + skipped + 1}/{total}] userId: {owner_id}")
             update_job(conn, job_id, currentUser=f'userId:{owner_id}', processed=processed + skipped)
 
             result = process_owner_entry(conn, entry, asset_id, job_id)
@@ -905,15 +927,18 @@ def run_owners_scan(conn, job):
             update_job(conn, job_id, processed=processed + skipped, failed=failed)
             time.sleep(USER_PROCESS_DELAY)
 
+        if stop_inner:
+            break
+
         next_cursor = data.get('nextPageCursor')
 
         if next_cursor:
             try:
                 last_uaid = int(next_cursor.split('_')[0])
                 save_cursor(conn, asset_id, cursor, last_uaid, page_num - 1)
-                logger.info(f"[inventory_scanner] 💾 Saved cursor for page {page_num - 1}, lastUaid={last_uaid}")
+                logger.info(f"[inventory_scanner] {tag} 💾 Saved cursor for page {page_num - 1}, lastUaid={last_uaid}")
             except Exception as e:
-                logger.warning(f"[inventory_scanner] Could not save cursor cache for page {page_num}: {e}")
+                logger.warning(f"[inventory_scanner] {tag} Could not save cursor cache for page {page_num}: {e}")
 
         cursor = next_cursor
         if not cursor:
@@ -924,19 +949,22 @@ def run_owners_scan(conn, job):
     final_status = 'stopped' if is_stop_requested(conn, job_id) else 'done'
     update_job(conn, job_id, status=final_status, currentUser=None,
                processed=processed + skipped, failed=failed)
+    conn.close()
 
-    logger.info(f"\n[inventory_scanner] {'🛑 SCAN STOPPED' if final_status == 'stopped' else '🎉 SCAN COMPLETE'} — Asset: {asset_id}")
-    logger.info(f"[inventory_scanner]   ✅ Scanned: {processed} | ⏭️ Skipped: {skipped} | ❌ Failed: {failed} | 🚫 Null: {null_count}")
+    logger.info(f"\n[inventory_scanner] {tag} {'🛑 SCAN STOPPED' if final_status == 'stopped' else '🎉 SCAN COMPLETE'} — Asset: {asset_id}")
+    logger.info(f"[inventory_scanner] {tag}   ✅ Scanned: {processed} | ⏭️ Skipped: {skipped} | ❌ Failed: {failed} | 🚫 Null: {null_count}")
 
 
 # ─── Full owner scan job ───────────────────────────────────────────────────
 
-def run_owners_full_scan(conn, job):
+def run_owners_full_scan(job):
+    conn = get_conn()
     asset_id = job['assetId']
     job_id = job['id']
+    tag = thread_tag()
 
-    logger.info(f"\n[inventory_scanner] 🚀 ========== FULL OWNER SCAN START ==========")
-    logger.info(f"[inventory_scanner] 📦 Asset: {asset_id} | Job: {job_id}")
+    logger.info(f"\n[inventory_scanner] {tag} 🚀 ========== FULL OWNER SCAN START ==========")
+    logger.info(f"[inventory_scanner] {tag} 📦 Asset: {asset_id} | Job: {job_id}")
 
     base_url = f'https://inventory.roblox.com/v2/assets/{asset_id}/owners?limit=100&sortOrder=Asc'
     cursor = None
@@ -951,7 +979,7 @@ def run_owners_full_scan(conn, job):
 
     while True:
         if is_stop_requested(conn, job_id):
-            logger.info("[inventory_scanner] 🛑 Stop requested — halting")
+            logger.info(f"[inventory_scanner] {tag} 🛑 Stop requested — halting")
             break
 
         url = base_url + (f'&cursor={cursor}' if cursor else '')
@@ -959,7 +987,7 @@ def run_owners_full_scan(conn, job):
         try:
             data = fetch_with_retry(url, max_retries=5, base_delay=3.0)
         except Exception as e:
-            logger.error(f"[inventory_scanner] ❌ Failed to fetch page {page_num + 1}: {e}")
+            logger.error(f"[inventory_scanner] {tag} ❌ Failed to fetch page {page_num + 1}: {e}")
             break
 
         page_num += 1
@@ -967,7 +995,7 @@ def run_owners_full_scan(conn, job):
         valid = [e for e in entries if e.get('owner') and e['owner'].get('id')]
         null_entries = [e for e in entries if not (e.get('owner') and e['owner'].get('id'))]
 
-        logger.info(f"[inventory_scanner] 📄 Page {page_num}: {len(valid)} valid, {len(null_entries)} null")
+        logger.info(f"[inventory_scanner] {tag} 📄 Page {page_num}: {len(valid)} valid, {len(null_entries)} null")
 
         total += len(valid)
         update_job(conn, job_id, total=total, pagesFound=page_num)
@@ -977,8 +1005,10 @@ def run_owners_full_scan(conn, job):
                 backfill_uaid_by_uaid(conn, entry['id'], entry.get('created'), entry.get('updated'))
                 null_count += 1
 
+        stop_inner = False
         for entry in valid:
             if is_stop_requested(conn, job_id):
+                stop_inner = True
                 break
 
             owner_id = int(entry['owner']['id'])
@@ -986,7 +1016,7 @@ def run_owners_full_scan(conn, job):
             entry_created = entry.get('created')
             entry_updated = entry.get('updated')
 
-            logger.info(f"[inventory_scanner] 👤 [{processed + skipped + 1}/{total}] userId: {owner_id}")
+            logger.info(f"[inventory_scanner] {tag} 👤 [{processed + skipped + 1}/{total}] userId: {owner_id}")
             update_job(conn, job_id, currentUser=f'userId:{owner_id}', processed=processed + skipped)
 
             with conn.cursor() as cur:
@@ -1018,12 +1048,12 @@ def run_owners_full_scan(conn, job):
                             entry_uaid
                         ))
                     conn.commit()
-                    logger.info(f"[inventory_scanner] ✅ Updated timestamps for existing user {owner_id}")
+                    logger.info(f"[inventory_scanner] {tag} ✅ Updated timestamps for existing user {owner_id}")
                 else:
-                    logger.info(f"[inventory_scanner] ⏭️ Timestamps already set for {owner_id} — skipping")
+                    logger.info(f"[inventory_scanner] {tag} ⏭️ Timestamps already set for {owner_id} — skipping")
                 skipped += 1
             else:
-                logger.info(f"[inventory_scanner] 📦 New user {owner_id} — fetching info and scanning inventory...")
+                logger.info(f"[inventory_scanner] {tag} 📦 New user {owner_id} — fetching info and scanning inventory...")
 
                 user_info = fetch_user_info(owner_id)
                 headshot = fetch_headshot(owner_id)
@@ -1067,15 +1097,18 @@ def run_owners_full_scan(conn, job):
                                 entry_uaid
                             ))
                         conn.commit()
-                        logger.info(f"[inventory_scanner] ✅ Set timestamps for UAID {entry_uaid}")
+                        logger.info(f"[inventory_scanner] {tag} ✅ Set timestamps for UAID {entry_uaid}")
 
                     processed += 1
                 except Exception as e:
-                    logger.error(f"[inventory_scanner] ❌ Failed to process new user {owner_id}: {e}")
+                    logger.error(f"[inventory_scanner] {tag} ❌ Failed to process new user {owner_id}: {e}")
                     failed += 1
 
             update_job(conn, job_id, processed=processed + skipped, failed=failed)
             time.sleep(USER_PROCESS_DELAY)
+
+        if stop_inner:
+            break
 
         next_cursor = data.get('nextPageCursor')
         if next_cursor:
@@ -1083,7 +1116,7 @@ def run_owners_full_scan(conn, job):
                 last_uaid = int(next_cursor.split('_')[0])
                 save_cursor(conn, asset_id, cursor, last_uaid, page_num - 1)
             except Exception as e:
-                logger.warning(f"[inventory_scanner] Could not save cursor: {e}")
+                logger.warning(f"[inventory_scanner] {tag} Could not save cursor: {e}")
 
         cursor = next_cursor
         if not cursor:
@@ -1094,23 +1127,27 @@ def run_owners_full_scan(conn, job):
     final_status = 'stopped' if is_stop_requested(conn, job_id) else 'done'
     update_job(conn, job_id, status=final_status, currentUser=None,
                processed=processed + skipped, failed=failed)
+    conn.close()
 
-    logger.info(f"\n[inventory_scanner] {'🛑 SCAN STOPPED' if final_status == 'stopped' else '🎉 FULL SCAN COMPLETE'}")
-    logger.info(f"[inventory_scanner]   ✅ New users: {processed} | ⏭️ Skipped: {skipped} | ❌ Failed: {failed} | 🚫 Null: {null_count}")
+    logger.info(f"\n[inventory_scanner] {tag} {'🛑 SCAN STOPPED' if final_status == 'stopped' else '🎉 FULL SCAN COMPLETE'}")
+    logger.info(f"[inventory_scanner] {tag}   ✅ New users: {processed} | ⏭️ Skipped: {skipped} | ❌ Failed: {failed} | 🚫 Null: {null_count}")
 
 
 # ─── Inventory scan job ────────────────────────────────────────────────────
 
-def run_inventory_scan(conn, job):
+def run_inventory_scan(job):
+    conn = get_conn()
     user_id = job.get('userId')
     job_id = job['id']
+    tag = thread_tag()
 
     if not user_id:
-        logger.error(f"[inventory_scanner] Job {job_id} has no userId — skipping")
+        logger.error(f"[inventory_scanner] {tag} Job {job_id} has no userId — skipping")
         update_job(conn, job_id, status='done')
+        conn.close()
         return
 
-    logger.info(f"\n[inventory_scanner] 📦 INVENTORY SCAN JOB — userId: {user_id}")
+    logger.info(f"\n[inventory_scanner] {tag} 📦 INVENTORY SCAN JOB — userId: {user_id}")
 
     try:
         with conn.cursor() as cur:
@@ -1138,56 +1175,71 @@ def run_inventory_scan(conn, job):
         update_job(conn, job_id, currentUser=f'userId:{user_id}')
         save_inventory_snapshot(conn, user_id, user_id)
         update_job(conn, job_id, status='done', currentUser=None)
-        logger.info(f"[inventory_scanner] ✅ Inventory scan complete for userId: {user_id}")
+        logger.info(f"[inventory_scanner] {tag} ✅ Inventory scan complete for userId: {user_id}")
 
     except Exception as e:
-        logger.error(f"[inventory_scanner] ❌ Inventory scan failed for userId {user_id}: {e}")
+        logger.error(f"[inventory_scanner] {tag} ❌ Inventory scan failed for userId {user_id}: {e}")
         logger.error(traceback.format_exc())
         update_job(conn, job_id, status='done', currentUser=None)
+    finally:
+        conn.close()
 
 
 # ─── Main scanner loop ─────────────────────────────────────────────────────
 
-def scanner_loop(cookie: str):
+def scanner_loop(cookie: str, cookie_index: int):
     """Continuously poll for pending ScanJob rows and process them."""
-    # Set this thread's cookie in thread-local storage
     _thread_local.cookie = cookie
-    logger.info(f"[inventory_scanner] 🚀 Scanner thread started — cookie length: {len(cookie)}")
+    _thread_local.cookie_index = cookie_index
+    tag = f"[Cookie {cookie_index}]"
+    logger.info(f"[inventory_scanner] {tag} 🚀 Scanner thread started — cookie length: {len(cookie)}")
+
+    # Reset any jobs stuck as 'running' from a previous crash (only thread 1 does this)
+    if cookie_index == 1:
+        try:
+            conn = get_conn()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE "ScanJob" SET status = 'pending', "updatedAt" = NOW()
+                    WHERE status = 'running'
+                """)
+            conn.commit()
+            conn.close()
+            logger.info(f"[inventory_scanner] {tag} ♻️ Reset stuck 'running' jobs to 'pending'")
+        except Exception as e:
+            logger.warning(f"[inventory_scanner] {tag} Could not reset stuck jobs: {e}")
 
     while True:
         try:
+            # Open connection just to claim a job, then close immediately
             conn = get_conn()
             conn.autocommit = False
-
             job = claim_next_job(conn)
+            conn.close()
 
             if not job:
-                conn.close()
                 time.sleep(POLL_INTERVAL)
                 continue
 
             job_type = job.get('type', 'owners')
-            logger.info(f"[inventory_scanner] 📋 Claimed job {job['id']} (type: {job_type})")
+            logger.info(f"[inventory_scanner] {tag} 📋 Claimed job {job['id']} (type: {job_type})")
 
+            # Each function opens its own fresh connection
             if job_type == 'inventory':
-                run_inventory_scan(conn, job)
+                run_inventory_scan(job)
             elif job_type == 'owners':
-                run_owners_scan(conn, job)
+                run_owners_scan(job)
             elif job_type == 'owners_full':
-                run_owners_full_scan(conn, job)
+                run_owners_full_scan(job)
             else:
-                logger.warning(f"[inventory_scanner] Unknown job type: {job_type}")
-                update_job(conn, job['id'], status='done')
-
-            conn.close()
+                logger.warning(f"[inventory_scanner] {tag} Unknown job type: {job_type}")
+                conn2 = get_conn()
+                update_job(conn2, job['id'], status='done')
+                conn2.close()
 
         except Exception as e:
-            logger.error(f"[inventory_scanner] ❌ Scanner loop error: {e}")
+            logger.error(f"[inventory_scanner] {tag} ❌ Scanner loop error: {e}")
             logger.error(traceback.format_exc())
-            try:
-                conn.close()
-            except Exception:
-                pass
             time.sleep(5)
 
 
@@ -1196,6 +1248,6 @@ def start_inventory_scanner():
     logger.info(f"[inventory_scanner] 🍪 Cookies loaded: {len(ROBLOX_COOKIES)}")
     for i, cookie in enumerate(ROBLOX_COOKIES):
         logger.info(f"[inventory_scanner] Cookie {i+1}: present={bool(cookie)}, length={len(cookie)}, prefix={cookie[:20] if cookie else 'MISSING'}")
-        t = threading.Thread(target=scanner_loop, args=(cookie,), daemon=True)
+        t = threading.Thread(target=scanner_loop, args=(cookie, i+1), daemon=True)
         t.start()
         logger.info(f"[inventory_scanner] ✅ Scanner thread {i+1}/{len(ROBLOX_COOKIES)} started")

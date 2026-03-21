@@ -11,14 +11,12 @@ DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 
 DISCORD_API = 'https://discord.com/api/v10'
 
-# Custom emojis
 EMOJI_GAIN         = '<:gain:1484974786751762483>'
 EMOJI_LOSS         = '<:loss:1484974812701917344>'
 EMOJI_WATCHLIST    = '<:watchlist:1484974826719281254>'
 EMOJI_NOTIFICATION = '<:notification:1484974882088423474>'
 EMOJI_MANIPULATED  = '<:manipulated:1484974931526680710>'
 EMOJI_SALES        = '<:sales:1484974979715043329>'
-EMOJI_ICON         = '<:icon:1484978261959114893>'
 
 APP_URL = os.getenv('NEXT_PUBLIC_APP_URL', 'https://azurewrath.lol')
 
@@ -87,9 +85,9 @@ def _build_embed(row: tuple) -> dict:
     direction_emoji = EMOJI_GAIN if went_up else EMOJI_LOSS
 
     if notif_type == 'price_and_rap_change':
-        subtype = f'{EMOJI_SALES} Item Sold'
+        subtype = f'{direction_emoji} Item Sold'
     else:
-        subtype = f'{EMOJI_WATCHLIST} Price Change'
+        subtype = f'{direction_emoji} Price Change'
 
     display_name = item_name or f'Item {item_id}'
     if manipulated:
@@ -99,7 +97,7 @@ def _build_embed(row: tuple) -> dict:
         {
             'name': subtype,
             'value': (
-                f'{direction_emoji} **{int(old_value):,}** → **{int(new_value):,}** R$'
+                f'**{int(old_value):,}** → **{int(new_value):,}** R$'
                 if old_value is not None and new_value is not None
                 else 'N/A'
             ),

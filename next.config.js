@@ -13,6 +13,7 @@ const nextConfig = {
     NEXT_PUBLIC_VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
   },
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'https',

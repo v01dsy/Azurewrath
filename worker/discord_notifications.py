@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 logger = logging.getLogger(__name__)
 
 DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
-DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
 
 DISCORD_API = 'https://discord.com/api/v10'
 
@@ -68,22 +67,6 @@ def _send_dm(discord_id: str, embed: dict) -> bool:
         return False
 
 
-def _send_webhook(embeds: list[dict]) -> bool:
-    if not DISCORD_WEBHOOK_URL:
-        return False
-    try:
-        for i in range(0, len(embeds), 10):
-            batch = embeds[i:i + 10]
-            res = requests.post(DISCORD_WEBHOOK_URL, json={'embeds': batch}, timeout=10)
-            if not res.ok:
-                logger.warning(f'Webhook send failed: {res.status_code} {res.text}')
-                return False
-        return True
-    except Exception as e:
-        logger.error(f'_send_webhook error: {e}')
-        return False
-
-
 def _format_ts(created_at) -> str:
     if created_at:
         if isinstance(created_at, str):
@@ -96,15 +79,6 @@ def _build_embed(row: tuple) -> dict:
     """
     Discord row columns:
     (id, userId, itemId, type, message, oldValue, newValue, read, createdAt, imageUrl, itemName, manipulated)
-
-    Embed style (clean, Rolimons-inspired):
-      AUTHOR:      <:icon:...> Azurewrath
-      TITLE:       Item Name  ← clickable link to item page
-      DESCRIPTION: <:watchlist:...> Watchlist Alert
-      FIELD 1:     subtype (RAP + Price Change / Price Change)
-      FIELD 2:     <gain/loss> old → new R$
-      THUMBNAIL:   item image
-      FOOTER:      timestamp
     """
     _, user_id, item_id, notif_type, message, old_value, new_value, _, created_at, image_url, item_name, manipulated = row
 
@@ -117,7 +91,6 @@ def _build_embed(row: tuple) -> dict:
     else:
         subtype = f'{EMOJI_WATCHLIST} Price Change'
 
-    # Item name with manipulated tag if needed
     display_name = item_name or f'Item {item_id}'
     if manipulated:
         display_name = f'{display_name} {EMOJI_MANIPULATED}'
@@ -155,7 +128,7 @@ def _build_embed(row: tuple) -> dict:
 
 
 def _build_summary_embed(rows: list[tuple]) -> dict:
-    """Summary embed for multiple item changes."""
+    """Summary embed when a user has multiple item changes in one cycle."""
     any_down = any(row[6] is not None and row[5] is not None and row[6] < row[5] for row in rows)
     colour = 0xED4245 if any_down else 0x57F287
     ts = _format_ts(rows[0][8] if rows else None)
@@ -200,38 +173,14 @@ def send_discord_notifications(cursor, discord_rows: list[tuple]):
     if not discord_rows:
         return
 
-    if not DISCORD_BOT_TOKEN and not DISCORD_WEBHOOK_URL:
-        logger.warning('No DISCORD_BOT_TOKEN or DISCORD_WEBHOOK_URL set — skipping Discord')
+    if not DISCORD_BOT_TOKEN:
+        logger.warning('No DISCORD_BOT_TOKEN set — skipping Discord DMs')
         return
 
     logger.info(f'send_discord_notifications() — {len(discord_rows)} rows')
 
-    # 1. Webhook — deduplicate by item
-    if DISCORD_WEBHOOK_URL:
-        seen_items: set[int] = set()
-        webhook_embeds: list[dict] = []
-        for row in discord_rows:
-            item_id = int(row[2])
-            if item_id not in seen_items:
-                seen_items.add(item_id)
-                webhook_embeds.append(_build_embed(row))
-        if webhook_embeds:
-            success = _send_webhook(webhook_embeds)
-            if success:
-                logger.info(f'Webhook fired — {len(webhook_embeds)} embed(s)')
-            else:
-                logger.error('Webhook failed — check DISCORD_WEBHOOK_URL in .env')
-
-    # 2. DMs — opted-in users only
-    if not DISCORD_BOT_TOKEN:
-        logger.info('No bot token — skipping DMs')
-        return
-
     user_ids = list({int(row[1]) for row in discord_rows})
     logger.info(f'Looking up user_ids: {user_ids}')
-
-    if not user_ids:
-        return
 
     cursor.execute(
         '''

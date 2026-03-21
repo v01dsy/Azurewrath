@@ -13,6 +13,8 @@ const nextConfig = {
     NEXT_PUBLIC_VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
   },
   images: {
+    loader: 'custom',
+    loaderFile: './lib/imageLoader.ts',
     unoptimized: true,
     remotePatterns: [
       {

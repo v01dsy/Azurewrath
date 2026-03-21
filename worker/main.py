@@ -458,10 +458,6 @@ def send_push_notifications(cursor, notification_rows):
 
 
 def build_notifications(results, watchlist_map, current_time):
-    """
-    For every result that has a price or RAP change, generate Notification
-    rows for each watcher of that item.
-    """
     notification_rows = []
     user_item_notifications = {}
 
@@ -478,30 +474,25 @@ def build_notifications(results, watchlist_map, current_time):
         if not (rap_changed or price_changed):
             continue
 
-        messages = []
-        if rap_changed:
-            direction = "📈 increased" if result['new_rap'] > result['old_rap'] else "📉 decreased"
-            messages.append(
-                f"RAP {direction} from "
-                f"{int(result['old_rap']):,} to {int(result['new_rap']):,} Robux"
-            )
-
-        if price_changed:
-            direction = "📉 dropped" if result['new_price'] < result['old_price'] else "📈 rose"
-            messages.append(
-                f"best price {direction} from "
-                f"{int(result['old_price']):,} to {int(result['new_price']):,} Robux"
-            )
-
-        combined_message = f"{name} " + " and ".join(messages)
-
+        # RAP alone should never happen — a sale always moves both RAP and price
+        # If somehow only RAP changed, treat it as price_and_rap_change anyway
         if rap_changed and price_changed:
             notif_type = "price_and_rap_change"
-        elif rap_changed:
-            notif_type = "rap_change"
         else:
             notif_type = "price_change"
 
+        messages = []
+        if rap_changed:
+            direction = "increased" if result['new_rap'] > result['old_rap'] else "decreased"
+            messages.append(f"RAP {direction} from {int(result['old_rap']):,} to {int(result['new_rap']):,} R$")
+
+        if price_changed:
+            direction = "dropped" if result['new_price'] < result['old_price'] else "rose"
+            messages.append(f"best price {direction} from {int(result['old_price']):,} to {int(result['new_price']):,} R$")
+
+        combined_message = f"{name} — " + " and ".join(messages)
+
+        # For oldValue/newValue always prefer RAP if it changed, otherwise price
         old_value = result['old_rap'] if rap_changed else result['old_price']
         new_value = result['new_rap'] if rap_changed else result['new_price']
 
@@ -512,15 +503,15 @@ def build_notifications(results, watchlist_map, current_time):
             user_item_notifications[key] = True
 
             notification_rows.append((
-                str(uuid.uuid4()),  # id
-                user_id,            # userId
-                asset_id,           # itemId
-                notif_type,         # type
-                combined_message,   # message
-                old_value,          # oldValue
-                new_value,          # newValue
-                False,              # read
-                current_time,       # createdAt (UTC)
+                str(uuid.uuid4()),
+                user_id,
+                asset_id,
+                notif_type,
+                combined_message,
+                old_value,
+                new_value,
+                False,
+                current_time,
             ))
 
     return notification_rows

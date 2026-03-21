@@ -37,7 +37,8 @@ const RANK_TIERS = [
   { max: 5000,     color: '#e2e8f0', name: 'Platinum',  glow: true,  desc: 'Ranks #1,001 – #5,000' },
   { max: 10000,    color: '#ffd621', name: 'Gold',      glow: true,  desc: 'Ranks #5,001 – #10,000' },
   { max: 50000,    color: '#979797', name: 'Silver',    glow: false, desc: 'Ranks #10,001 – #50,000' },
-  { max: Infinity, color: '#cd7f32', name: 'Bronze',    glow: false, desc: 'Ranks #50,001+' }, // mf said "too infinity, and beyond!" mayne shut tf up buzz lightyear!!!
+  { max: 100000, color: '#cd7f32', name: 'Bronze',    glow: false, desc: 'Ranks #50,001 – #100,000' },
+  { max: Infinity, color: '#4d4d4d', name: 'Rock',    glow: false, desc: 'Ranks #100,001+' }, // mf said "too infinity, and beyond!" mayne shut tf up buzz lightyear!!!
 ] as const;
 
 function getRankTier(rank: number): {
@@ -55,7 +56,8 @@ function getRankTier(rank: number): {
   if (rank <= 5000)  return { color: '#e2e8f0', label: `#${rank}`, glow: true,  name: 'Platinum',  glowLevel: 1 };
   if (rank <= 10000) return { color: '#ffd621', label: `#${rank}`, glow: true,  name: 'Gold',      glowLevel: 1 };
   if (rank <= 50000) return { color: '#979797', label: `#${rank}`, glow: false, name: 'Silver',    glowLevel: 0 };
-  return               { color: '#cd7f32', label: `#${rank}`, glow: false, name: 'Bronze',    glowLevel: 0 };
+  if (rank <= 100000) return { color: '#cd7f32', label: `#${rank}`, glow: false, name: 'Bronze',   glowLevel: 0 };
+  return               { color: '#4d4d4d', label: `#${rank}`, glow: false, name: 'Rock',           glowLevel: 0 };
 }
 
 const PAGE_CSS = `

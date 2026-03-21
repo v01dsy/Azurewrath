@@ -4,15 +4,11 @@
 # Requires in your .env:
 #   DISCORD_BOT_TOKEN=Bot your_bot_token_here
 #   DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-#
-# The bot needs the "Send Messages" permission in the target channel,
-# and the user must have DMs open from server members (or share a server).
 
 import os
-import json
 import logging
-import traceback
 import requests
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +17,15 @@ DISCORD_WEBHOOK_URL = os.getenv('DISCORD_WEBHOOK_URL')
 
 DISCORD_API = 'https://discord.com/api/v10'
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────────────────────────────────────
+# Custom emojis
+EMOJI_GAIN         = '<:gain:1484974786751762483>'
+EMOJI_LOSS         = '<:loss:1484974812701917344>'
+EMOJI_WATCHLIST    = '<:watchlist:1484974826719281254>'
+EMOJI_NOTIFICATION = '<:notification:1484974882088423474>'
+EMOJI_MANIPULATED  = '<:manipulated:1484974931526680710>'
+EMOJI_SALES        = '<:sales:1484974979715043329>'
+EMOJI_ICON         = '<:icon:1484978261959114893>'
+
 
 def _bot_headers():
     return {
@@ -33,7 +35,6 @@ def _bot_headers():
 
 
 def _open_dm(discord_id: str) -> str | None:
-    """Create (or fetch) a DM channel with a Discord user. Returns channel ID."""
     try:
         res = requests.post(
             f'{DISCORD_API}/users/@me/channels',
@@ -43,15 +44,14 @@ def _open_dm(discord_id: str) -> str | None:
         )
         if res.ok:
             return res.json()['id']
-        logger.warning(f'⚠️  Could not open DM with {discord_id}: {res.status_code} {res.text}')
+        logger.warning(f'Could not open DM with {discord_id}: {res.status_code} {res.text}')
         return None
     except Exception as e:
-        logger.error(f'❌ _open_dm error: {e}')
+        logger.error(f'_open_dm error: {e}')
         return None
 
 
 def _send_dm(discord_id: str, embed: dict) -> bool:
-    """Open a DM channel then send an embed."""
     channel_id = _open_dm(discord_id)
     if not channel_id:
         return False
@@ -64,19 +64,17 @@ def _send_dm(discord_id: str, embed: dict) -> bool:
         )
         if res.ok:
             return True
-        logger.warning(f'⚠️  DM send failed for {discord_id}: {res.status_code} {res.text}')
+        logger.warning(f'DM send failed for {discord_id}: {res.status_code} {res.text}')
         return False
     except Exception as e:
-        logger.error(f'❌ _send_dm error: {e}')
+        logger.error(f'_send_dm error: {e}')
         return False
 
 
 def _send_webhook(embeds: list[dict]) -> bool:
-    """Fire embeds at the configured webhook."""
     if not DISCORD_WEBHOOK_URL:
         return False
     try:
-        # Discord allows up to 10 embeds per webhook call
         for i in range(0, len(embeds), 10):
             batch = embeds[i:i + 10]
             res = requests.post(
@@ -85,103 +83,160 @@ def _send_webhook(embeds: list[dict]) -> bool:
                 timeout=10,
             )
             if not res.ok:
-                logger.warning(f'⚠️  Webhook send failed: {res.status_code} {res.text}')
+                logger.warning(f'Webhook send failed: {res.status_code} {res.text}')
+                return False
         return True
     except Exception as e:
-        logger.error(f'❌ _send_webhook error: {e}')
+        logger.error(f'_send_webhook error: {e}')
         return False
 
 
 def _build_embed(notification_row: tuple, app_url: str) -> dict:
     """
-    Build a Discord embed from a notification row.
     Row columns: (id, userId, itemId, type, message, oldValue, newValue, read, createdAt)
+
+    Embed structure:
+      TITLE:       <:icon:...> Azurewrath
+      DESCRIPTION: <:watchlist:...> Watchlist Alert
+      FIELD 1:     subtype — RAP + Price Change / Price Change  (bold)
+      FIELD 2:     the full message with gain/loss emoji
+      FIELD 3:     Change  (bold header)
+      FIELD 4:     <gain/loss> old → new R$
+      FOOTER:      -# timestamp with seconds
     """
     _, user_id, item_id, notif_type, message, old_value, new_value, _, created_at = notification_row
 
-    # Pick colour based on direction
-    colour = 0x57F287  # green = good (price drop / deal)
-    if notif_type == 'rap_change':
-        colour = 0x5865F2  # blurple = RAP changed
-    elif notif_type == 'price_and_rap_change':
-        colour = 0xFEE75C  # yellow = both changed
+    went_up = (new_value is not None and old_value is not None and new_value > old_value)
+    colour = 0x57F287 if went_up else 0xED4245
+    direction_emoji = EMOJI_GAIN if went_up else EMOJI_LOSS
 
-    embed = {
-        'title': '🔔 Watchlist Alert',
-        'description': message,
+    # Subtype label
+    if notif_type == 'price_and_rap_change':
+        subtype = f'{EMOJI_SALES} RAP + Price Change'
+    else:
+        subtype = f'{EMOJI_WATCHLIST} Price Change'
+
+    # Timestamp
+    if created_at:
+        if isinstance(created_at, str):
+            ts = created_at
+        else:
+            ts = created_at.strftime('%Y-%m-%d at %H:%M:%S UTC')
+    else:
+        ts = datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M:%S UTC')
+
+    fields = [
+        {
+            'name': subtype,
+            'value': f'{direction_emoji} {message}',
+            'inline': False,
+        },
+        {
+            'name': 'Change',
+            'value': (
+                f'{direction_emoji} **{int(old_value):,}** → **{int(new_value):,}** R$'
+                if old_value is not None and new_value is not None
+                else 'N/A'
+            ),
+            'inline': False,
+        },
+    ]
+
+    return {
+        'title': f'{EMOJI_ICON} Azurewrath',
+        'description': f'{EMOJI_WATCHLIST} Watchlist Alert',
         'color': colour,
         'url': f'{app_url}/item/{item_id}',
-        'footer': {'text': 'Azurewrath · azurewrath.lol'},
+        'fields': fields,
+        'footer': {'text': f'-# {ts}'},
     }
 
-    if old_value is not None and new_value is not None:
-        direction = '📈' if new_value > old_value else '📉'
-        embed['fields'] = [
-            {
-                'name': 'Change',
-                'value': f'{direction} **{int(old_value):,}** → **{int(new_value):,}** R$',
-                'inline': True,
-            }
-        ]
 
-    return embed
+def _build_summary_embed(rows: list[tuple], app_url: str) -> dict:
+    """Build a summary embed when multiple items changed for one user."""
+    any_down = any(
+        row[6] is not None and row[5] is not None and row[6] < row[5]
+        for row in rows
+    )
+    colour = 0xED4245 if any_down else 0x57F287
 
+    created_at = rows[0][8] if rows else None
+    if created_at:
+        if isinstance(created_at, str):
+            ts = created_at
+        else:
+            ts = created_at.strftime('%Y-%m-%d at %H:%M:%S UTC')
+    else:
+        ts = datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M:%S UTC')
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Main entry point — call this from send_push_notifications() in your worker
-# ─────────────────────────────────────────────────────────────────────────────
+    fields = []
+    for row in rows[:10]:
+        _, _, item_id, notif_type, message, old_value, new_value, _, _ = row
+        went_up = new_value is not None and old_value is not None and new_value > old_value
+        direction_emoji = EMOJI_GAIN if went_up else EMOJI_LOSS
+
+        subtype = f'{EMOJI_SALES} RAP + Price Change' if notif_type == 'price_and_rap_change' else f'{EMOJI_WATCHLIST} Price Change'
+
+        fields.append({
+            'name': subtype,
+            'value': (
+                f'{direction_emoji} **{int(old_value):,}** → **{int(new_value):,}** R$\n'
+                f'{message}'
+            ) if old_value is not None and new_value is not None else message,
+            'inline': False,
+        })
+
+    return {
+        'title': f'{EMOJI_ICON} Azurewrath',
+        'description': f'{EMOJI_WATCHLIST} Watchlist Alert — **{len(rows)} items** changed',
+        'color': colour,
+        'url': f'{app_url}/notifications',
+        'fields': fields,
+        'footer': {'text': f'-# {ts}'},
+    }
+
 
 def send_discord_notifications(cursor, notification_rows: list[tuple]):
-    """
-    For each notification row, send:
-      1. A webhook message to the configured channel (one embed per unique item change)
-      2. A DM to any user who has opted in to Discord notifications
-
-    Call this right after send_push_notifications() inside save_results_to_db().
-
-    Usage in worker.py:
-        from discord_notifications import send_discord_notifications
-        ...
-        send_discord_notifications(cursor, notification_rows)
-    """
     if not notification_rows:
         return
 
     if not DISCORD_BOT_TOKEN and not DISCORD_WEBHOOK_URL:
-        logger.warning('⚠️  No DISCORD_BOT_TOKEN or DISCORD_WEBHOOK_URL set — skipping Discord')
+        logger.warning('No DISCORD_BOT_TOKEN or DISCORD_WEBHOOK_URL set — skipping Discord')
         return
 
-    logger.info(f'💬 send_discord_notifications() — {len(notification_rows)} rows')
+    logger.info(f'send_discord_notifications() — {len(notification_rows)} rows')
 
     APP_URL = os.getenv('NEXT_PUBLIC_APP_URL', 'https://azurewrath.lol')
 
-    # ── 1. Webhook: deduplicate by item so we don't spam one embed per watcher ──
+    # 1. Webhook — deduplicate by item
     if DISCORD_WEBHOOK_URL:
         seen_items: set[int] = set()
         webhook_embeds: list[dict] = []
 
         for row in notification_rows:
-            item_id = row[2]
+            item_id = int(row[2])
             if item_id not in seen_items:
                 seen_items.add(item_id)
                 webhook_embeds.append(_build_embed(row, APP_URL))
 
         if webhook_embeds:
-            _send_webhook(webhook_embeds)
-            logger.info(f'✅ Webhook fired — {len(webhook_embeds)} embed(s)')
+            success = _send_webhook(webhook_embeds)
+            if success:
+                logger.info(f'Webhook fired — {len(webhook_embeds)} embed(s)')
+            else:
+                logger.error('Webhook failed — check DISCORD_WEBHOOK_URL in .env')
 
-    # ── 2. DMs: only for users who opted in and have Discord linked ──
+    # 2. DMs — opted-in users only
     if not DISCORD_BOT_TOKEN:
-        logger.info('ℹ️  No bot token — skipping DMs')
+        logger.info('No bot token — skipping DMs')
         return
 
-    # Get unique user IDs from the notification rows
-    user_ids = list({row[1] for row in notification_rows})
+    user_ids = list({int(row[1]) for row in notification_rows})
+    logger.info(f'Looking up user_ids: {user_ids}')
 
     if not user_ids:
         return
 
-    # Fetch opted-in users who have Discord linked
     cursor.execute(
         '''
         SELECT "robloxUserId", "discordId"
@@ -192,18 +247,19 @@ def send_discord_notifications(cursor, notification_rows: list[tuple]):
         ''',
         (user_ids,),
     )
-    opted_in = {row[0]: row[1] for row in cursor.fetchall()}
+    opted_in = {int(row[0]): row[1] for row in cursor.fetchall()}
+    logger.info(f'opted_in result: {opted_in}')
+    logger.info(f'Total opted-in users found: {len(opted_in)}')
 
     if not opted_in:
-        logger.info('ℹ️  No opted-in users with Discord linked — skipping DMs')
+        logger.info('No opted-in users with Discord linked — skipping DMs')
         return
 
-    logger.info(f'📨 Sending DMs to {len(opted_in)} opted-in user(s)')
+    logger.info(f'Sending DMs to {len(opted_in)} opted-in user(s)')
 
-    # Group notification rows by user so we can send a combined message
     user_rows: dict[int, list[tuple]] = {}
     for row in notification_rows:
-        uid = row[1]
+        uid = int(row[1])
         if uid in opted_in:
             user_rows.setdefault(uid, []).append(row)
 
@@ -213,31 +269,21 @@ def send_discord_notifications(cursor, notification_rows: list[tuple]):
     for roblox_user_id, discord_id in opted_in.items():
         rows = user_rows.get(roblox_user_id, [])
         if not rows:
+            logger.warning(f'No rows found for opted-in user {roblox_user_id} — skipping')
             continue
+
+        logger.info(f'Sending DM to robloxUserId={roblox_user_id}, discordId={discord_id}, {len(rows)} notification(s)')
 
         if len(rows) == 1:
             embed = _build_embed(rows[0], APP_URL)
         else:
-            # Multiple changes for this user — send a summary embed
-            embed = {
-                'title': '🔔 Watchlist Alert',
-                'description': f'**{len(rows)} items** on your watchlist have changed.',
-                'color': 0x5865F2,
-                'url': f'{APP_URL}/notifications',
-                'fields': [
-                    {
-                        'name': row[3].replace('_', ' ').title(),
-                        'value': row[4],
-                        'inline': False,
-                    }
-                    for row in rows[:10]  # cap at 10 fields (Discord limit)
-                ],
-                'footer': {'text': 'Azurewrath · azurewrath.lol'},
-            }
+            embed = _build_summary_embed(rows, APP_URL)
 
         if _send_dm(discord_id, embed):
             dm_success += 1
+            logger.info(f'DM sent to discordId={discord_id}')
         else:
             dm_fail += 1
+            logger.error(f'DM failed for discordId={discord_id}')
 
-    logger.info(f'✅ DMs — {dm_success} sent, {dm_fail} failed')
+    logger.info(f'DMs — {dm_success} sent, {dm_fail} failed')

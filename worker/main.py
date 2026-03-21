@@ -482,7 +482,10 @@ def build_notifications(results, watchlist_map, item_metadata, current_time):
     discord_rows = []
     user_item_notifications = {}
 
-    for result in results:
+    # Process sales (RAP changes) first so the dedup key blocks the standalone price_change for the same item
+    sorted_results = sorted(results, key=lambda r: 0 if r['rap_changed'] else 1)
+
+    for result in sorted_results:
         asset_id = result['asset_id']
         watchers = watchlist_map.get(asset_id)
         if not watchers:
@@ -497,7 +500,9 @@ def build_notifications(results, watchlist_map, item_metadata, current_time):
 
         # RAP alone should never happen — a sale always moves both RAP and price
         # If somehow only RAP changed, treat it as price_and_rap_change anyway
-        if rap_changed and price_changed:
+        # RAP only moves when a sale happens — always treat as a sale notification
+        # This absorbs the price change too, preventing two separate notifications
+        if rap_changed:
             notif_type = "price_and_rap_change"
         else:
             notif_type = "price_change"

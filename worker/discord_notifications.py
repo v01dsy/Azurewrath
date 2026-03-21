@@ -87,7 +87,7 @@ def _build_embed(row: tuple) -> dict:
     direction_emoji = EMOJI_GAIN if went_up else EMOJI_LOSS
 
     if notif_type == 'price_and_rap_change':
-        subtype = f'{EMOJI_SALES} RAP + Price Change'
+        subtype = f'{EMOJI_SALES} Item Sold'
     else:
         subtype = f'{EMOJI_WATCHLIST} Price Change'
 
@@ -127,48 +127,6 @@ def _build_embed(row: tuple) -> dict:
     return embed
 
 
-def _build_summary_embed(rows: list[tuple]) -> dict:
-    """Summary embed when a user has multiple item changes in one cycle."""
-    any_down = any(row[6] is not None and row[5] is not None and row[6] < row[5] for row in rows)
-    colour = 0xED4245 if any_down else 0x57F287
-    ts = _format_ts(rows[0][8] if rows else None)
-
-    fields = []
-    for row in rows[:10]:
-        _, _, item_id, notif_type, message, old_value, new_value, _, _, image_url, item_name, manipulated = row
-        went_up = new_value is not None and old_value is not None and new_value > old_value
-        direction_emoji = EMOJI_GAIN if went_up else EMOJI_LOSS
-        subtype = f'{EMOJI_SALES} RAP + Price Change' if notif_type == 'price_and_rap_change' else f'{EMOJI_WATCHLIST} Price Change'
-
-        display_name = item_name or f'Item {item_id}'
-        if manipulated:
-            display_name = f'{display_name} {EMOJI_MANIPULATED}'
-
-        fields.append({
-            'name': f'[{display_name}]({APP_URL}/item/{item_id})',
-            'value': (
-                f'{subtype}\n{direction_emoji} **{int(old_value):,}** → **{int(new_value):,}** R$'
-                if old_value is not None and new_value is not None
-                else f'{subtype}\n{message}'
-            ),
-            'inline': False,
-        })
-
-    return {
-        'author': {
-            'name': 'Azurewrath',
-            'icon_url': 'https://azurewrath.lol/Images/icon.webp',
-            'url': APP_URL,
-        },
-        'title': f'{EMOJI_WATCHLIST} Watchlist Alert',
-        'description': f'**{len(rows)} items** on your watchlist have changed.',
-        'color': colour,
-        'url': f'{APP_URL}/notifications',
-        'fields': fields,
-        'footer': {'text': ts},
-    }
-
-
 def send_discord_notifications(cursor, discord_rows: list[tuple]):
     if not discord_rows:
         return
@@ -199,24 +157,18 @@ def send_discord_notifications(cursor, discord_rows: list[tuple]):
         logger.info('No opted-in users with Discord linked — skipping DMs')
         return
 
-    user_rows: dict[int, list[tuple]] = {}
-    for row in discord_rows:
-        uid = int(row[1])
-        if uid in opted_in:
-            user_rows.setdefault(uid, []).append(row)
-
     dm_success = 0
     dm_fail = 0
 
-    for user_id, discord_id in opted_in.items():
-        rows = user_rows.get(user_id, [])
-        if not rows:
-            logger.warning(f'No rows found for opted-in user {user_id} — skipping')
+    for row in discord_rows:
+        user_id = int(row[1])
+        discord_id = opted_in.get(user_id)
+        if not discord_id:
             continue
 
-        logger.info(f'Sending DM to [userId {user_id}] discordId={discord_id}, {len(rows)} notification(s)')
+        embed = _build_embed(row)
 
-        embed = _build_embed(rows[0]) if len(rows) == 1 else _build_summary_embed(rows)
+        logger.info(f'Sending DM to [userId {user_id}] discordId={discord_id}')
 
         if _send_dm(discord_id, embed):
             dm_success += 1

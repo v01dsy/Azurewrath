@@ -359,7 +359,19 @@ def load_watchlist_map(cursor, asset_ids):
     return watchlist_map
 
 
-def send_push_notifications(cursor, notification_rows):
+def load_item_metadata(cursor, asset_ids):
+    """Fetch name, imageUrl and manipulated flag for a list of asset IDs."""
+    if not asset_ids:
+        return {}
+    placeholders = ','.join(['%s'] * len(asset_ids))
+    cursor.execute(
+        f'SELECT "assetId", name, "imageUrl", manipulated FROM "Item" WHERE "assetId" IN ({placeholders})',
+        asset_ids
+    )
+    return {row[0]: {'name': row[1], 'imageUrl': row[2], 'manipulated': row[3]} for row in cursor.fetchall()}
+
+
+def send_push_notifications(cursor, notification_rows, discord_rows):
     """Send browser push notifications to subscribed users."""
     logger.info("🔔 send_push_notifications() CALLED")
     logger.info(f"   Received {len(notification_rows)} notification rows")
@@ -369,6 +381,7 @@ def send_push_notifications(cursor, notification_rows):
         logger.info("✅ pywebpush imported successfully")
     except ImportError:
         logger.warning("⚠️ pywebpush not installed - skipping browser push.")
+        send_discord_notifications(cursor, discord_rows)
         return
 
     VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY')
@@ -376,12 +389,14 @@ def send_push_notifications(cursor, notification_rows):
 
     if not VAPID_PRIVATE_KEY:
         logger.warning("⚠️ VAPID_PRIVATE_KEY not set - skipping browser push")
+        send_discord_notifications(cursor, discord_rows)
         return
 
     user_ids = list(set(row[1] for row in notification_rows))
     logger.info(f"👥 User IDs to notify: {user_ids}")
 
     if not user_ids:
+        send_discord_notifications(cursor, discord_rows)
         return
 
     cursor.execute('''
@@ -394,6 +409,7 @@ def send_push_notifications(cursor, notification_rows):
     logger.info(f"📋 Found {len(subscriptions)} push subscription(s)")
 
     if not subscriptions:
+        send_discord_notifications(cursor, discord_rows)
         return
 
     user_messages = {}
@@ -452,13 +468,18 @@ def send_push_notifications(cursor, notification_rows):
         )
         logger.info(f"✅ Removed {len(expired_endpoints)} expired subscriptions")
 
-    send_discord_notifications(cursor, notification_rows)
+    send_discord_notifications(cursor, discord_rows)
 
     logger.info("🔔 send_push_notifications() COMPLETE")
 
 
-def build_notifications(results, watchlist_map, current_time):
+def build_notifications(results, watchlist_map, item_metadata, current_time):
+    """
+    Build notification rows for the DB and enriched discord rows with item name/image.
+    Returns (notification_rows, discord_rows)
+    """
     notification_rows = []
+    discord_rows = []
     user_item_notifications = {}
 
     for result in results:
@@ -496,14 +517,21 @@ def build_notifications(results, watchlist_map, current_time):
         old_value = result['old_rap'] if rap_changed else result['old_price']
         new_value = result['new_rap'] if rap_changed else result['new_price']
 
+        # Grab item metadata for Discord embed
+        meta = item_metadata.get(asset_id, {})
+        image_url = meta.get('imageUrl') or f'https://www.roblox.com/asset-thumbnail/image?assetId={asset_id}&width=420&height=420&format=Webp'
+        manipulated = meta.get('manipulated', False)
+
         for user_id in watchers:
             key = (user_id, asset_id)
             if key in user_item_notifications:
                 continue
             user_item_notifications[key] = True
 
+            notif_id = str(uuid.uuid4())
+
             notification_rows.append((
-                str(uuid.uuid4()),
+                notif_id,
                 user_id,
                 asset_id,
                 notif_type,
@@ -514,7 +542,23 @@ def build_notifications(results, watchlist_map, current_time):
                 current_time,
             ))
 
-    return notification_rows
+            # Discord row has extra fields: image_url, item_name, manipulated
+            discord_rows.append((
+                notif_id,
+                user_id,
+                asset_id,
+                notif_type,
+                combined_message,
+                old_value,
+                new_value,
+                False,
+                current_time,
+                image_url,
+                name,
+                manipulated,
+            ))
+
+    return notification_rows, discord_rows
 
 
 def save_results_to_db(results, current_time):
@@ -602,7 +646,8 @@ def save_results_to_db(results, current_time):
             watchlist_map = load_watchlist_map(cursor, changed_asset_ids)
 
             if watchlist_map:
-                notification_rows = build_notifications(results, watchlist_map, current_time)
+                item_metadata = load_item_metadata(cursor, changed_asset_ids)
+                notification_rows, discord_rows = build_notifications(results, watchlist_map, item_metadata, current_time)
 
                 if notification_rows:
                     logger.info(f"🔔 Inserting {len(notification_rows)} Notification records...")
@@ -613,7 +658,7 @@ def save_results_to_db(results, current_time):
                         ('id', 'userId', 'itemId', 'type', 'message', 'oldValue', 'newValue', 'read', 'createdAt')
                     )
                     logger.info(f"✅ Inserted {len(notification_rows)} Notifications")
-                    send_push_notifications(cursor, notification_rows)
+                    send_push_notifications(cursor, notification_rows, discord_rows)
                 else:
                     logger.info("✅ No notifications to send")
             else:

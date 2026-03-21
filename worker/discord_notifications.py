@@ -1,9 +1,4 @@
 # discord_notifications.py
-# Drop this file alongside your worker.py and import it.
-#
-# Requires in your .env:
-#   DISCORD_BOT_TOKEN=Bot your_bot_token_here
-#   DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 
 import os
 import logging
@@ -25,6 +20,8 @@ EMOJI_NOTIFICATION = '<:notification:1484974882088423474>'
 EMOJI_MANIPULATED  = '<:manipulated:1484974931526680710>'
 EMOJI_SALES        = '<:sales:1484974979715043329>'
 EMOJI_ICON         = '<:icon:1484978261959114893>'
+
+APP_URL = os.getenv('NEXT_PUBLIC_APP_URL', 'https://azurewrath.lol')
 
 
 def _bot_headers():
@@ -77,11 +74,7 @@ def _send_webhook(embeds: list[dict]) -> bool:
     try:
         for i in range(0, len(embeds), 10):
             batch = embeds[i:i + 10]
-            res = requests.post(
-                DISCORD_WEBHOOK_URL,
-                json={'embeds': batch},
-                timeout=10,
-            )
+            res = requests.post(DISCORD_WEBHOOK_URL, json={'embeds': batch}, timeout=10)
             if not res.ok:
                 logger.warning(f'Webhook send failed: {res.status_code} {res.text}')
                 return False
@@ -91,48 +84,47 @@ def _send_webhook(embeds: list[dict]) -> bool:
         return False
 
 
-def _build_embed(notification_row: tuple, app_url: str) -> dict:
-    """
-    Row columns: (id, userId, itemId, type, message, oldValue, newValue, read, createdAt)
+def _format_ts(created_at) -> str:
+    if created_at:
+        if isinstance(created_at, str):
+            return created_at
+        return created_at.strftime('%Y-%m-%d at %H:%M:%S UTC')
+    return datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M:%S UTC')
 
-    Embed structure:
-      TITLE:       <:icon:...> Azurewrath
+
+def _build_embed(row: tuple) -> dict:
+    """
+    Discord row columns:
+    (id, userId, itemId, type, message, oldValue, newValue, read, createdAt, imageUrl, itemName, manipulated)
+
+    Embed style (clean, Rolimons-inspired):
+      AUTHOR:      <:icon:...> Azurewrath
+      TITLE:       Item Name  ← clickable link to item page
       DESCRIPTION: <:watchlist:...> Watchlist Alert
-      FIELD 1:     subtype — RAP + Price Change / Price Change  (bold)
-      FIELD 2:     the full message with gain/loss emoji
-      FIELD 3:     Change  (bold header)
-      FIELD 4:     <gain/loss> old → new R$
-      FOOTER:      -# timestamp with seconds
+      FIELD 1:     subtype (RAP + Price Change / Price Change)
+      FIELD 2:     <gain/loss> old → new R$
+      THUMBNAIL:   item image
+      FOOTER:      timestamp
     """
-    _, user_id, item_id, notif_type, message, old_value, new_value, _, created_at = notification_row
+    _, user_id, item_id, notif_type, message, old_value, new_value, _, created_at, image_url, item_name, manipulated = row
 
-    went_up = (new_value is not None and old_value is not None and new_value > old_value)
+    went_up = new_value is not None and old_value is not None and new_value > old_value
     colour = 0x57F287 if went_up else 0xED4245
     direction_emoji = EMOJI_GAIN if went_up else EMOJI_LOSS
 
-    # Subtype label
     if notif_type == 'price_and_rap_change':
         subtype = f'{EMOJI_SALES} RAP + Price Change'
     else:
         subtype = f'{EMOJI_WATCHLIST} Price Change'
 
-    # Timestamp
-    if created_at:
-        if isinstance(created_at, str):
-            ts = created_at
-        else:
-            ts = created_at.strftime('%Y-%m-%d at %H:%M:%S UTC')
-    else:
-        ts = datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M:%S UTC')
+    # Item name with manipulated tag if needed
+    display_name = item_name or f'Item {item_id}'
+    if manipulated:
+        display_name = f'{display_name} {EMOJI_MANIPULATED}'
 
     fields = [
         {
             'name': subtype,
-            'value': f'{direction_emoji} {message}',
-            'inline': False,
-        },
-        {
-            'name': 'Change',
             'value': (
                 f'{direction_emoji} **{int(old_value):,}** → **{int(new_value):,}** R$'
                 if old_value is not None and new_value is not None
@@ -142,83 +134,87 @@ def _build_embed(notification_row: tuple, app_url: str) -> dict:
         },
     ]
 
-    return {
-        'title': f'{EMOJI_ICON} Azurewrath',
+    embed = {
+        'author': {
+            'name': 'Azurewrath',
+            'icon_url': 'https://azurewrath.lol/Images/icon.webp',
+            'url': APP_URL,
+        },
+        'title': display_name,
+        'url': f'{APP_URL}/item/{item_id}',
         'description': f'{EMOJI_WATCHLIST} Watchlist Alert',
         'color': colour,
-        'url': f'{app_url}/item/{item_id}',
         'fields': fields,
-        'footer': {'text': f'-# {ts}'},
+        'footer': {'text': _format_ts(created_at)},
     }
 
+    if image_url:
+        embed['thumbnail'] = {'url': image_url}
 
-def _build_summary_embed(rows: list[tuple], app_url: str) -> dict:
-    """Build a summary embed when multiple items changed for one user."""
-    any_down = any(
-        row[6] is not None and row[5] is not None and row[6] < row[5]
-        for row in rows
-    )
+    return embed
+
+
+def _build_summary_embed(rows: list[tuple]) -> dict:
+    """Summary embed for multiple item changes."""
+    any_down = any(row[6] is not None and row[5] is not None and row[6] < row[5] for row in rows)
     colour = 0xED4245 if any_down else 0x57F287
-
-    created_at = rows[0][8] if rows else None
-    if created_at:
-        if isinstance(created_at, str):
-            ts = created_at
-        else:
-            ts = created_at.strftime('%Y-%m-%d at %H:%M:%S UTC')
-    else:
-        ts = datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M:%S UTC')
+    ts = _format_ts(rows[0][8] if rows else None)
 
     fields = []
     for row in rows[:10]:
-        _, _, item_id, notif_type, message, old_value, new_value, _, _ = row
+        _, _, item_id, notif_type, message, old_value, new_value, _, _, image_url, item_name, manipulated = row
         went_up = new_value is not None and old_value is not None and new_value > old_value
         direction_emoji = EMOJI_GAIN if went_up else EMOJI_LOSS
-
         subtype = f'{EMOJI_SALES} RAP + Price Change' if notif_type == 'price_and_rap_change' else f'{EMOJI_WATCHLIST} Price Change'
 
+        display_name = item_name or f'Item {item_id}'
+        if manipulated:
+            display_name = f'{display_name} {EMOJI_MANIPULATED}'
+
         fields.append({
-            'name': subtype,
+            'name': f'[{display_name}]({APP_URL}/item/{item_id})',
             'value': (
-                f'{direction_emoji} **{int(old_value):,}** → **{int(new_value):,}** R$\n'
-                f'{message}'
-            ) if old_value is not None and new_value is not None else message,
+                f'{subtype}\n{direction_emoji} **{int(old_value):,}** → **{int(new_value):,}** R$'
+                if old_value is not None and new_value is not None
+                else f'{subtype}\n{message}'
+            ),
             'inline': False,
         })
 
     return {
-        'title': f'{EMOJI_ICON} Azurewrath',
-        'description': f'{EMOJI_WATCHLIST} Watchlist Alert — **{len(rows)} items** changed',
+        'author': {
+            'name': 'Azurewrath',
+            'icon_url': 'https://azurewrath.lol/Images/icon.webp',
+            'url': APP_URL,
+        },
+        'title': f'{EMOJI_WATCHLIST} Watchlist Alert',
+        'description': f'**{len(rows)} items** on your watchlist have changed.',
         'color': colour,
-        'url': f'{app_url}/notifications',
+        'url': f'{APP_URL}/notifications',
         'fields': fields,
-        'footer': {'text': f'-# {ts}'},
+        'footer': {'text': ts},
     }
 
 
-def send_discord_notifications(cursor, notification_rows: list[tuple]):
-    if not notification_rows:
+def send_discord_notifications(cursor, discord_rows: list[tuple]):
+    if not discord_rows:
         return
 
     if not DISCORD_BOT_TOKEN and not DISCORD_WEBHOOK_URL:
         logger.warning('No DISCORD_BOT_TOKEN or DISCORD_WEBHOOK_URL set — skipping Discord')
         return
 
-    logger.info(f'send_discord_notifications() — {len(notification_rows)} rows')
-
-    APP_URL = os.getenv('NEXT_PUBLIC_APP_URL', 'https://azurewrath.lol')
+    logger.info(f'send_discord_notifications() — {len(discord_rows)} rows')
 
     # 1. Webhook — deduplicate by item
     if DISCORD_WEBHOOK_URL:
         seen_items: set[int] = set()
         webhook_embeds: list[dict] = []
-
-        for row in notification_rows:
+        for row in discord_rows:
             item_id = int(row[2])
             if item_id not in seen_items:
                 seen_items.add(item_id)
-                webhook_embeds.append(_build_embed(row, APP_URL))
-
+                webhook_embeds.append(_build_embed(row))
         if webhook_embeds:
             success = _send_webhook(webhook_embeds)
             if success:
@@ -231,7 +227,7 @@ def send_discord_notifications(cursor, notification_rows: list[tuple]):
         logger.info('No bot token — skipping DMs')
         return
 
-    user_ids = list({int(row[1]) for row in notification_rows})
+    user_ids = list({int(row[1]) for row in discord_rows})
     logger.info(f'Looking up user_ids: {user_ids}')
 
     if not user_ids:
@@ -248,17 +244,14 @@ def send_discord_notifications(cursor, notification_rows: list[tuple]):
         (user_ids,),
     )
     opted_in = {int(row[0]): row[1] for row in cursor.fetchall()}
-    logger.info(f'opted_in result: {opted_in}')
-    logger.info(f'Total opted-in users found: {len(opted_in)}')
+    logger.info(f'opted_in: {opted_in} — {len(opted_in)} user(s)')
 
     if not opted_in:
         logger.info('No opted-in users with Discord linked — skipping DMs')
         return
 
-    logger.info(f'Sending DMs to {len(opted_in)} opted-in user(s)')
-
     user_rows: dict[int, list[tuple]] = {}
-    for row in notification_rows:
+    for row in discord_rows:
         uid = int(row[1])
         if uid in opted_in:
             user_rows.setdefault(uid, []).append(row)
@@ -266,24 +259,21 @@ def send_discord_notifications(cursor, notification_rows: list[tuple]):
     dm_success = 0
     dm_fail = 0
 
-    for roblox_user_id, discord_id in opted_in.items():
-        rows = user_rows.get(roblox_user_id, [])
+    for user_id, discord_id in opted_in.items():
+        rows = user_rows.get(user_id, [])
         if not rows:
-            logger.warning(f'No rows found for opted-in user {roblox_user_id} — skipping')
+            logger.warning(f'No rows found for opted-in user {user_id} — skipping')
             continue
 
-        logger.info(f'Sending DM to robloxUserId={roblox_user_id}, discordId={discord_id}, {len(rows)} notification(s)')
+        logger.info(f'Sending DM to [userId {user_id}] discordId={discord_id}, {len(rows)} notification(s)')
 
-        if len(rows) == 1:
-            embed = _build_embed(rows[0], APP_URL)
-        else:
-            embed = _build_summary_embed(rows, APP_URL)
+        embed = _build_embed(rows[0]) if len(rows) == 1 else _build_summary_embed(rows)
 
         if _send_dm(discord_id, embed):
             dm_success += 1
-            logger.info(f'DM sent to discordId={discord_id}')
+            logger.info(f'DM sent to [userId {user_id}]')
         else:
             dm_fail += 1
-            logger.error(f'DM failed for discordId={discord_id}')
+            logger.error(f'DM failed for [userId {user_id}]')
 
     logger.info(f'DMs — {dm_success} sent, {dm_fail} failed')

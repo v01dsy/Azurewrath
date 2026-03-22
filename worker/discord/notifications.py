@@ -1,4 +1,4 @@
-# discord_notifications.py
+# worker/discord/notifications.py
 
 import os
 import logging
@@ -8,17 +8,12 @@ from datetime import datetime, timezone
 logger = logging.getLogger(__name__)
 
 DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
-
 DISCORD_API = 'https://discord.com/api/v10'
-
-EMOJI_GAIN         = '<:gain:1484974786751762483>'
-EMOJI_LOSS         = '<:loss:1484974812701917344>'
-EMOJI_WATCHLIST    = '<:watchlist:1484974826719281254>'
-EMOJI_NOTIFICATION = '<:notification:1484974882088423474>'
-EMOJI_MANIPULATED  = '<:manipulated:1484974931526680710>'
-EMOJI_SALES        = '<:sales:1484974979715043329>'
-
 APP_URL = os.getenv('NEXT_PUBLIC_APP_URL', 'https://azurewrath.lol')
+
+EMOJI_GAIN      = '<:gain:1484974786751762483>'
+EMOJI_LOSS      = '<:loss:1484974812701917344>'
+EMOJI_MANIPULATED = '<:manipulated:1484974931526680710>'
 
 
 def _bot_headers():
@@ -82,28 +77,46 @@ def _build_embed(row: tuple) -> dict:
 
     went_up = new_value is not None and old_value is not None and new_value > old_value
     colour = 0x57F287 if went_up else 0xED4245
-    direction_emoji = EMOJI_GAIN if went_up else EMOJI_LOSS
-
-    if notif_type == 'price_and_rap_change':
-        subtype = f'{direction_emoji} Item Sold'
-    else:
-        subtype = f'{direction_emoji} Price Change'
+    emoji = EMOJI_GAIN if went_up else EMOJI_LOSS
 
     display_name = item_name or f'Item {item_id}'
     if manipulated:
         display_name = f'{display_name} {EMOJI_MANIPULATED}'
 
-    fields = [
-        {
-            'name': subtype,
-            'value': (
-                f'**{int(old_value):,}** → **{int(new_value):,}** R$'
-                if old_value is not None and new_value is not None
-                else 'N/A'
-            ),
-            'inline': False,
-        },
-    ]
+    # Title line
+    if notif_type == 'price_and_rap_change':
+        title_line = f'{emoji} Item Sold'
+    else:
+        title_line = f'{emoji} Price Change'
+
+    fields = []
+
+    if notif_type == 'price_and_rap_change':
+        # RAP row
+        if old_value is not None and new_value is not None:
+            fields.append({
+                'name': 'Old RAP',
+                'value': f'**{int(old_value):,}** R$',
+                'inline': True,
+            })
+            fields.append({
+                'name': 'New RAP',
+                'value': f'**{int(new_value):,}** R$',
+                'inline': True,
+            })
+    else:
+        # Price change only
+        if old_value is not None and new_value is not None:
+            fields.append({
+                'name': 'Old Price',
+                'value': f'**{int(old_value):,}** R$',
+                'inline': True,
+            })
+            fields.append({
+                'name': 'New Price',
+                'value': f'**{int(new_value):,}** R$',
+                'inline': True,
+            })
 
     embed = {
         'author': {
@@ -113,7 +126,7 @@ def _build_embed(row: tuple) -> dict:
         },
         'title': display_name,
         'url': f'{APP_URL}/item/{item_id}',
-        'description': f'{EMOJI_WATCHLIST} Watchlist Alert',
+        'description': title_line,
         'color': colour,
         'fields': fields,
         'footer': {'text': _format_ts(created_at)},
@@ -136,7 +149,6 @@ def send_discord_notifications(cursor, discord_rows: list[tuple]):
     logger.info(f'send_discord_notifications() — {len(discord_rows)} rows')
 
     user_ids = list({int(row[1]) for row in discord_rows})
-    logger.info(f'Looking up user_ids: {user_ids}')
 
     cursor.execute(
         '''
@@ -149,7 +161,6 @@ def send_discord_notifications(cursor, discord_rows: list[tuple]):
         (user_ids,),
     )
     opted_in = {int(row[0]): row[1] for row in cursor.fetchall()}
-    logger.info(f'opted_in: {opted_in} — {len(opted_in)} user(s)')
 
     if not opted_in:
         logger.info('No opted-in users with Discord linked — skipping DMs')
@@ -166,13 +177,9 @@ def send_discord_notifications(cursor, discord_rows: list[tuple]):
 
         embed = _build_embed(row)
 
-        logger.info(f'Sending DM to [userId {user_id}] discordId={discord_id}')
-
         if _send_dm(discord_id, embed):
             dm_success += 1
-            logger.info(f'DM sent to [userId {user_id}]')
         else:
             dm_fail += 1
-            logger.error(f'DM failed for [userId {user_id}]')
 
     logger.info(f'DMs — {dm_success} sent, {dm_fail} failed')

@@ -123,73 +123,48 @@ def build_trade_ad_embed(
     offer_robux: int = 0,
     request_robux: int = 0,
     poster_avatar: str | None = None,
+    has_image: bool = False,          # ← NEW: whether a PNG attachment is coming
 ) -> dict:
-    """Embed for a new trade ad that matches a watchlist entry."""
+    """
+    Embed for a new trade ad that matches a watchlist entry.
+ 
+    When has_image=True the embed's 'image' field points to the attached
+    'attachment://trade.png' so Discord renders it inline under the embed.
+    The fields list is kept intentionally short — the image carries the detail.
+    """
     side_label = 'requesting' if side == 'request' else 'offering'
     colour     = 0xED4245 if side == 'request' else 0x57F287
  
-    offer_items   = offer_items   or []
-    request_items = request_items or []
+    APP_URL = __import__('os').getenv('NEXT_PUBLIC_APP_URL', 'https://azurewrath.lol')
  
-    def fmt_items(items: list, robux: int) -> str:
-        lines = [f'• {i["name"]} — {int(i["rap"]):,} R$' for i in items if i.get('name')]
-        if robux > 0:
-            lines.append(f'• {robux:,} Robux')
-        return '\n'.join(lines) if lines else '—'
- 
-    def total_val(items: list, robux: int) -> int:
-        rap_sum = sum(int(i.get('rap') or 0) for i in items)
-        return rap_sum + round(robux * 0.7)
- 
-    offer_total   = total_val(offer_items,   offer_robux)
-    request_total = total_val(request_items, request_robux)
-    diff          = offer_total - request_total
- 
-    fields = []
- 
-    if offer_items or offer_robux:
-        fields.append({
-            'name':   '📦 Offering',
-            'value':  fmt_items(offer_items, offer_robux),
-            'inline': True,
-        })
- 
-    if request_items or request_robux:
-        fields.append({
-            'name':   '🔍 Requesting',
-            'value':  fmt_items(request_items, request_robux),
-            'inline': True,
-        })
- 
-    if offer_total and request_total:
-        arrow  = '▲' if diff >= 0 else '▼'
-        sign   = '+' if diff >= 0 else ''
-        pct    = round((diff / request_total) * 100) if request_total else 0
-        fields.append({
-            'name':   'Value Difference',
-            'value':  f'{arrow} {sign}{diff:,} R$ ({sign}{pct}%)',
-            'inline': False,
-        })
- 
-    fields.append({
-        'name':   'View Ad',
-        'value':  f'[Open on Azurewrath]({APP_URL}/trade/{ad_id})',
-        'inline': False,
-    })
+    EMOJI_WATCHLIST   = '<:watchlist:1484974826719281254>'
  
     embed = {
         'author': {
-            'name':     f'{poster_username}',
-            'icon_url': poster_avatar or f'{APP_URL}/Images/icon.webp',
-            'url':      f'{APP_URL}/trade/{ad_id}',
+            'name':     'Azurewrath',
+            'icon_url': f'{APP_URL}/Images/icon.webp',
+            'url':      APP_URL,
         },
-        'title':       f'{item_name}',
-        'url':         f'{APP_URL}/trade/{ad_id}',
-        'description': f'{EMOJI_WATCHLIST} **{poster_username}** posted a trade ad **{side_label}** this item',
-        'color':       colour,
-        'fields':      fields,
-        'footer':      {'text': 'Azurewrath Trade Alerts'},
+        'description': (
+            f'{EMOJI_WATCHLIST} **{poster_username}** posted a trade ad '
+            f'**{side_label}** **{item_name}**'
+        ),
+        'color':  colour,
+        'fields': [
+            {
+                'name':   'View Ad',
+                'value':  f'[Open on Azurewrath]({APP_URL}/trade/{ad_id})',
+                'inline': False,
+            }
+        ],
+        'footer': {'text': 'Azurewrath Trade Alerts'},
     }
-    if item_image:
+ 
+    # Use the attached image if we generated one, otherwise fall back to the
+    # item thumbnail as a small thumbnail on the right.
+    if has_image:
+        embed['image'] = {'url': 'attachment://trade.png'}
+    elif item_image:
         embed['thumbnail'] = {'url': item_image}
+ 
     return embed

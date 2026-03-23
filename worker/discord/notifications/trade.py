@@ -1,19 +1,19 @@
 # worker/discord/notifications/trade.py
 import logging
 from datetime import datetime, timezone
-from ..client import send_dm
+from ..client import send_dm, send_dm_with_image
 from ..embeds  import build_trade_ad_embed
- 
+
 logger = logging.getLogger(__name__)
- 
+
 _last_run: datetime = datetime.now(timezone.utc)
- 
- 
+
+
 def send_trade_notifications(cursor) -> None:
     global _last_run
     since     = _last_run
     _last_run = datetime.now(timezone.utc)
- 
+
     # 1. Fetch new trade ads + all their items since last cycle
     cursor.execute(
         """
@@ -48,7 +48,7 @@ def send_trade_notifications(cursor) -> None:
     rows = cursor.fetchall()
     if not rows:
         return
- 
+
     # 2. Group by trade ad
     ads: dict[int, dict] = {}
     for (ad_id, poster_id, offer_robux, request_robux,
@@ -70,21 +70,30 @@ def send_trade_notifications(cursor) -> None:
             'side':       side,
             'item_name':  item_name,
             'item_image': item_image,
+            'imageUrl':   item_image,
             'rap':        float(rap),
             'name':       item_name,
         }
         ads[ad_id]['items'].append(item_entry)
         if side == 'offer':
-            ads[ad_id]['offer_items'].append({'name': item_name, 'rap': float(rap)})
+            ads[ad_id]['offer_items'].append({'name': item_name, 'imageUrl': item_image, 'rap': float(rap)})
         else:
-            ads[ad_id]['request_items'].append({'name': item_name, 'rap': float(rap)})
- 
+            ads[ad_id]['request_items'].append({'name': item_name, 'imageUrl': item_image, 'rap': float(rap)})
+
     logger.info(f'[discord/trade] {len(ads)} new trade ad(s) since last cycle')
- 
-    # 3. For each ad, find watchlist users and send DMs
+
+    # 3. Try to import image generator once
+    try:
+        from ..trade_image import generate_trade_image
+        _has_image_gen = True
+    except Exception as e:
+        logger.warning(f'[discord/trade] Image generation unavailable: {e}')
+        _has_image_gen = False
+
+    # 4. For each ad, find watchlist users and send DMs
     for ad_id, ad in ads.items():
         asset_ids = [item['asset_id'] for item in ad['items']]
- 
+
         cursor.execute(
             """
             SELECT w."userId", w."itemId", w."tradeAlertType", u."discordId"
@@ -101,39 +110,60 @@ def send_trade_notifications(cursor) -> None:
         watchers = cursor.fetchall()
         if not watchers:
             continue
- 
+
+        # Generate the trade card image once per ad (shared across all notified users)
+        image_bytes = None
+        if _has_image_gen:
+            try:
+                image_bytes = generate_trade_image(
+                    poster_username=ad['username'],
+                    poster_avatar_url=ad['avatar_url'],
+                    offer_items=ad['offer_items'],
+                    request_items=ad['request_items'],
+                    offer_robux=ad['offer_robux'],
+                    request_robux=ad['request_robux'],
+                )
+            except Exception as e:
+                logger.warning(f'[discord/trade] Image gen failed for ad {ad_id}: {e}')
+
         notified: set = set()
- 
+
         for watcher_user_id, item_id, alert_type, discord_id in watchers:
             if watcher_user_id in notified:
                 continue
- 
+
             matching = next((i for i in ad['items'] if i['asset_id'] == item_id), None)
             if not matching:
                 continue
- 
+
             side = matching['side']
- 
+
             if alert_type == 'requesting' and side != 'request':
                 continue
             if alert_type == 'offering' and side != 'offer':
                 continue
- 
+
             embed = build_trade_ad_embed(
-                ad_id,
-                ad['username'],
-                matching['item_name'],
-                matching['item_image'],
-                side,
-                alert_type,
+                ad_id=ad_id,
+                poster_username=ad['username'],
+                item_name=matching['item_name'],
+                item_image=matching['item_image'],
+                side=side,
+                alert_type=alert_type,
                 offer_items=ad['offer_items'],
                 request_items=ad['request_items'],
                 offer_robux=ad['offer_robux'],
                 request_robux=ad['request_robux'],
                 poster_avatar=ad['avatar_url'],
+                has_image=image_bytes is not None,
             )
- 
-            if send_dm(discord_id, embed):
+
+            if image_bytes:
+                ok = send_dm_with_image(discord_id, embed, image_bytes, filename='trade.png')
+            else:
+                ok = send_dm(discord_id, embed)
+
+            if ok:
                 notified.add(watcher_user_id)
                 logger.info(f'[discord/trade] ✅ notified userId={watcher_user_id} for ad={ad_id} item={item_id}')
             else:

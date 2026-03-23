@@ -1,7 +1,7 @@
 # worker/discord/client.py
 """
 Low-level Discord API helpers.
-Only responsible for opening DM channels and sending messages.
+Supports plain embeds and embeds with a PNG file attachment.
 """
 
 import os
@@ -17,7 +17,6 @@ DISCORD_API       = 'https://discord.com/api/v10'
 def _bot_headers() -> dict:
     return {
         'Authorization': f'Bot {DISCORD_BOT_TOKEN}',
-        'Content-Type':  'application/json',
     }
 
 
@@ -26,7 +25,7 @@ def open_dm(discord_id: str) -> str | None:
     try:
         res = requests.post(
             f'{DISCORD_API}/users/@me/channels',
-            headers=_bot_headers(),
+            headers={**_bot_headers(), 'Content-Type': 'application/json'},
             json={'recipient_id': discord_id},
             timeout=10,
         )
@@ -39,7 +38,7 @@ def open_dm(discord_id: str) -> str | None:
 
 
 def send_dm(discord_id: str, embed: dict) -> bool:
-    """Send an embed as a DM. Returns True on success."""
+    """Send an embed as a DM (no attachment). Returns True on success."""
     if not DISCORD_BOT_TOKEN:
         logger.warning('[discord] DISCORD_BOT_TOKEN not set — skipping DM')
         return False
@@ -51,7 +50,7 @@ def send_dm(discord_id: str, embed: dict) -> bool:
     try:
         res = requests.post(
             f'{DISCORD_API}/channels/{channel_id}/messages',
-            headers=_bot_headers(),
+            headers={**_bot_headers(), 'Content-Type': 'application/json'},
             json={'embeds': [embed]},
             timeout=10,
         )
@@ -60,4 +59,39 @@ def send_dm(discord_id: str, embed: dict) -> bool:
         logger.warning(f'[discord] DM send failed for {discord_id}: {res.status_code} {res.text}')
     except Exception as e:
         logger.error(f'[discord] send_dm error: {e}')
+    return False
+
+
+def send_dm_with_image(discord_id: str, embed: dict, image_bytes: bytes, filename: str = 'trade.png') -> bool:
+    """
+    Send an embed with an attached PNG image.
+    The embed's image field should reference 'attachment://<filename>'.
+    Returns True on success.
+    """
+    if not DISCORD_BOT_TOKEN:
+        logger.warning('[discord] DISCORD_BOT_TOKEN not set — skipping DM')
+        return False
+
+    channel_id = open_dm(discord_id)
+    if not channel_id:
+        return False
+
+    try:
+        import json as _json
+        payload = {'embeds': [embed]}
+
+        res = requests.post(
+            f'{DISCORD_API}/channels/{channel_id}/messages',
+            headers=_bot_headers(),
+            files={
+                'payload_json': (None, _json.dumps(payload), 'application/json'),
+                'files[0]':     (filename, image_bytes, 'image/png'),
+            },
+            timeout=20,
+        )
+        if res.ok:
+            return True
+        logger.warning(f'[discord] DM+image send failed for {discord_id}: {res.status_code} {res.text}')
+    except Exception as e:
+        logger.error(f'[discord] send_dm_with_image error: {e}')
     return False

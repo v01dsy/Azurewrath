@@ -15,6 +15,7 @@ import HoardsSection from '@/components/HoardsSection';
 import Pagination from '@/components/Pagination';
 import { hasRole } from '@/lib/roles';
 import { timeSince } from '@/lib/timeSince';
+import { WatchlistSettingsModal } from '@/app/watchlist/page';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -162,6 +163,7 @@ export default function ItemClient({ item: initialItem }: Props) {
   const [userRole, setUserRole] = useState('user');
   const [isWatchlisted, setIsWatchlisted] = useState(false);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
+  const [showWatchlistModal, setShowWatchlistModal] = useState(false);
   const [manipulatedLoading, setManipulatedLoading] = useState(false);
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
 
@@ -173,8 +175,6 @@ export default function ItemClient({ item: initialItem }: Props) {
 
   const [scanState, setScanState] = useState<ScanState>({ scanning: false, stopRequested: false, progress: null });
   const [scanStarting, setScanStarting] = useState(false);
-  // 'timestamps' | 'full' | null — tracks which button was clicked so we can
-  // show the spinner on the correct button only
   const [activeScanType, setActiveScanType] = useState<'timestamps' | 'full' | null>(null);
   const [scanMessage, setScanMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [activeTab, setActiveTab] = useState<'owners' | 'hoards'>('owners');
@@ -230,7 +230,6 @@ export default function ItemClient({ item: initialItem }: Props) {
     }, 2000);
   }, [itemId, fetchOwners]);
 
-  // Update timestamps only — uses the default 'owners' job type
   const handleScanOwners = async () => {
     const user = getUserSession();
     if (!user) return;
@@ -240,7 +239,6 @@ export default function ItemClient({ item: initialItem }: Props) {
     try {
       const res = await axios.post(`/api/items/${itemId}/scan-owners`, {
         userId: user.robloxUserId,
-        // no action field → defaults to 'owners' job type in the route
       });
       setScanState({ scanning: true, stopRequested: false, progress: null });
       setScanMessage({ text: `🔄 ${res.data.message}`, ok: true });
@@ -253,7 +251,6 @@ export default function ItemClient({ item: initialItem }: Props) {
     }
   };
 
-  // Full scan — explicitly sends action: 'full' → creates 'owners_full' job
   const handleFullScan = async () => {
     const user = getUserSession();
     if (!user) return;
@@ -297,8 +294,6 @@ export default function ItemClient({ item: initialItem }: Props) {
       setScanState(data);
       if (data.scanning) {
         setScanMessage({ text: '🔄 Scan already running…', ok: true });
-        // We don't know which type is running on page load, so leave activeScanType null
-        // — both buttons will be disabled anyway since scanning=true
         startPolling();
       }
     }).catch(() => { });
@@ -326,23 +321,50 @@ export default function ItemClient({ item: initialItem }: Props) {
 
   useEffect(() => { setOwnerPage(1); }, [ownerSort, ownerPageSize]);
 
-  // ── Actions ────────────────────────────────────────────────────────────
+  // ── Watchlist actions ──────────────────────────────────────────────────
 
   const handleWatchlistToggle = async () => {
     const user = getUserSession();
     if (!user) { router.push('/verify'); return; }
-    setWatchlistLoading(true);
-    try {
-      if (isWatchlisted) {
+    if (isWatchlisted) {
+      setWatchlistLoading(true);
+      try {
         await axios.delete(`/api/items/${itemId}/watchlist`, { data: { userId: user.robloxUserId } });
         setIsWatchlisted(false);
-      } else {
-        await axios.post(`/api/items/${itemId}/watchlist`, { userId: user.robloxUserId });
-        setIsWatchlisted(true);
-      }
-    } catch (err: any) { alert(err.response?.data?.error || 'Failed to update watchlist'); }
+      } catch (err: any) { alert(err.response?.data?.error || 'Failed to remove from watchlist'); }
+      finally { setWatchlistLoading(false); }
+    } else {
+      // Open settings modal — it handles the add + configure in one step
+      setShowWatchlistModal(true);
+    }
+  };
+
+  const handleWatchlistSave = async (
+    assetId: string,
+    priceAlerts: boolean,
+    salesAlerts: boolean,
+    tradeAlerts: boolean,
+    tradeAlertType: string,
+  ) => {
+    const user = getUserSession();
+    if (!user) return;
+    setWatchlistLoading(true);
+    try {
+      await axios.post(`/api/items/${itemId}/watchlist`, { userId: user.robloxUserId });
+      await axios.patch('/api/user/watchlist', {
+        userId: user.robloxUserId,
+        assetId: itemId,
+        priceAlerts,
+        salesAlerts,
+        tradeAlerts,
+        tradeAlertType,
+      });
+      setIsWatchlisted(true);
+    } catch (err: any) { alert(err.response?.data?.error || 'Failed to add to watchlist'); }
     finally { setWatchlistLoading(false); }
   };
+
+  // ── Manipulated toggle ─────────────────────────────────────────────────
 
   const handleManipulatedToggle = async () => {
     const user = getUserSession();
@@ -378,7 +400,6 @@ export default function ItemClient({ item: initialItem }: Props) {
   const ownerTotalPages = Math.max(1, Math.ceil(sortedOwners.length / ownerPageSize));
   const pagedOwners = sortedOwners.slice((ownerPage - 1) * ownerPageSize, ownerPage * ownerPageSize);
 
-  // Progress bar: only show percentage when total is known and > 0
   const hasKnownTotal = progress && progress.total > 0;
   const progressPct = hasKnownTotal ? Math.round((progress!.processed / progress!.total) * 100) : null;
   const elapsed = progress ? Math.round((Date.now() - progress.startedAt) / 1000) : 0;
@@ -592,7 +613,6 @@ export default function ItemClient({ item: initialItem }: Props) {
 
                     {isAdmin && (
                       <>
-                        {/* Update Timestamps button */}
                         <button
                           onClick={handleScanOwners}
                           disabled={scanning || scanStarting}
@@ -605,7 +625,6 @@ export default function ItemClient({ item: initialItem }: Props) {
                             : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>Update Timestamps</>}
                         </button>
 
-                        {/* Full Scan button */}
                         <button
                           onClick={handleFullScan}
                           disabled={scanning || scanStarting}
@@ -629,7 +648,7 @@ export default function ItemClient({ item: initialItem }: Props) {
                   </div>
                 </div>
 
-                {/* Progress bar — only shown while scanning */}
+                {/* Progress bar */}
                 {scanning && (
                   <div className="space-y-1.5">
                     <div className="flex justify-between text-xs text-slate-500">
@@ -651,13 +670,11 @@ export default function ItemClient({ item: initialItem }: Props) {
                     </div>
                     <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
                       {progressPct !== null ? (
-                        /* Known progress — solid fill */
                         <div
                           className="bg-gradient-to-r from-orange-500 to-red-500 h-1.5 rounded-full transition-all duration-500"
                           style={{ width: `${progressPct}%` }}
                         />
                       ) : (
-                        /* Unknown progress — indeterminate sliding animation */
                         <div className="h-1.5 rounded-full relative overflow-hidden bg-slate-700">
                           <div
                             className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-orange-500 to-red-500 rounded-full"
@@ -768,6 +785,27 @@ export default function ItemClient({ item: initialItem }: Props) {
         </div>
 
       </div>
+
+      {/* ── Watchlist settings modal (shown on first add) ─────────────── */}
+      {showWatchlistModal && (
+        <WatchlistSettingsModal
+          isAdding
+          item={{
+            assetId: itemId,
+            name: item.name,
+            imageUrl: item.imageUrl ?? null,
+            priceAlerts: false,
+            salesAlerts: false,
+            tradeAlerts: false,
+            tradeAlertType: 'contains',
+          }}
+          onClose={() => setShowWatchlistModal(false)}
+          onSave={async (assetId, priceAlerts, salesAlerts, tradeAlerts, tradeAlertType) => {
+            await handleWatchlistSave(assetId, priceAlerts, salesAlerts, tradeAlerts, tradeAlertType);
+            setShowWatchlistModal(false);
+          }}
+        />
+      )}
     </div>
   );
 }

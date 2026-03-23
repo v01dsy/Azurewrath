@@ -134,11 +134,15 @@ model Session {
 }
 
 model Watchlist {
-  userId    BigInt
-  itemId    BigInt
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [robloxUserId], onDelete: Cascade)
-  item      Item     @relation(fields: [itemId], references: [assetId], onDelete: Cascade)
+  userId         BigInt
+  itemId         BigInt
+  createdAt      DateTime @default(now())
+  priceAlerts    Boolean  @default(false)
+  salesAlerts    Boolean  @default(false)
+  tradeAlerts    Boolean  @default(false)
+  tradeAlertType String   @default("contains")
+  user           User     @relation(fields: [userId], references: [robloxUserId], onDelete: Cascade)
+  item           Item     @relation(fields: [itemId], references: [assetId], onDelete: Cascade)
 
   @@id([userId, itemId])
   @@index([userId])

@@ -1,22 +1,22 @@
-# worker/discord/price_notifications.py
+# worker/discord/notifications/price.py
 """
 Sends Discord DMs for price changes and sales (RAP changes).
 
 Respects the per-user watchlist toggles:
-  - salesAlerts  → RAP-change notifications  (notif_type == 'price_and_rap_change')
-  - priceAlerts  → price-only notifications  (notif_type == 'price_change')
+  - salesAlerts  → RAP-change notifications  (type == 'price_and_rap_change')
+  - priceAlerts  → price-only notifications  (type == 'price_change')
 """
 
 import logging
-from .client   import send_dm
-from .embeds   import build_sale_embed, build_price_embed
+from ..client import send_dm
+from ..embeds  import build_sale_embed, build_price_embed
 
 logger = logging.getLogger(__name__)
 
 
 def send_price_notifications(cursor, notification_rows: list[tuple]) -> None:
     """
-    notification_rows columns (positional, matches build_notifications output):
+    notification_rows columns (positional):
       0  id
       1  userId
       2  itemId
@@ -33,8 +33,6 @@ def send_price_notifications(cursor, notification_rows: list[tuple]) -> None:
     if not notification_rows:
         return
 
-    # Fetch opted-in users: must have discordNotifications=True AND discordId set.
-    # Also fetch their watchlist alert prefs so we can honour the toggles.
     user_ids = list({int(row[1]) for row in notification_rows})
 
     cursor.execute(
@@ -54,7 +52,6 @@ def send_price_notifications(cursor, notification_rows: list[tuple]) -> None:
         (user_ids,),
     )
 
-    # Build a lookup: (userId, itemId) -> {discordId, priceAlerts, salesAlerts}
     prefs: dict[tuple, dict] = {}
     for row in cursor.fetchall():
         roblox_id, discord_id, item_id, price_alerts, sales_alerts = row
@@ -68,19 +65,17 @@ def send_price_notifications(cursor, notification_rows: list[tuple]) -> None:
         logger.info('[discord/price] No opted-in users — skipping DMs')
         return
 
-    sent    = 0
-    skipped = 0
-    failed  = 0
+    sent = skipped = failed = 0
 
     for row in notification_rows:
-        user_id    = int(row[1])
-        item_id    = int(row[2])
-        notif_type = row[3]
-        old_value  = row[5]
-        new_value  = row[6]
-        created_at = row[8]
-        image_url  = row[9]
-        item_name  = row[10]
+        user_id     = int(row[1])
+        item_id     = int(row[2])
+        notif_type  = row[3]
+        old_value   = row[5]
+        new_value   = row[6]
+        created_at  = row[8]
+        image_url   = row[9]
+        item_name   = row[10]
         manipulated = row[11]
 
         pref = prefs.get((user_id, item_id))
@@ -88,32 +83,21 @@ def send_price_notifications(cursor, notification_rows: list[tuple]) -> None:
             skipped += 1
             continue
 
-        discord_id = pref['discord_id']
-
-        # Decide whether to send based on the user's toggle for this type
-        is_sale        = notif_type == 'price_and_rap_change'
-        wants_sale     = pref['sales_alerts']
-        wants_price    = pref['price_alerts']
-
-        if is_sale and not wants_sale:
+        is_sale = notif_type == 'price_and_rap_change'
+        if is_sale and not pref['sales_alerts']:
             skipped += 1
             continue
-        if not is_sale and not wants_price:
+        if not is_sale and not pref['price_alerts']:
             skipped += 1
             continue
 
-        if is_sale:
-            embed = build_sale_embed(
-                item_id, item_name, image_url, manipulated,
-                old_value, new_value, created_at,
-            )
-        else:
-            embed = build_price_embed(
-                item_id, item_name, image_url, manipulated,
-                old_value, new_value, created_at,
-            )
+        embed = (
+            build_sale_embed(item_id, item_name, image_url, manipulated, old_value, new_value, created_at)
+            if is_sale else
+            build_price_embed(item_id, item_name, image_url, manipulated, old_value, new_value, created_at)
+        )
 
-        if send_dm(discord_id, embed):
+        if send_dm(pref['discord_id'], embed):
             sent += 1
         else:
             failed += 1

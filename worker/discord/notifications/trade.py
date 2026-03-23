@@ -1,4 +1,4 @@
-# worker/discord/trade_notifications.py
+# worker/discord/notifications/trade.py
 """
 Sends Discord DMs when a new trade ad is posted that matches a user's watchlist.
 
@@ -8,20 +8,20 @@ Respects the per-watchlist-entry tradeAlerts toggle and tradeAlertType
 
 import logging
 from datetime import datetime, timezone
-from .client import send_dm
-from .embeds  import build_trade_ad_embed
+from ..client import send_dm
+from ..embeds  import build_trade_ad_embed
 
 logger = logging.getLogger(__name__)
 
 _last_run: datetime = datetime.now(timezone.utc)
 
 
-def send_trade_ad_notifications(cursor) -> None:
+def send_trade_notifications(cursor) -> None:
     global _last_run
-    since      = _last_run
-    _last_run  = datetime.now(timezone.utc)
+    since     = _last_run
+    _last_run = datetime.now(timezone.utc)
 
-    # ── 1. Fetch new trade ads posted since the last cycle ──────────────────
+    # ── 1. Fetch new trade ads posted since last cycle ────────────────────
     cursor.execute(
         """
         SELECT
@@ -30,15 +30,15 @@ def send_trade_ad_notifications(cursor) -> None:
             u.username,
             tai."assetId",
             tai.side,
-            i.name        AS item_name,
-            i."imageUrl"  AS item_image
+            i.name       AS item_name,
+            i."imageUrl" AS item_image
         FROM "TradeAd"     ta
         JOIN "User"         u   ON u."robloxUserId" = ta."userId"
-        JOIN "TradeAdItem"  tai ON tai."tradeAdId"   = ta.id
-        JOIN "Item"         i   ON i."assetId"       = tai."assetId"
-        WHERE ta."createdAt"  > %s
-          AND ta.active        = true
-          AND ta."deletedAt"  IS NULL
+        JOIN "TradeAdItem"  tai ON tai."tradeAdId"  = ta.id
+        JOIN "Item"         i   ON i."assetId"      = tai."assetId"
+        WHERE ta."createdAt" > %s
+          AND ta.active       = true
+          AND ta."deletedAt" IS NULL
         ORDER BY ta.id ASC
         """,
         (since,),
@@ -47,25 +47,21 @@ def send_trade_ad_notifications(cursor) -> None:
     if not rows:
         return
 
-    # ── 2. Group rows by trade ad ────────────────────────────────────────────
+    # ── 2. Group rows by trade ad ─────────────────────────────────────────
     ads: dict[int, dict] = {}
     for ad_id, poster_id, username, asset_id, side, item_name, item_image in rows:
         if ad_id not in ads:
-            ads[ad_id] = {
-                'poster_id': poster_id,
-                'username':  username,
-                'items':     [],
-            }
+            ads[ad_id] = {'poster_id': poster_id, 'username': username, 'items': []}
         ads[ad_id]['items'].append({
-            'asset_id':  asset_id,
-            'side':      side,
-            'item_name': item_name,
+            'asset_id':   asset_id,
+            'side':       side,
+            'item_name':  item_name,
             'item_image': item_image,
         })
 
     logger.info(f'[discord/trade] {len(ads)} new trade ad(s) since last cycle')
 
-    # ── 3. For each ad, find watchlist users and send DMs ────────────────────
+    # ── 3. For each ad, find watchlist users and send DMs ─────────────────
     for ad_id, ad in ads.items():
         asset_ids = [item['asset_id'] for item in ad['items']]
 
@@ -74,11 +70,11 @@ def send_trade_ad_notifications(cursor) -> None:
             SELECT w."userId", w."itemId", w."tradeAlertType", u."discordId"
             FROM "Watchlist" w
             JOIN "User" u ON u."robloxUserId" = w."userId"
-            WHERE w."itemId"              = ANY(%s)
-              AND w."tradeAlerts"         = true
-              AND u."discordNotifications"= true
-              AND u."discordId"          IS NOT NULL
-              AND w."userId"             != %s
+            WHERE w."itemId"               = ANY(%s)
+              AND w."tradeAlerts"          = true
+              AND u."discordNotifications" = true
+              AND u."discordId"           IS NOT NULL
+              AND w."userId"              != %s
             """,
             (asset_ids, ad['poster_id']),
         )
@@ -98,7 +94,6 @@ def send_trade_ad_notifications(cursor) -> None:
 
             side = matching['side']
 
-            # Check tradeAlertType filter
             if alert_type == 'requesting' and side != 'request':
                 continue
             if alert_type == 'offering' and side != 'offer':
@@ -115,11 +110,6 @@ def send_trade_ad_notifications(cursor) -> None:
 
             if send_dm(discord_id, embed):
                 notified.add(watcher_user_id)
-                logger.info(
-                    f'[discord/trade] ✅ notified userId={watcher_user_id} '
-                    f'for ad={ad_id} item={item_id}'
-                )
+                logger.info(f'[discord/trade] ✅ notified userId={watcher_user_id} for ad={ad_id} item={item_id}')
             else:
-                logger.warning(
-                    f'[discord/trade] ❌ DM failed userId={watcher_user_id} ad={ad_id}'
-                )
+                logger.warning(f'[discord/trade] ❌ DM failed userId={watcher_user_id} ad={ad_id}')

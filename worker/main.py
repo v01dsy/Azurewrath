@@ -16,7 +16,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 import uuid
-from discord import send_price_notifications, send_trade_ad_notifications
+from discord import send_notifications
 from snipe_events import fire_snipe_events
 from snipe_server import start_snipe_server
 from manipulation_detector import detect_manipulation
@@ -381,7 +381,7 @@ def send_push_notifications(cursor, notification_rows, discord_rows):
         logger.info("✅ pywebpush imported successfully")
     except ImportError:
         logger.warning("⚠️ pywebpush not installed - skipping browser push.")
-        send_price_notifications(cursor, discord_rows)
+        send_notifications(cursor, discord_rows)
         return
 
     VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY')
@@ -389,14 +389,14 @@ def send_push_notifications(cursor, notification_rows, discord_rows):
 
     if not VAPID_PRIVATE_KEY:
         logger.warning("⚠️ VAPID_PRIVATE_KEY not set - skipping browser push")
-        send_price_notifications(cursor, discord_rows)
+        send_notifications(cursor, discord_rows)
         return
 
     user_ids = list(set(row[1] for row in notification_rows))
     logger.info(f"👥 User IDs to notify: {user_ids}")
 
     if not user_ids:
-        send_price_notifications(cursor, discord_rows)
+        send_notifications(cursor, discord_rows)
         return
 
     cursor.execute('''
@@ -409,7 +409,7 @@ def send_push_notifications(cursor, notification_rows, discord_rows):
     logger.info(f"📋 Found {len(subscriptions)} push subscription(s)")
 
     if not subscriptions:
-        send_price_notifications(cursor, discord_rows)
+        send_notifications(cursor, discord_rows)
         return
 
     user_messages = {}
@@ -468,7 +468,8 @@ def send_push_notifications(cursor, notification_rows, discord_rows):
         )
         logger.info(f"✅ Removed {len(expired_endpoints)} expired subscriptions")
 
-    send_price_notifications(cursor, discord_rows)
+    # Send Discord DMs (price alerts + trade ads)
+    send_notifications(cursor, discord_rows)
 
     logger.info("🔔 send_push_notifications() COMPLETE")
 
@@ -498,10 +499,6 @@ def build_notifications(results, watchlist_map, item_metadata, current_time):
         if not (rap_changed or price_changed):
             continue
 
-        # RAP alone should never happen — a sale always moves both RAP and price
-        # If somehow only RAP changed, treat it as price_and_rap_change anyway
-        # RAP only moves when a sale happens — always treat as a sale notification
-        # This absorbs the price change too, preventing two separate notifications
         if rap_changed:
             notif_type = "price_and_rap_change"
         else:
@@ -518,11 +515,9 @@ def build_notifications(results, watchlist_map, item_metadata, current_time):
 
         combined_message = f"{name} — " + " and ".join(messages)
 
-        # For oldValue/newValue always prefer RAP if it changed, otherwise price
         old_value = result['old_rap'] if rap_changed else result['old_price']
         new_value = result['new_rap'] if rap_changed else result['new_price']
 
-        # Grab item metadata for Discord embed
         meta = item_metadata.get(asset_id, {})
         image_url = meta.get('imageUrl') or f'https://www.roblox.com/asset-thumbnail/image?assetId={asset_id}&width=420&height=420&format=Webp'
         manipulated = meta.get('manipulated', False)
@@ -547,7 +542,6 @@ def build_notifications(results, watchlist_map, item_metadata, current_time):
                 current_time,
             ))
 
-            # Discord row has extra fields: image_url, item_name, manipulated
             discord_rows.append((
                 notif_id,
                 user_id,
@@ -580,6 +574,9 @@ def save_results_to_db(results, current_time):
     conn = None
     cursor = None
 
+    # Always initialise so the finally block and send_notifications call are safe
+    discord_rows: list = []
+
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -600,12 +597,12 @@ def save_results_to_db(results, current_time):
                 continue
 
             price_history_data.append((
-                str(uuid.uuid4()),   # id
-                result['asset_id'],  # itemId
-                result['price'],     # price
-                result['rap'],       # rap
-                None,                # salesVolume
-                current_time,        # timestamp — real UTC now
+                str(uuid.uuid4()),
+                result['asset_id'],
+                result['price'],
+                result['rap'],
+                None,
+                current_time,
             ))
 
         if price_history_data:
@@ -664,6 +661,9 @@ def save_results_to_db(results, current_time):
                     )
                     logger.info(f"✅ Inserted {len(notification_rows)} Notifications")
                     send_push_notifications(cursor, notification_rows, discord_rows)
+                    # send_notifications already called inside send_push_notifications,
+                    # so we skip the standalone call below for this cycle
+                    discord_rows = []
                 else:
                     logger.info("✅ No notifications to send")
             else:
@@ -673,11 +673,14 @@ def save_results_to_db(results, current_time):
 
         # ── 4. Snipe events ────────────────────────────────────────────────
         fire_snipe_events(cursor, results)
-        
+
+        # ── 5. Discord notifications (trade ads always; price only if push was skipped) ──
+        send_notifications(cursor, discord_rows)
+
         conn.commit()
         logger.info(f"💾 Database commit successful!")
 
-        # ── 5. Update caches ───────────────────────────────────────────────
+        # ── 6. Update caches ───────────────────────────────────────────────
         global rap_cache, price_cache
         for result in results:
             if result['rap'] is not None:

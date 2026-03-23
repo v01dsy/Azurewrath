@@ -124,6 +124,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const poster = await prisma.user.findUnique({
+      where: { robloxUserId: session.userId },
+      select: { username: true },
+    });
+
     const ad = await prisma.tradeAd.create({
       data: {
         userId:       session.userId,
@@ -147,7 +152,44 @@ export async function POST(req: NextRequest) {
           ],
         },
       },
+      include: {
+        items: { include: { item: { select: { name: true, imageUrl: true } } } },
+      },
     });
+
+    // Notify watchlist users
+    const allAssetIds = ad.items.map(i => i.assetId);
+    const watchers = await prisma.watchlist.findMany({
+      where: {
+        itemId: { in: allAssetIds },
+        tradeAlerts: true,
+        userId: { not: session.userId },
+      },
+      select: { userId: true, itemId: true, tradeAlertType: true },
+    });
+
+    const seen = new Set<string>();
+    const notifications = watchers.flatMap(w => {
+      const adItem = ad.items.find(i => i.assetId === w.itemId);
+      if (!adItem) return [];
+      if (w.tradeAlertType === 'requesting' && adItem.side !== 'request') return [];
+      if (w.tradeAlertType === 'offering'   && adItem.side !== 'offer')   return [];
+      const key = `${w.userId}-${w.itemId}`;
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{
+        userId:   w.userId,
+        itemId:   w.itemId,
+        type:     'trade_ad',
+        message:  `${poster?.username ?? 'Someone'}|${adItem.side}|${ad.id}`,
+        oldValue: ad.id,
+        read:     false,
+      }];
+    });
+
+    if (notifications.length > 0) {
+      await prisma.notification.createMany({ data: notifications });
+    }
 
     return NextResponse.json({ id: ad.id });
   } catch (err) {

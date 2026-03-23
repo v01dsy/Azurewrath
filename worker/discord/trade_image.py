@@ -6,7 +6,7 @@ from PIL import Image, ImageDraw, ImageFont
 logger = logging.getLogger(__name__)
 
 # -- Colors -------------------------------------------------
-BG_TRANSPARENT = (0, 0, 0, 0)
+BG_TRANSPARENT = (5, 5, 6, 255)
 BG_CARD        = (13, 13, 15, 255)
 BG_HEADER      = (18, 18, 22, 255)
 BG_SLOT        = (18, 18, 20, 255)
@@ -214,7 +214,7 @@ def generate_trade_image(
         cy = section_y + 56
 
         draw.ellipse([cx-18, cy-18, cx+18, cy+18], fill=(22, 22, 24, 255), outline=(46, 46, 48, 255))
-        draw.text((cx-10, cy-8), "⇄", font=f_label, fill=TEXT_GREY)
+        draw.text((cx-6, cy-8), "⇄", font=f_label, fill=TEXT_GREY)
 
         if offer_total and req_total:
             diff = offer_total - req_total

@@ -67,6 +67,10 @@ def send_dm_with_image(discord_id: str, embed: dict, image_bytes: bytes, filenam
     Send an embed with an attached PNG image.
     The embed's image field should reference 'attachment://<filename>'.
     Returns True on success.
+
+    Discord multipart rules:
+    - 'payload_json' must be a plain string field (no content-type tuple).
+    - The file field key must be 'files[0]' and include (filename, bytes, mimetype).
     """
     if not DISCORD_BOT_TOKEN:
         logger.warning('[discord] DISCORD_BOT_TOKEN not set — skipping DM')
@@ -78,13 +82,15 @@ def send_dm_with_image(discord_id: str, embed: dict, image_bytes: bytes, filenam
 
     try:
         import json as _json
-        payload = {'embeds': [embed]}
+        payload = _json.dumps({'embeds': [embed]})
 
         res = requests.post(
             f'{DISCORD_API}/channels/{channel_id}/messages',
             headers=_bot_headers(),
             files={
-                'payload_json': (None, _json.dumps(payload), 'application/json'),
+                # payload_json must be a plain string field — no (name, data, content_type) tuple
+                'payload_json': (None, payload),
+                # file must include filename and mimetype so Discord recognises it as an image
                 'files[0]':     (filename, image_bytes, 'image/png'),
             },
             timeout=20,

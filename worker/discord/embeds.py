@@ -2,6 +2,19 @@
 """
 Embed builders for Discord DMs.
 Each function takes raw data and returns a Discord embed dict.
+
+Roblox CDN URLs (thumbnails.roblox.com) are blocked by Discord's embed
+image fetcher. To show item thumbnails you must either:
+  a) Pass the image as a file attachment and use attachment://filename.png
+  b) Use a publicly accessible proxy URL
+
+For price/sale embeds we receive the raw Roblox URL — we pass it through
+as a thumbnail and also expose it so the caller can optionally attach it.
+The embed builder sets thumbnail to the raw URL; if the caller wants to
+force an attachment instead, they can overwrite embed['thumbnail'] after.
+
+For trade embeds the full trade card is already a generated PNG attachment,
+so has_image=True always takes priority.
 """
 
 from datetime import datetime, timezone
@@ -53,11 +66,11 @@ def build_sale_embed(
 
     fields = []
     if old_rap is not None:
-        fields.append({'name': 'Old RAP',   'value': f'{int(old_rap):,}',  'inline': True})
+        fields.append({'name': 'Old RAP',    'value': f'{int(old_rap):,}',  'inline': True})
     if new_rap is not None:
-        fields.append({'name': 'New RAP',   'value': f'{int(new_rap):,}',  'inline': True})
+        fields.append({'name': 'New RAP',    'value': f'{int(new_rap):,}',  'inline': True})
     if estimated_sale is not None:
-        fields.append({'name': 'Sale Price','value': f'{estimated_sale:,}','inline': True})
+        fields.append({'name': 'Sale Price', 'value': f'{estimated_sale:,}', 'inline': True})
 
     embed = {
         'author':      _author_block(),
@@ -68,6 +81,7 @@ def build_sale_embed(
         'fields':      fields,
         'footer':      {'text': _format_ts(created_at)},
     }
+
     if image_url:
         embed['thumbnail'] = {'url': image_url}
     return embed
@@ -106,8 +120,10 @@ def build_price_embed(
         'fields':      fields,
         'footer':      {'text': _format_ts(created_at)},
     }
+
     if image_url:
         embed['thumbnail'] = {'url': image_url}
+
     return embed
 
 
@@ -123,22 +139,17 @@ def build_trade_ad_embed(
     offer_robux: int = 0,
     request_robux: int = 0,
     poster_avatar: str | None = None,
-    has_image: bool = False,          # ← NEW: whether a PNG attachment is coming
+    has_image: bool = False,
 ) -> dict:
     """
     Embed for a new trade ad that matches a watchlist entry.
- 
-    When has_image=True the embed's 'image' field points to the attached
-    'attachment://trade.png' so Discord renders it inline under the embed.
-    The fields list is kept intentionally short — the image carries the detail.
+
+    When has_image=True the embed's 'image' field points to
+    'attachment://trade.png' so Discord renders the generated PNG inline.
     """
     side_label = 'requesting' if side == 'request' else 'offering'
     colour     = 0xED4245 if side == 'request' else 0x57F287
- 
-    APP_URL = __import__('os').getenv('NEXT_PUBLIC_APP_URL', 'https://azurewrath.lol')
- 
-    EMOJI_WATCHLIST   = '<:watchlist:1484974826719281254>'
- 
+
     embed = {
         'author': {
             'name':     'Azurewrath',
@@ -159,12 +170,14 @@ def build_trade_ad_embed(
         ],
         'footer': {'text': 'Azurewrath Trade Alerts'},
     }
- 
-    # Use the attached image if we generated one, otherwise fall back to the
-    # item thumbnail as a small thumbnail on the right.
+
     if has_image:
+        # The trade card PNG is attached as 'trade.png'
         embed['image'] = {'url': 'attachment://trade.png'}
     elif item_image:
+        # Fallback: use item thumbnail as a small inline thumbnail.
+        # Note: Roblox CDN may not render in Discord embeds — if blank,
+        # consider fetching & attaching via fetch_image_bytes() in client.py
         embed['thumbnail'] = {'url': item_image}
- 
+
     return embed

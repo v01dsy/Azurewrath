@@ -7,16 +7,19 @@ logger = logging.getLogger(__name__)
 
 # -- Colors -------------------------------------------------
 BG_TRANSPARENT = (0, 0, 0, 0)
-BG_CARD        = (12, 14, 21, 245)
-BG_HEADER      = (26, 30, 44, 245)
-BG_SLOT        = (16, 20, 32, 255)
-BORDER_DIM     = (64, 74, 96, 255)
+BG_CARD        = (13, 13, 15, 255)
+BG_HEADER      = (18, 18, 22, 255)
+BG_SLOT        = (18, 18, 20, 255)
+BG_SLOT_FILLED = (5, 5, 6, 255)
+BORDER_DIM     = (31, 31, 31, 255)
 
 TEXT_WHITE     = (245, 248, 255, 255)
 TEXT_GREY      = (146, 158, 184, 255)
-TEXT_GREEN     = (67, 233, 123, 255)
+TEXT_GREEN     = (53, 222, 128, 255)
 
-GREEN_UP       = (74, 222, 128, 255)
+GREEN_UP       = (53, 222, 128, 255)
+GREEN_UP_BG    = (15, 35, 24, 255)
+GREEN_UP_OUT   = (21, 84, 45, 255)
 RED_DOWN       = (248, 113, 113, 255)
 
 # -- Dimensions ---------------------------------------------
@@ -91,14 +94,16 @@ def generate_trade_image(
         card_right = W - CARD_PAD
         card_bottom = H - CARD_PAD
 
-        # Main card + lighter header strip
+        # Main card + full-width header strip
         _rounded_rect(draw, [card_left, card_top, card_right, card_bottom], CARD_RADIUS, BG_CARD)
         _rounded_rect(
             draw,
-            [card_left + 2, card_top + 2, card_right - 2, card_top + HEADER_HEIGHT],
-            CARD_RADIUS - 2,
+            [card_left, card_top, card_right, card_top + HEADER_HEIGHT],
+            CARD_RADIUS,
             BG_HEADER,
         )
+        # Square off the lower edge so only the top corners remain rounded
+        draw.rectangle([card_left, card_top + CARD_RADIUS, card_right, card_top + HEADER_HEIGHT], fill=BG_HEADER)
 
         # Fonts
         f_user = _font(16, True)
@@ -153,7 +158,7 @@ def generate_trade_image(
                     draw,
                     [sx, sy, sx + SLOT_SIZE, sy + SLOT_SIZE],
                     IMG_RADIUS,
-                    BG_SLOT,
+                    BG_SLOT_FILLED if item else BG_SLOT,
                     outline=BORDER_DIM
                 )
 
@@ -209,7 +214,7 @@ def generate_trade_image(
         cy = section_y + 56
 
         draw.ellipse([cx-18, cy-18, cx+18, cy+18], fill=(30, 34, 48, 255), outline=(90, 102, 130, 255))
-        draw.text((cx-10, cy-8), "<->", font=f_label, fill=TEXT_GREY)
+        draw.text((cx-8, cy-8), "⇄", font=f_label, fill=TEXT_GREY)
 
         if offer_total and req_total:
             diff = offer_total - req_total
@@ -217,7 +222,7 @@ def generate_trade_image(
 
             up = diff >= 0
             col = GREEN_UP if up else RED_DOWN
-            bg  = (20,60,35) if up else (60,20,20)
+            bg  = GREEN_UP_BG if up else (60,20,20)
 
             txt = f"{'+' if up else ''}{_fmt(diff)} ({'+' if up else ''}{pct}%)"
 
@@ -227,7 +232,7 @@ def generate_trade_image(
             bx = cx - bw//2
             by = cy + 28
 
-            _rounded_rect(draw, [bx, by, bx+bw, by+24], 10, bg, outline=(80, 88, 106, 255))
+            _rounded_rect(draw, [bx, by, bx+bw, by+24], 10, bg, outline=GREEN_UP_OUT if up else (80, 88, 106, 255))
             draw.text((bx+10, by+4), txt, font=f_diff, fill=col)
 
         # output

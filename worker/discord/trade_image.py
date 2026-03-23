@@ -213,8 +213,8 @@ def generate_trade_image(
         cx = W // 2
         cy = section_y + 56
 
-        draw.ellipse([cx-18, cy-18, cx+18, cy+18], fill=(30, 34, 48, 255), outline=(90, 102, 130, 255))
-        draw.text((cx-8, cy-8), "⇄", font=f_label, fill=TEXT_GREY)
+        draw.ellipse([cx-18, cy-18, cx+18, cy+18], fill=(22, 22, 24, 255), outline=(46, 46, 48, 255))
+        draw.text((cx-10, cy-8), "⇄", font=f_label, fill=TEXT_GREY)
 
         if offer_total and req_total:
             diff = offer_total - req_total
@@ -232,7 +232,7 @@ def generate_trade_image(
             bx = cx - bw//2
             by = cy + 28
 
-            _rounded_rect(draw, [bx, by, bx+bw, by+24], 10, bg, outline=GREEN_UP_OUT if up else (80, 88, 106, 255))
+            _rounded_rect(draw, [bx, by, bx+bw, by+24], 10, bg, outline=GREEN_UP_OUT if up else (100, 35, 36, 255))
             draw.text((bx+10, by+4), txt, font=f_diff, fill=col)
 
         # output

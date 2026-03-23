@@ -11,8 +11,8 @@ DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 DISCORD_API = 'https://discord.com/api/v10'
 APP_URL = os.getenv('NEXT_PUBLIC_APP_URL', 'https://azurewrath.lol')
 
-EMOJI_GAIN      = '<:gain:1484974786751762483>'
-EMOJI_LOSS      = '<:loss:1484974812701917344>'
+EMOJI_GAIN        = '<:gain:1484974786751762483>'
+EMOJI_LOSS        = '<:loss:1484974812701917344>'
 EMOJI_MANIPULATED = '<:manipulated:1484974931526680710>'
 
 
@@ -68,14 +68,11 @@ def _format_ts(created_at) -> str:
     return datetime.now(timezone.utc).strftime('%Y-%m-%d at %H:%M:%S UTC')
 
 
-def _build_embed(row: tuple) -> dict:
-    """
-    Discord row columns:
-    (id, userId, itemId, type, message, oldValue, newValue, read, createdAt, imageUrl, itemName, manipulated)
-    """
-    _, user_id, item_id, notif_type, message, old_value, new_value, _, created_at, image_url, item_name, manipulated = row
+def _build_sale_embed(row: tuple) -> dict:
+    """Sale embed — shown when RAP changes (item sold)."""
+    _, user_id, item_id, notif_type, message, old_rap, new_rap, _, created_at, image_url, item_name, manipulated = row
 
-    went_up = new_value is not None and old_value is not None and new_value > old_value
+    went_up = new_rap is not None and old_rap is not None and new_rap > old_rap
     colour = 0x57F287 if went_up else 0xED4245
     emoji = EMOJI_GAIN if went_up else EMOJI_LOSS
 
@@ -83,40 +80,32 @@ def _build_embed(row: tuple) -> dict:
     if manipulated:
         display_name = f'{display_name} {EMOJI_MANIPULATED}'
 
-    # Title line
-    if notif_type == 'price_and_rap_change':
-        title_line = f'{emoji} Item Sold'
-    else:
-        title_line = f'{emoji} Price Change'
+    # RAP change amount
+    rap_diff = int(new_rap - old_rap) if (old_rap is not None and new_rap is not None) else 0
+    rap_change_str = f'{emoji} RAP change **{("+" if rap_diff >= 0 else "")}{rap_diff:,} R$**'
+
+    # Estimated sale price
+    estimated_sale = int(old_rap + ((new_rap - old_rap) * 10)) if (old_rap is not None and new_rap is not None) else None
 
     fields = []
-
-    if notif_type == 'price_and_rap_change':
-        # RAP row
-        if old_value is not None and new_value is not None:
-            fields.append({
-                'name': 'Old RAP',
-                'value': f'**{int(old_value):,}** R$',
-                'inline': True,
-            })
-            fields.append({
-                'name': 'New RAP',
-                'value': f'**{int(new_value):,}** R$',
-                'inline': True,
-            })
-    else:
-        # Price change only
-        if old_value is not None and new_value is not None:
-            fields.append({
-                'name': 'Old Price',
-                'value': f'**{int(old_value):,}** R$',
-                'inline': True,
-            })
-            fields.append({
-                'name': 'New Price',
-                'value': f'**{int(new_value):,}** R$',
-                'inline': True,
-            })
+    if old_rap is not None:
+        fields.append({
+            'name': 'Old RAP',
+            'value': f'{int(old_rap):,} R$',
+            'inline': True,
+        })
+    if new_rap is not None:
+        fields.append({
+            'name': 'New RAP',
+            'value': f'{int(new_rap):,} R$',
+            'inline': True,
+        })
+    if estimated_sale is not None:
+        fields.append({
+            'name': 'Sale Price',
+            'value': f'{estimated_sale:,} R$',
+            'inline': True,
+        })
 
     embed = {
         'author': {
@@ -126,7 +115,53 @@ def _build_embed(row: tuple) -> dict:
         },
         'title': display_name,
         'url': f'{APP_URL}/item/{item_id}',
-        'description': title_line,
+        'description': rap_change_str,
+        'color': colour,
+        'fields': fields,
+        'footer': {'text': _format_ts(created_at)},
+    }
+
+    if image_url:
+        embed['thumbnail'] = {'url': image_url}
+
+    return embed
+
+
+def _build_price_embed(row: tuple) -> dict:
+    """Price change embed — shown when best price changes."""
+    _, user_id, item_id, notif_type, message, old_price, new_price, _, created_at, image_url, item_name, manipulated = row
+
+    went_up = new_price is not None and old_price is not None and new_price > old_price
+    colour = 0x57F287 if went_up else 0xED4245
+    emoji = EMOJI_GAIN if went_up else EMOJI_LOSS
+
+    display_name = item_name or f'Item {item_id}'
+    if manipulated:
+        display_name = f'{display_name} {EMOJI_MANIPULATED}'
+
+    fields = []
+    if old_price is not None:
+        fields.append({
+            'name': 'Old Price',
+            'value': f'{int(old_price):,} R$',
+            'inline': True,
+        })
+    if new_price is not None:
+        fields.append({
+            'name': 'New Price',
+            'value': f'{int(new_price):,} R$',
+            'inline': True,
+        })
+
+    embed = {
+        'author': {
+            'name': 'Azurewrath',
+            'icon_url': 'https://azurewrath.lol/Images/icon.webp',
+            'url': APP_URL,
+        },
+        'title': display_name,
+        'url': f'{APP_URL}/item/{item_id}',
+        'description': f'{emoji} Price Change',
         'color': colour,
         'fields': fields,
         'footer': {'text': _format_ts(created_at)},
@@ -175,7 +210,8 @@ def send_discord_notifications(cursor, discord_rows: list[tuple]):
         if not discord_id:
             continue
 
-        embed = _build_embed(row)
+        notif_type = row[3]
+        embed = _build_sale_embed(row) if notif_type == 'price_and_rap_change' else _build_price_embed(row)
 
         if _send_dm(discord_id, embed):
             dm_success += 1

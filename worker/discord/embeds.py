@@ -151,16 +151,20 @@ def build_trade_ad_embed(
     side_label = 'requesting' if side == 'request' else 'offering'
     colour     = 0xED4245 if side == 'request' else 0x57F287
 
+    description = (
+        f'{EMOJI_WATCHLIST} **{poster_username}** posted a trade ad '
+        f'**{side_label}** **{item_name}**'
+    )
+    if note and note.strip():
+        description += f'\n\n**Trade Note:** {note.strip()}'
+
     embed = {
         'author': {
             'name':     'Azurewrath',
             'icon_url': f'{APP_URL}/Images/icon.webp',
             'url':      APP_URL,
         },
-        'description': (
-            f'{EMOJI_WATCHLIST} **{poster_username}** posted a trade ad '
-            f'**{side_label}** **{item_name}**'
-        ),
+        'description': description,
         'color':  colour,
         'fields': [
             {
@@ -180,9 +184,6 @@ def build_trade_ad_embed(
         # Note: Roblox CDN may not render in Discord embeds — if blank,
         # consider fetching & attaching via fetch_image_bytes() in client.py
         embed['thumbnail'] = {'url': item_image}
-        
-    if note:
-        embed['fields'].append({'name': 'Note', 'value': note, 'inline': False})
 
 
     return embed

@@ -20,6 +20,7 @@ def send_trade_notifications(cursor) -> None:
         SELECT
             ta.id,
             ta."userId",
+            ta.note,
             ta."offerRobux",
             ta."requestRobux",
             u.username,
@@ -51,12 +52,13 @@ def send_trade_notifications(cursor) -> None:
 
     # 2. Group by trade ad
     ads: dict[int, dict] = {}
-    for (ad_id, poster_id, offer_robux, request_robux,
+    for (ad_id, poster_id, note, offer_robux, request_robux,
          username, avatar_url, asset_id, side,
          item_name, item_image, rap) in rows:
         if ad_id not in ads:
             ads[ad_id] = {
                 'poster_id':     poster_id,
+                'note':          note,
                 'username':      username,
                 'avatar_url':    avatar_url,
                 'offer_robux':   offer_robux,
@@ -126,10 +128,14 @@ def send_trade_notifications(cursor) -> None:
             except Exception as e:
                 logger.warning(f'[discord/trade] Image gen failed for ad {ad_id}: {e}')
 
-        notified: set = set()
+        notified_discord_ids: set[str] = set()
 
         for watcher_user_id, item_id, alert_type, discord_id in watchers:
-            if watcher_user_id in notified:
+            if not discord_id:
+                continue
+
+            discord_id = str(discord_id)
+            if discord_id in notified_discord_ids:
                 continue
 
             matching = next((i for i in ad['items'] if i['asset_id'] == item_id), None)
@@ -155,7 +161,7 @@ def send_trade_notifications(cursor) -> None:
                 offer_robux=ad['offer_robux'],
                 request_robux=ad['request_robux'],
                 poster_avatar=ad['avatar_url'],
-                note=ad["note"],
+                note=ad.get('note'),
                 has_image=image_bytes is not None,
             )
 
@@ -165,7 +171,7 @@ def send_trade_notifications(cursor) -> None:
                 ok = send_dm(discord_id, embed)
 
             if ok:
-                notified.add(watcher_user_id)
+                notified_discord_ids.add(discord_id)
                 logger.info(f'[discord/trade] ✅ notified userId={watcher_user_id} for ad={ad_id} item={item_id}')
             else:
                 logger.warning(f'[discord/trade] ❌ DM failed userId={watcher_user_id} ad={ad_id} item={item_id}')

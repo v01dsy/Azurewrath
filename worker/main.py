@@ -371,7 +371,7 @@ def load_item_metadata(cursor, asset_ids):
     return {row[0]: {'name': row[1], 'imageUrl': row[2], 'manipulated': row[3]} for row in cursor.fetchall()}
 
 
-def send_push_notifications(cursor, notification_rows, discord_rows):
+def send_push_notifications(cursor, notification_rows):
     """Send browser push notifications to subscribed users."""
     logger.info("🔔 send_push_notifications() CALLED")
     logger.info(f"   Received {len(notification_rows)} notification rows")
@@ -381,7 +381,6 @@ def send_push_notifications(cursor, notification_rows, discord_rows):
         logger.info("✅ pywebpush imported successfully")
     except ImportError:
         logger.warning("⚠️ pywebpush not installed - skipping browser push.")
-        send_notifications(cursor, discord_rows)
         return
 
     VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY')
@@ -389,14 +388,12 @@ def send_push_notifications(cursor, notification_rows, discord_rows):
 
     if not VAPID_PRIVATE_KEY:
         logger.warning("⚠️ VAPID_PRIVATE_KEY not set - skipping browser push")
-        send_notifications(cursor, discord_rows)
         return
 
     user_ids = list(set(row[1] for row in notification_rows))
     logger.info(f"👥 User IDs to notify: {user_ids}")
 
     if not user_ids:
-        send_notifications(cursor, discord_rows)
         return
 
     cursor.execute('''
@@ -409,7 +406,6 @@ def send_push_notifications(cursor, notification_rows, discord_rows):
     logger.info(f"📋 Found {len(subscriptions)} push subscription(s)")
 
     if not subscriptions:
-        send_notifications(cursor, discord_rows)
         return
 
     user_messages = {}
@@ -467,9 +463,6 @@ def send_push_notifications(cursor, notification_rows, discord_rows):
             (expired_endpoints,)
         )
         logger.info(f"✅ Removed {len(expired_endpoints)} expired subscriptions")
-
-    # Send Discord DMs (price alerts + trade ads)
-    send_notifications(cursor, discord_rows)
 
     logger.info("🔔 send_push_notifications() COMPLETE")
 
@@ -660,10 +653,7 @@ def save_results_to_db(results, current_time):
                         ('id', 'userId', 'itemId', 'type', 'message', 'oldValue', 'newValue', 'read', 'createdAt')
                     )
                     logger.info(f"✅ Inserted {len(notification_rows)} Notifications")
-                    send_push_notifications(cursor, notification_rows, discord_rows)
-                    # send_notifications already called inside send_push_notifications,
-                    # so we skip the standalone call below for this cycle
-                    discord_rows = []
+                    send_push_notifications(cursor, notification_rows)
                 else:
                     logger.info("✅ No notifications to send")
             else:

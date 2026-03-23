@@ -1,32 +1,36 @@
 import io
 import logging
 import requests
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
 
-# ── Colours ──────────────────────────────────────────
-BG_DARK      = (13, 13, 15)
-BG_CARD      = (18, 18, 22)
-BG_SLOT      = (20, 20, 24)
-BORDER_DIM   = (60, 60, 70)
+# -- Colors -------------------------------------------------
+BG_TRANSPARENT = (0, 0, 0, 0)
+BG_CARD        = (12, 14, 21, 245)
+BG_HEADER      = (26, 30, 44, 245)
+BG_SLOT        = (16, 20, 32, 255)
+BORDER_DIM     = (64, 74, 96, 255)
 
-TEXT_WHITE   = (255, 255, 255)
-TEXT_GREY    = (120, 130, 150)
-TEXT_GREEN   = (67, 233, 123)
-TEXT_PURPLE  = (196, 181, 253)
+TEXT_WHITE     = (245, 248, 255, 255)
+TEXT_GREY      = (146, 158, 184, 255)
+TEXT_GREEN     = (67, 233, 123, 255)
 
-GREEN_UP     = (74, 222, 128)
-RED_DOWN     = (248, 113, 113)
+GREEN_UP       = (74, 222, 128, 255)
+RED_DOWN       = (248, 113, 113, 255)
 
-# ── Dimensions ───────────────────────────────────────
-W, H         = 1100, 360
-SLOT_SIZE    = 100
-SLOT_GAP     = 14
-SIDE_PAD     = 40
-CENTER_GAP   = 140
-TOP_PAD      = 20
-IMG_RADIUS   = 12
+# -- Dimensions ---------------------------------------------
+W, H            = 1100, 280
+CARD_PAD        = 10
+CARD_RADIUS     = 20
+HEADER_HEIGHT   = 58
+
+SLOT_SIZE       = 96
+SLOT_GAP        = 12
+SIDE_PAD        = 40
+CENTER_GAP      = 124
+TOP_PAD         = 20
+IMG_RADIUS      = 12
 
 # ── Helpers ──────────────────────────────────────────
 def _fetch_image(url: str, size: int):
@@ -79,21 +83,32 @@ def generate_trade_image(
     request_robux=0,
 ):
     try:
-        img = Image.new("RGBA", (W, H), BG_DARK)
+        img = Image.new("RGBA", (W, H), BG_TRANSPARENT)
         draw = ImageDraw.Draw(img)
 
-        # Card background
-        _rounded_rect(draw, [10, 10, W-10, H-10], 18, BG_CARD)
+        card_left = CARD_PAD
+        card_top = CARD_PAD
+        card_right = W - CARD_PAD
+        card_bottom = H - CARD_PAD
+
+        # Main card + lighter header strip
+        _rounded_rect(draw, [card_left, card_top, card_right, card_bottom], CARD_RADIUS, BG_CARD)
+        _rounded_rect(
+            draw,
+            [card_left + 2, card_top + 2, card_right - 2, card_top + HEADER_HEIGHT],
+            CARD_RADIUS - 2,
+            BG_HEADER,
+        )
 
         # Fonts
-        f_user   = _font(16, True)
-        f_sub    = _font(12)
-        f_label  = _font(11, True)
-        f_rap    = _font(11)
-        f_total  = _font(13, True)
-        f_diff   = _font(13, True)
+        f_user = _font(16, True)
+        f_sub = _font(12)
+        f_label = _font(12, True)
+        f_rap = _font(12)
+        f_total = _font(13, True)
+        f_diff = _font(13, True)
 
-        # ── Header ────────────────────────────────────
+        # -- Header ------------------------------------------
         avatar_size = 36
         if poster_avatar_url:
             av = _fetch_image(poster_avatar_url, avatar_size)
@@ -101,30 +116,34 @@ def generate_trade_image(
                 _paste_rounded(img, av, (SIDE_PAD, TOP_PAD), 18)
 
         ax = SIDE_PAD + avatar_size + 10
-        draw.text((ax, TOP_PAD+2), poster_username, font=f_user, fill=TEXT_WHITE)
-        draw.text((ax, TOP_PAD+22), f"@{poster_username}", font=f_sub, fill=TEXT_GREY)
+        draw.text((ax, TOP_PAD + 2), poster_username, font=f_user, fill=TEXT_WHITE)
+        draw.text((ax, TOP_PAD + 22), f"@{poster_username}", font=f_sub, fill=TEXT_GREY)
 
-        # ── Layout ────────────────────────────────────
-        section_y = TOP_PAD + 60
+        # -- Body layout -------------------------------------
+        section_y = card_top + HEADER_HEIGHT + 12
 
-        offer_left  = SIDE_PAD
+        offer_left = SIDE_PAD
         offer_right = W//2 - CENTER_GAP//2
 
-        req_left    = W//2 + CENTER_GAP//2
-        req_right   = W - SIDE_PAD
+        req_left = W//2 + CENTER_GAP//2
+        req_right = W - SIDE_PAD
+
+        slot_strip_w = SLOT_SIZE * 4 + SLOT_GAP * 3
 
         def draw_side(items, x_start, x_end, label):
             width = x_end - x_start
+            area_center_x = x_start + width / 2
 
             # label
             draw.text((x_start, section_y), label, font=f_label, fill=TEXT_GREY)
 
             slot_y = section_y + 20
+            slots_x = int(x_start + max(0, (width - slot_strip_w) / 2))
 
             total_rap = 0
 
             for i in range(4):
-                sx = x_start + i * (SLOT_SIZE + SLOT_GAP)
+                sx = slots_x + i * (SLOT_SIZE + SLOT_GAP)
                 sy = slot_y
 
                 item = items[i] if i < len(items) else None
@@ -165,7 +184,7 @@ def generate_trade_image(
             rap_txt = f"{_fmt(total_rap)} RAP"
             tw = draw.textlength(rap_txt, font=f_rap)
             draw.text(
-                (x_start + (width - tw)/2, base_y),
+                (area_center_x - tw / 2, base_y),
                 rap_txt,
                 font=f_rap,
                 fill=TEXT_GREY
@@ -174,7 +193,7 @@ def generate_trade_image(
             tot_txt = f"Total: {_fmt(total)} R$"
             tw = draw.textlength(tot_txt, font=f_total)
             draw.text(
-                (x_start + (width - tw)/2, base_y + 16),
+                (area_center_x - tw / 2, base_y + 16),
                 tot_txt,
                 font=f_total,
                 fill=TEXT_GREEN
@@ -185,12 +204,12 @@ def generate_trade_image(
         offer_total = draw_side(offer_items, offer_left, offer_right, "OFFERING")
         req_total   = draw_side(request_items, req_left, req_right, "REQUESTING")
 
-        # ── Center diff ───────────────────────────────
+        # -- Center diff -------------------------------------
         cx = W // 2
-        cy = section_y + 60
+        cy = section_y + 56
 
-        draw.ellipse([cx-18, cy-18, cx+18, cy+18], fill=(30,30,40), outline=(80,80,100))
-        draw.text((cx-7, cy-9), "⇄", font=f_label, fill=TEXT_GREY)
+        draw.ellipse([cx-18, cy-18, cx+18, cy+18], fill=(30, 34, 48, 255), outline=(90, 102, 130, 255))
+        draw.text((cx-10, cy-8), "<->", font=f_label, fill=TEXT_GREY)
 
         if offer_total and req_total:
             diff = offer_total - req_total
@@ -200,7 +219,7 @@ def generate_trade_image(
             col = GREEN_UP if up else RED_DOWN
             bg  = (20,60,35) if up else (60,20,20)
 
-            txt = f"{'▲' if up else '▼'} {'+' if up else ''}{_fmt(diff)} ({'+' if up else ''}{pct}%)"
+            txt = f"{'+' if up else ''}{_fmt(diff)} ({'+' if up else ''}{pct}%)"
 
             tw = draw.textlength(txt, font=f_diff)
             bw = tw + 20
@@ -208,12 +227,12 @@ def generate_trade_image(
             bx = cx - bw//2
             by = cy + 28
 
-            _rounded_rect(draw, [bx, by, bx+bw, by+24], 10, bg)
-            draw.text((bx+10, by+5), txt, font=f_diff, fill=col)
+            _rounded_rect(draw, [bx, by, bx+bw, by+24], 10, bg, outline=(80, 88, 106, 255))
+            draw.text((bx+10, by+4), txt, font=f_diff, fill=col)
 
         # output
         buf = io.BytesIO()
-        img.convert("RGB").save(buf, format="PNG", optimize=True)
+        img.save(buf, format="PNG", optimize=True)
         return buf.getvalue()
 
     except Exception as e:

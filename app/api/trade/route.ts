@@ -181,7 +181,7 @@ export async function POST(req: NextRequest) {
         userId:   w.userId,
         itemId:   w.itemId,
         type:     'trade_ad',
-        message:  `${poster?.username ?? 'Someone'}|${adItem.side}|${ad.id}`,
+        message:  `${poster?.username ?? 'Someone'} has created a trade ad for ${adItem.side} ${ad.id}`,
         oldValue: ad.id,
         read:     false,
       }];

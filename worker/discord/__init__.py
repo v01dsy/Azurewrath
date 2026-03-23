@@ -1,3 +1,3 @@
 # worker/discord/__init__.py
-
-from .notifications import send_discord_notifications
+from .price_notifications import send_price_notifications
+from .trade_notifications  import send_trade_ad_notifications

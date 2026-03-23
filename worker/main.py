@@ -16,7 +16,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 import uuid
-from discord.notifications import send_discord_notifications, send_trade_ad_notifications
+from discord import send_price_notifications, send_trade_ad_notifications
 from snipe_events import fire_snipe_events
 from snipe_server import start_snipe_server
 from manipulation_detector import detect_manipulation
@@ -381,7 +381,7 @@ def send_push_notifications(cursor, notification_rows, discord_rows):
         logger.info("✅ pywebpush imported successfully")
     except ImportError:
         logger.warning("⚠️ pywebpush not installed - skipping browser push.")
-        send_discord_notifications(cursor, discord_rows)
+        send_price_notifications(cursor, discord_rows)
         return
 
     VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY')
@@ -389,14 +389,14 @@ def send_push_notifications(cursor, notification_rows, discord_rows):
 
     if not VAPID_PRIVATE_KEY:
         logger.warning("⚠️ VAPID_PRIVATE_KEY not set - skipping browser push")
-        send_discord_notifications(cursor, discord_rows)
+        send_price_notifications(cursor, discord_rows)
         return
 
     user_ids = list(set(row[1] for row in notification_rows))
     logger.info(f"👥 User IDs to notify: {user_ids}")
 
     if not user_ids:
-        send_discord_notifications(cursor, discord_rows)
+        send_price_notifications(cursor, discord_rows)
         return
 
     cursor.execute('''
@@ -409,7 +409,7 @@ def send_push_notifications(cursor, notification_rows, discord_rows):
     logger.info(f"📋 Found {len(subscriptions)} push subscription(s)")
 
     if not subscriptions:
-        send_discord_notifications(cursor, discord_rows)
+        send_price_notifications(cursor, discord_rows)
         return
 
     user_messages = {}
@@ -468,7 +468,7 @@ def send_push_notifications(cursor, notification_rows, discord_rows):
         )
         logger.info(f"✅ Removed {len(expired_endpoints)} expired subscriptions")
 
-    send_discord_notifications(cursor, discord_rows)
+    send_price_notifications(cursor, discord_rows)
 
     logger.info("🔔 send_push_notifications() COMPLETE")
 
@@ -510,11 +510,11 @@ def build_notifications(results, watchlist_map, item_metadata, current_time):
         messages = []
         if rap_changed:
             direction = "increased" if result['new_rap'] > result['old_rap'] else "decreased"
-            messages.append(f"RAP {direction} from {int(result['old_rap']):,} to {int(result['new_rap']):,} R$")
+            messages.append(f"RAP {direction} from {int(result['old_rap']):,} to {int(result['new_rap']):,}")
 
         if price_changed:
             direction = "dropped" if result['new_price'] < result['old_price'] else "rose"
-            messages.append(f"best price {direction} from {int(result['old_price']):,} to {int(result['new_price']):,} R$")
+            messages.append(f"best price {direction} from {int(result['old_price']):,} to {int(result['new_price']):,}")
 
         combined_message = f"{name} — " + " and ".join(messages)
 

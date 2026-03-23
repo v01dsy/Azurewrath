@@ -1,7 +1,6 @@
 # worker/discord/notifications.py
 
 import os
-import uuid
 import logging
 import requests
 from datetime import datetime, timezone
@@ -16,6 +15,8 @@ EMOJI_GAIN        = '<:gain:1484974786751762483>'
 EMOJI_LOSS        = '<:loss:1484974812701917344>'
 EMOJI_MANIPULATED = '<:manipulated:1484974931526680710>'
 EMOJI_WATCHLIST   = '<:watchlist:1484974826719281254>'
+
+_trade_last_run: datetime = datetime.now(timezone.utc)
 
 
 def _bot_headers():
@@ -137,36 +138,6 @@ def _build_price_embed(row: tuple) -> dict:
     return embed
 
 
-def _build_trade_ad_embed(row: tuple) -> dict:
-    # message format: "username|side|trade_ad_id"
-    # oldValue stores the trade_ad_id as a float
-    _, user_id, item_id, notif_type, message, trade_ad_id, _, _, created_at, image_url, item_name, manipulated = row
-
-    parts = message.split('|')
-    poster_username = parts[0] if len(parts) > 0 else 'Someone'
-    side = parts[1] if len(parts) > 1 else 'offer'
-    ad_id = int(trade_ad_id) if trade_ad_id else 0
-
-    side_label = 'requesting' if side == 'request' else 'offering'
-    color = 0xED4245 if side == 'request' else 0x57F287
-
-    embed = {
-        'author': {'name': 'Azurewrath', 'icon_url': f'{APP_URL}/Images/icon.webp', 'url': APP_URL},
-        'title': item_name or f'Item {item_id}',
-        'url': f'{APP_URL}/trade/{ad_id}',
-        'description': f'{EMOJI_WATCHLIST} **{poster_username}** posted a trade ad {side_label} this item',
-        'color': color,
-        'fields': [
-            {'name': 'Side', 'value': side_label.capitalize(), 'inline': True},
-            {'name': 'View Ad', 'value': f'[Open]({APP_URL}/trade/{ad_id})', 'inline': True},
-        ],
-        'footer': {'text': _format_ts(created_at)},
-    }
-    if image_url:
-        embed['thumbnail'] = {'url': image_url}
-    return embed
-
-
 def send_discord_notifications(cursor, discord_rows: list[tuple]):
     if not discord_rows:
         return
@@ -204,12 +175,7 @@ def send_discord_notifications(cursor, discord_rows: list[tuple]):
             continue
 
         notif_type = row[3]
-        if notif_type == 'price_and_rap_change':
-            embed = _build_sale_embed(row)
-        elif notif_type == 'trade_ad':
-            embed = _build_trade_ad_embed(row)
-        else:
-            embed = _build_price_embed(row)
+        embed = _build_sale_embed(row) if notif_type == 'price_and_rap_change' else _build_price_embed(row)
 
         if _send_dm(discord_id, embed):
             dm_success += 1
@@ -217,3 +183,106 @@ def send_discord_notifications(cursor, discord_rows: list[tuple]):
             dm_fail += 1
 
     logger.info(f'DMs — {dm_success} sent, {dm_fail} failed')
+
+
+def send_trade_ad_notifications(cursor):
+    global _trade_last_run
+    since = _trade_last_run
+    _trade_last_run = datetime.now(timezone.utc)
+
+    if not DISCORD_BOT_TOKEN:
+        return
+
+    cursor.execute("""
+        SELECT
+            ta.id,
+            ta."userId",
+            u.username,
+            tai."assetId",
+            tai.side,
+            i.name        AS item_name,
+            i."imageUrl"  AS item_image
+        FROM "TradeAd" ta
+        JOIN "User" u          ON u."robloxUserId" = ta."userId"
+        JOIN "TradeAdItem" tai  ON tai."tradeAdId" = ta.id
+        JOIN "Item" i           ON i."assetId" = tai."assetId"
+        WHERE ta."createdAt" > %s
+          AND ta.active = true
+          AND ta."deletedAt" IS NULL
+        ORDER BY ta.id ASC
+    """, (since,))
+    rows = cursor.fetchall()
+
+    if not rows:
+        return
+
+    ads: dict[int, dict] = {}
+    for ad_id, poster_id, username, asset_id, side, item_name, item_image in rows:
+        if ad_id not in ads:
+            ads[ad_id] = {'poster_id': poster_id, 'username': username, 'items': []}
+        ads[ad_id]['items'].append({
+            'asset_id': asset_id,
+            'side': side,
+            'item_name': item_name,
+            'item_image': item_image,
+        })
+
+    logger.info(f'[trade_notify] {len(ads)} new trade ad(s) since last cycle')
+
+    for ad_id, ad in ads.items():
+        asset_ids = [item['asset_id'] for item in ad['items']]
+
+        cursor.execute("""
+            SELECT w."userId", w."itemId", w."tradeAlertType", u."discordId"
+            FROM "Watchlist" w
+            JOIN "User" u ON u."robloxUserId" = w."userId"
+            WHERE w."itemId" = ANY(%s)
+              AND w."tradeAlerts" = true
+              AND u."discordNotifications" = true
+              AND u."discordId" IS NOT NULL
+              AND w."userId" != %s
+        """, (asset_ids, ad['poster_id']))
+        watchers = cursor.fetchall()
+
+        if not watchers:
+            continue
+
+        notified: set = set()
+
+        for watcher_user_id, item_id, alert_type, discord_id in watchers:
+            if watcher_user_id in notified:
+                continue
+
+            matching = next((i for i in ad['items'] if i['asset_id'] == item_id), None)
+            if not matching:
+                continue
+
+            side = matching['side']
+            if alert_type == 'requesting' and side != 'request':
+                continue
+            if alert_type == 'offering' and side != 'offer':
+                continue
+
+            side_label = 'requesting' if side == 'request' else 'offering'
+            color = 0xED4245 if side == 'request' else 0x57F287
+
+            embed = {
+                'author': {'name': 'Azurewrath', 'icon_url': f'{APP_URL}/Images/icon.webp', 'url': APP_URL},
+                'title': matching['item_name'],
+                'url': f'{APP_URL}/trade/{ad_id}',
+                'description': f'{EMOJI_WATCHLIST} **{ad["username"]}** posted a trade ad {side_label} this item',
+                'color': color,
+                'fields': [
+                    {'name': 'Side', 'value': side_label.capitalize(), 'inline': True},
+                    {'name': 'View Ad', 'value': f'[Open]({APP_URL}/trade/{ad_id})', 'inline': True},
+                ],
+                'footer': {'text': 'Azurewrath Trade Alerts'},
+            }
+            if matching['item_image']:
+                embed['thumbnail'] = {'url': matching['item_image']}
+
+            if _send_dm(discord_id, embed):
+                notified.add(watcher_user_id)
+                logger.info(f'[trade_notify] ✅ Notified userId {watcher_user_id} for trade ad {ad_id}')
+            else:
+                logger.warning(f'[trade_notify] ❌ DM failed for userId {watcher_user_id}')

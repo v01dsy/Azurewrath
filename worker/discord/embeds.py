@@ -140,6 +140,7 @@ def build_trade_ad_embed(
     request_robux: int = 0,
     poster_avatar: str | None = None,
     has_image: bool = False,
+    note: str | None = None,
 ) -> dict:
     """
     Embed for a new trade ad that matches a watchlist entry.
@@ -179,5 +180,9 @@ def build_trade_ad_embed(
         # Note: Roblox CDN may not render in Discord embeds — if blank,
         # consider fetching & attaching via fetch_image_bytes() in client.py
         embed['thumbnail'] = {'url': item_image}
+        
+    if note:
+        embed['fields'].append({'name': 'Note', 'value': note, 'inline': False})
+
 
     return embed

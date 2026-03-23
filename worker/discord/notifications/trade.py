@@ -155,6 +155,7 @@ def send_trade_notifications(cursor) -> None:
                 offer_robux=ad['offer_robux'],
                 request_robux=ad['request_robux'],
                 poster_avatar=ad['avatar_url'],
+                note=ad["note"],
                 has_image=image_bytes is not None,
             )
 

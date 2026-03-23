@@ -16,7 +16,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 import uuid
-from discord.notifications import send_discord_notifications
+from discord.notifications import send_discord_notifications, send_trade_ad_notifications
 from snipe_events import fire_snipe_events
 from snipe_server import start_snipe_server
 from manipulation_detector import detect_manipulation

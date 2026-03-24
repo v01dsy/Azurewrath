@@ -24,6 +24,7 @@ def send_trade_notifications(cursor) -> None:
             ta."offerRobux",
             ta."requestRobux",
             u.username,
+            u."displayName",
             u."avatarUrl",
             tai."assetId",
             tai.side,
@@ -54,13 +55,14 @@ def send_trade_notifications(cursor) -> None:
     # 2. Group by trade ad
     ads: dict[int, dict] = {}
     for (ad_id, poster_id, note, offer_robux, request_robux,
-         username, avatar_url, asset_id, side,
-         item_name, item_image, manipulated, rap) in rows:
+        username, display_name, avatar_url, asset_id, side,
+        item_name, item_image, manipulated, rap) in rows:
         if ad_id not in ads:
             ads[ad_id] = {
                 'poster_id':     poster_id,
                 'note':          note,
                 'username':      username,
+                'display_name':  display_name or username,
                 'avatar_url':    avatar_url,
                 'offer_robux':   offer_robux,
                 'request_robux': request_robux,
@@ -120,7 +122,8 @@ def send_trade_notifications(cursor) -> None:
         if _has_image_gen:
             try:
                 image_bytes = generate_trade_image(
-                    poster_username=ad['username'],
+                    poster_username=ad['display_name'],
+                    poster_username_sub=ad['username'],
                     poster_avatar_url=ad['avatar_url'],
                     offer_items=ad['offer_items'],
                     request_items=ad['request_items'],

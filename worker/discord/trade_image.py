@@ -110,6 +110,7 @@ def _font(size, bold=False):
 # ── Main ─────────────────────────────────────────────
 def generate_trade_image(
     poster_username,
+    poster_username_sub,
     poster_avatar_url,
     offer_items,
     request_items,
@@ -151,8 +152,8 @@ def generate_trade_image(
                 _paste_rounded(img, av, (SIDE_PAD, TOP_PAD), 18)
 
         ax = SIDE_PAD + av_size + 10
-        draw.text((ax, TOP_PAD + 2),  poster_username,       font=f_user, fill=TEXT_WHITE)
-        draw.text((ax, TOP_PAD + 22), f"@{poster_username}", font=f_sub,  fill=TEXT_GREY)
+        draw.text((ax, TOP_PAD + 2),  poster_username,            font=f_user, fill=TEXT_WHITE)
+        draw.text((ax, TOP_PAD + 22), f"@{poster_username_sub}",  font=f_sub,  fill=TEXT_GREY)
 
         # -- Body layout -------------------------------------
         section_y    = card_top + HEADER_HEIGHT + 12
@@ -216,7 +217,7 @@ def generate_trade_image(
                 pill_txt = f"R$  {_fmt(robux_int)} Robux"
                 tw       = draw.textlength(pill_txt, font=f_robux)
                 pw, ph   = int(tw) + 24, 24
-                px, py   = int(x_start), pill_y
+                px, py   = int(area_center_x - pw / 2), pill_y
 
                 _rounded_rect(draw, [px, py, px + pw, py + ph], 10, ROBUX_BG, outline=ROBUX_OUT)
                 draw.text((px + 12, py + 4), pill_txt, font=f_robux, fill=TEXT_PURPLE)

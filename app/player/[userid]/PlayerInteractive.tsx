@@ -124,7 +124,7 @@ export default function PlayerInteractive({ graphData, user, isPrivate, hasInven
                 Refreshing inventory in background…
               </div>
             )}
-            <div style={{ height: 540 }}>
+            <div style={{ height: 'clamp(280px, 50vw, 540px)' }}>
               <InventoryGraph data={graphData} onPointClick={handleGraphPointClick} />
             </div>
           </div>

@@ -219,10 +219,11 @@ export default async function PlayerPage({ params }: PageProps) {
     <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white p-4 -mt-20 pt-24">
       <div className="max-w-7xl mx-auto">
 
-        <div className="flex items-stretch gap-6 mb-6">
+        <div className="flex flex-col md:flex-row items-stretch gap-6 mb-6">
+  
 
           {/* ── Sidebar ───────────────────────────────────────────── */}
-          <div className="w-80 flex-shrink-0">
+          <div className="w-full md:w-80 flex-shrink-0">
             <div className="bg-[#1e1e1e] rounded-xl border border-white/10 p-6 h-full relative">
 
               {/* Role badgelol */}

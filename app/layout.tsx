@@ -18,9 +18,9 @@ export const metadata: Metadata = {
   other: {
     'google-adsense-account': 'ca-pub-5901846749996606',
   },
-    icons: {
-    icon: '/Images/icon.webp',           // transparent - for browser tab
-    shortcut: '/Images/icon-black.webp', // black bg - for search results
+  icons: {
+    icon: '/Images/icon.webp',
+    shortcut: '/Images/icon-black.webp',
   },
 };
 
@@ -35,29 +35,11 @@ export default function RootLayout({
         <link rel="icon" type="image/webp" href="/Images/icon.webp" />
         <link rel="shortcut icon" type="image/webp" href="/Images/icon-black.webp" />
         <style>{`
-          /* Custom Scrollbar */
-          ::-webkit-scrollbar {
-            width: 8px;
-          }
-          
-          ::-webkit-scrollbar-track {
-            background: transparent;
-          }
-          
-          ::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 10px;
-          }
-          
-          ::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.5);
-          }
-          
-          /* Firefox */
-          * {
-            scrollbar-width: thin;
-            scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
-          }
+          ::-webkit-scrollbar { width: 8px; }
+          ::-webkit-scrollbar-track { background: transparent; }
+          ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 10px; }
+          ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.5); }
+          * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.3) transparent; }
         `}</style>
       </head>
       <body className="bg-[#0a0a0a] text-[#e0e0e0]">
@@ -73,7 +55,7 @@ export default function RootLayout({
             gtag('config', 'G-220BXG48P2');
           `}
         </Script>
-        
+
         <QueryProvider>
           <nav className="navbar" aria-label="Main navigation">
             <a href="/">
@@ -102,7 +84,9 @@ export default function RootLayout({
             <ProfileDropdown />
             <MoreDropdown />
           </nav>
-          <main className="pt-20">
+
+          {/* pt-20 on desktop (nav is on top), no top padding on mobile (nav is on bottom) */}
+          <main className="pt-0 md:pt-20">
             {children}
           </main>
         </QueryProvider>

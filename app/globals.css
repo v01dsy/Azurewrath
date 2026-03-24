@@ -45,7 +45,7 @@ body {
   min-height: 100vh;
 }
 
-/* Navbar styling */
+/* ── DESKTOP navbar (768px and above) ── */
 .navbar {
   position: fixed;
   top: 0;
@@ -60,7 +60,6 @@ body {
   align-items: center;
   justify-content: space-around;
   padding: 0 21%;
-  z-index: 50;
   z-index: 1000;
 }
 
@@ -96,6 +95,49 @@ body {
   font-size: 0.7em;
   line-height: 1;
   text-shadow: 0 0 8px rgba(139, 92, 246, 0.6);
+}
+
+/* ── MOBILE navbar (below 768px) ── */
+@media (max-width: 767px) {
+  .navbar {
+    /* move to bottom */
+    top: auto;
+    bottom: 0;
+    /* remove top border, add top border instead */
+    border-bottom: none;
+    border-top: 1px solid rgba(139, 92, 246, 0.3);
+    border-image: none;
+    /* shorter height */
+    height: 56px;
+    /* spread items evenly across full width */
+    padding: 0 4px;
+    justify-content: space-around;
+  }
+
+  /* smaller icons */
+  .navbar img {
+    height: 26px;
+  }
+
+  .navbar a:has(p) img {
+    height: 22px;
+  }
+
+  /* smaller labels */
+  .navbar p {
+    font-size: 0.55em;
+  }
+
+  /* no hover lift on mobile (touch devices) */
+  .navbar a:hover {
+    transform: none;
+  }
+
+  /* make sure page content doesn't hide behind bottom nav */
+  main {
+    padding-bottom: 64px !important;
+    padding-top: 0 !important;
+  }
 }
 
 /* Text utilities */

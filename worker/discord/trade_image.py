@@ -10,17 +10,20 @@ BG_TRANSPARENT = (5, 5, 6, 255)
 BG_CARD        = (13, 13, 15, 255)
 BG_HEADER      = (18, 18, 22, 255)
 BG_SLOT        = (18, 18, 20, 255)
-BG_SLOT_FILLED = (5, 5, 6, 255)
+BG_SLOT_FILLED = (18, 18, 20, 255)   # same as empty slot
 BORDER_DIM     = (31, 31, 31, 255)
 
-TEXT_WHITE     = (245, 248, 255, 255)
-TEXT_GREY      = (146, 158, 184, 255)
+TEXT_WHITE     = (240, 240, 240, 255)
+TEXT_GREY      = (200, 200, 200, 255) # much more white
 TEXT_GREEN     = (53, 222, 128, 255)
+TEXT_RED       = (248, 113, 113, 255)
 
 GREEN_UP       = (53, 222, 128, 255)
 GREEN_UP_BG    = (15, 35, 24, 255)
 GREEN_UP_OUT   = (21, 84, 45, 255)
 RED_DOWN       = (248, 113, 113, 255)
+RED_DOWN_BG    = (40, 19, 21, 255)
+RED_DOWN_OUT   = (100, 35, 36, 255)
 
 # -- Dimensions ---------------------------------------------
 W, H            = 1100, 280
@@ -158,14 +161,18 @@ def generate_trade_image(
                     draw,
                     [sx, sy, sx + SLOT_SIZE, sy + SLOT_SIZE],
                     IMG_RADIUS,
-                    BG_SLOT_FILLED if item else BG_SLOT,
+                    BG_SLOT,
                     outline=BORDER_DIM
                 )
 
                 if item:
                     thumb = _fetch_image(item.get("imageUrl"), SLOT_SIZE - 12)
                     if thumb:
-                        _paste_rounded(img, thumb, (sx+6, sy+6), IMG_RADIUS-4)
+                        # Create a white-backed composite so transparent PNGs
+                        # don't bleed through to the card background
+                        bg = Image.new("RGBA", thumb.size, (18, 18, 20, 255))
+                        bg.paste(thumb, (0, 0), thumb)
+                        _paste_rounded(img, bg, (sx+6, sy+6), IMG_RADIUS-4)
 
                     rap = item.get("rap", 0)
                     total_rap += rap
@@ -222,7 +229,7 @@ def generate_trade_image(
 
             up = diff >= 0
             col = GREEN_UP if up else RED_DOWN
-            bg  = GREEN_UP_BG if up else (60,20,20)
+            bg  = GREEN_UP_BG if up else RED_DOWN_BG
 
             txt = f"{'+' if up else ''}{_fmt(diff)} ({'+' if up else ''}{pct}%)"
 
@@ -232,7 +239,7 @@ def generate_trade_image(
             bx = cx - bw//2
             by = cy + 28
 
-            _rounded_rect(draw, [bx, by, bx+bw, by+24], 10, bg, outline=GREEN_UP_OUT if up else (100, 35, 36, 255))
+            _rounded_rect(draw, [bx, by, bx+bw, by+24], 10, bg, outline=GREEN_UP_OUT if up else RED_DOWN_OUT)
             draw.text((bx+10, by+4), txt, font=f_diff, fill=col)
 
         # output

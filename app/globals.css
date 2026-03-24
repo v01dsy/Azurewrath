@@ -84,7 +84,8 @@ body {
   -webkit-user-drag: none;
 }
 
-.navbar a:has(p) img {
+.navbar a:has(p) img,
+.navbar img:not(:first-child) {
   height: 40px;
 }
 

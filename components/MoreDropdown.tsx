@@ -88,7 +88,8 @@ export default function MoreDropdown() {
             src="/Images/more.webp"
             alt="More"
             draggable="false"
-            style={{ height: 40, width: 'auto', objectFit: 'contain', userSelect: 'none' } as React.CSSProperties}
+            style={{ width: 'auto', objectFit: 'contain', userSelect: 'none' } as React.CSSProperties}
+            className="h-[26px] md:h-[40px] max-h-[40px]"
           />
           {(unreadNews > 0 || pendingFlags > 0) && (
             <span style={{
@@ -117,14 +118,16 @@ export default function MoreDropdown() {
 
       {/* Bridge strip */}
       {open && (
-        <div style={{ position: 'absolute', bottom: -8, left: 0, right: 0, height: 8 }} />
+        <div className="absolute left-0 right-0 h-2 bottom-full md:bottom-auto md:top-full" />
       )}
 
       {/* Dropdown panel */}
       {open && (
         <div
-          className="absolute right-0 w-52 bg-slate-800 border border-purple-500/20 rounded-xl shadow-xl z-50 overflow-hidden py-1"
-          style={{ top: 'calc(100% + 8px)' }}
+          className="absolute right-0 w-52 bg-slate-800 border border-purple-500/20 rounded-xl shadow-xl z-50 overflow-hidden py-1 bottom-[calc(100%+8px)] md:bottom-auto md:top-[calc(100%+8px)]"
+          style={{ pointerEvents: 'auto' }}
+          // opens upward on mobile (bottom nav), downward on desktop (top nav)
+          // we use a className trick:
         >
           {staticItems.map((item) => (
             <Link

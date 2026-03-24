@@ -140,7 +140,6 @@ export default function ProfileDropdown() {
       ref={dropdownRef}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
-      style={{ minHeight: 40 }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <button
@@ -155,7 +154,8 @@ export default function ProfileDropdown() {
               src={user?.avatarUrl || "/Images/profile.webp"}
               alt="Profile"
               draggable="false"
-              style={{ width: 40, height: 40, borderRadius: '50%' }}
+              style={{ borderRadius: '50%', objectFit: 'contain' }}
+              className="h-[26px] w-[26px] md:h-[40px] md:w-[40px] max-h-[40px]"
             />
             {unreadCount > 0 && (
               <span style={{
@@ -170,7 +170,7 @@ export default function ProfileDropdown() {
               </span>
             )}
           </div>
-          <p style={{ fontSize: '0.85rem', margin: 0 }}>
+          <p style={{ margin: 0, color: 'var(--white)', fontWeight: 'bold', fontSize: '0.7em', lineHeight: 1, textShadow: '0 0 8px rgba(139, 92, 246, 0.6)' }}>
             {user ? (user.displayName || user.username) : 'Profile'}
           </p>
         </button>
@@ -179,8 +179,8 @@ export default function ProfileDropdown() {
 
       {open && (
         <div
-          className="absolute right-0 w-52 bg-slate-800 border border-purple-500/20 rounded-xl shadow-xl z-50 overflow-hidden py-1"
-          style={{ pointerEvents: 'auto', top: 'calc(100% + 8px)' }}
+          className="absolute right-0 w-52 bg-slate-800 border border-purple-500/20 rounded-xl shadow-xl z-50 overflow-hidden py-1 bottom-[calc(100%+8px)] md:bottom-auto md:top-[calc(100%+8px)]"
+          style={{ pointerEvents: 'auto' }}
         >
           {!user ? (
             <DropdownLink href="/verify">

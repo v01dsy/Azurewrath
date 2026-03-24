@@ -127,6 +127,7 @@ def build_price_embed(
     return embed
 
 
+# REPLACE the entire build_trade_ad_embed function:
 def build_trade_ad_embed(
     ad_id: int,
     poster_username: str,
@@ -142,12 +143,6 @@ def build_trade_ad_embed(
     has_image: bool = False,
     note: str | None = None,
 ) -> dict:
-    """
-    Embed for a new trade ad that matches a watchlist entry.
-
-    When has_image=True the embed's 'image' field points to
-    'attachment://trade.png' so Discord renders the generated PNG inline.
-    """
     side_label = 'requesting' if side == 'request' else 'offering'
     colour     = 0xED4245 if side == 'request' else 0x57F287
 
@@ -156,7 +151,9 @@ def build_trade_ad_embed(
         f'**{side_label}** **{item_name}**'
     )
     if note and note.strip():
-        description += f'\n\n**Trade Note:** {note.strip()}'
+        description += f'\n\n> {note.strip()}'
+
+    description += f'\n\n[**View Trade Ad →**]({APP_URL}/trade/{ad_id})'
 
     embed = {
         'author': {
@@ -166,24 +163,12 @@ def build_trade_ad_embed(
         },
         'description': description,
         'color':  colour,
-        'fields': [
-            {
-                'name':   'View Ad',
-                'value':  f'[Open on Azurewrath]({APP_URL}/trade/{ad_id})',
-                'inline': False,
-            }
-        ],
         'footer': {'text': 'Azurewrath Trade Alerts'},
     }
 
     if has_image:
-        # The trade card PNG is attached as 'trade.png'
         embed['image'] = {'url': 'attachment://trade.png'}
     elif item_image:
-        # Fallback: use item thumbnail as a small inline thumbnail.
-        # Note: Roblox CDN may not render in Discord embeds — if blank,
-        # consider fetching & attaching via fetch_image_bytes() in client.py
         embed['thumbnail'] = {'url': item_image}
-
 
     return embed

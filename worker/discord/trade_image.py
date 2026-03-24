@@ -221,7 +221,7 @@ def generate_trade_image(
         cy = section_y + 56
 
         draw.ellipse([cx-18, cy-18, cx+18, cy+18], fill=(22, 22, 24, 255), outline=(46, 46, 48, 255))
-        draw.text((cx-6, cy-8), "⇄", font=f_label, fill=TEXT_GREY)
+        draw.text((cx-4, cy-8), "⇄", font=f_label, fill=TEXT_GREY)
 
         if offer_total and req_total:
             diff = offer_total - req_total

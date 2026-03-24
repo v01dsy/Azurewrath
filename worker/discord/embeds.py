@@ -142,9 +142,10 @@ def build_trade_ad_embed(
     poster_avatar: str | None = None,
     has_image: bool = False,
     note: str | None = None,
+    created_at=None,
 ) -> dict:
     side_label = 'requesting' if side == 'request' else 'offering'
-    colour     = 0xED4245 if side == 'request' else 0x57F287
+    colour     = 0x8b5cf6
 
     description = (
         f'{EMOJI_WATCHLIST} **{poster_username}** posted a trade ad '
@@ -163,7 +164,7 @@ def build_trade_ad_embed(
         },
         'description': description,
         'color':  colour,
-        'footer': {'text': 'Azurewrath Trade Alerts'},
+        'footer':      {'text': _format_ts(created_at)},
     }
 
     if has_image:

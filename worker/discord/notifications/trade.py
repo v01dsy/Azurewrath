@@ -29,6 +29,7 @@ def send_trade_notifications(cursor) -> None:
             tai.side,
             i.name       AS item_name,
             i."imageUrl" AS item_image,
+            i.manipulated,
             COALESCE(ph.rap, 0) AS rap
         FROM "TradeAd"     ta
         JOIN "User"         u   ON u."robloxUserId" = ta."userId"
@@ -54,7 +55,7 @@ def send_trade_notifications(cursor) -> None:
     ads: dict[int, dict] = {}
     for (ad_id, poster_id, note, offer_robux, request_robux,
          username, avatar_url, asset_id, side,
-         item_name, item_image, rap) in rows:
+         item_name, item_image, manipulated, rap) in rows:
         if ad_id not in ads:
             ads[ad_id] = {
                 'poster_id':     poster_id,
@@ -75,12 +76,13 @@ def send_trade_notifications(cursor) -> None:
             'imageUrl':   item_image,
             'rap':        float(rap),
             'name':       item_name,
+            'manipulated': bool(manipulated),
         }
         ads[ad_id]['items'].append(item_entry)
         if side == 'offer':
-            ads[ad_id]['offer_items'].append({'name': item_name, 'imageUrl': item_image, 'rap': float(rap)})
+            ads[ad_id]['offer_items'].append({'name': item_name, 'imageUrl': item_image, 'rap': float(rap), 'manipulated': bool(manipulated)})
         else:
-            ads[ad_id]['request_items'].append({'name': item_name, 'imageUrl': item_image, 'rap': float(rap)})
+            ads[ad_id]['request_items'].append({'name': item_name, 'imageUrl': item_image, 'rap': float(rap), 'manipulated': bool(manipulated)})
 
     logger.info(f'[discord/trade] {len(ads)} new trade ad(s) since last cycle')
 

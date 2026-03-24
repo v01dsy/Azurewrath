@@ -92,7 +92,7 @@ export default function Home() {
           {/* Hero */}
           <section className="text-center pt-10">
             <h1 className="fade-up fade-up-1 font-black leading-tight tracking-tight mb-5">
-              <span className="shimmer-text block text-6xl md:text-7xl">Azurewrath</span>
+              <span className="shimmer-text block text-4xl sm:text-6xl md:text-7xl">Azurewrath</span>
               <span className="block text-sm font-semibold uppercase tracking-widest mt-6 mb-4" style={{ color: 'rgba(255,255,255,0.75)' }}>Roblox Limited Tracker</span>
             </h1>
             <p className="fade-up fade-up-2 text-base max-w-xl mx-auto mb-2" style={{ color: 'rgba(255,255,255,0.8)' }}>
@@ -134,7 +134,7 @@ export default function Home() {
               style={{ color: 'rgba(255,255,255,0.4)', animation: 'fadeIn 1s ease forwards', animationDelay: '1s', opacity: 0 }}>
               Features
             </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 [&>*:nth-child(5)]:md:col-start-2 [&>*:nth-child(5)]:justify-self-end [&>*:nth-child(6)]:justify-self-start">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 [&>*:nth-child(5)]:md:col-start-2 [&>*:nth-child(5)]:md:justify-self-end [&>*:nth-child(6)]:md:justify-self-start">
               {cards.map((card, i) => (
                 <Link key={card.title} href={card.href} className="feature-card fade-up" style={{ animationDelay: `${0.1 * i + 0.4}s` }}>
                   <div className="absolute inset-0 rounded-2xl opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-none"

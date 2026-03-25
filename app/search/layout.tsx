@@ -2,7 +2,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Search | Azurewrath",
+  title: "Search",
   description: "Search for Roblox limited items, and more on Azurewrath.",
 };
 

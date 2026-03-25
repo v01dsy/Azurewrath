@@ -126,7 +126,7 @@ export default function Deals() {
   }, []);
 
   useEffect(() => {
-    document.title = "Deals | Azurewrath";
+    document.title = "Deals";
     fetchDeals();
   }, [fetchDeals]);
 

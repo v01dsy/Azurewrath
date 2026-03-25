@@ -1,3 +1,4 @@
+// app/snipe/layout.tsx
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -6,5 +7,10 @@ export const metadata: Metadata = {
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <>
+      <h1 className="sr-only">Roblox Limited Sniper — Real-Time Deal Detection</h1>
+      {children}
+    </>
+  );
 }

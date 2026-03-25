@@ -1,0 +1,33 @@
+# Azurewrath
+
+> Azurewrath is a Roblox Limited item trading analytics platform. Track RAP (Recent Average Price), monitor sales, scan inventories, snipe deals, and manage trade ads for Roblox Limited and Limited Unique items.
+
+## Features
+
+- Real-time RAP and price tracking for Roblox Limited items
+- Deals page showing items currently below RAP
+- Player inventory scanning and RAP history graphs
+- Snipe tool for spotting underpriced listings instantly via SSE stream
+- Watchlist with Discord and browser push notifications for price/sale changes
+- Trade ads system for posting and browsing trade offers
+- Manipulation detection flagging suspicious RAP spikes
+- Player leaderboard ranked by total RAP
+- Sales feed showing recent RAP changes across all tracked items
+- UAID (User Asset ID) lookup with hold period and serial tracking
+
+## Pages
+
+- https://azurewrath.lol/ — Homepage and platform overview
+- https://azurewrath.lol/deals — Live deals sorted by discount below RAP
+- https://azurewrath.lol/sales — Recent sales / RAP change feed
+- https://azurewrath.lol/players — Player leaderboard by RAP
+- https://azurewrath.lol/search — Search for tracked Roblox Limited items
+- https://azurewrath.lol/snipe — Real-time snipe stream for underpriced items
+- https://azurewrath.lol/watchlist — Your personal item watchlist
+- https://azurewrath.lol/verify — Sign in with your Roblox account
+- https://azurewrath.lol/trade — Browse and post trade ads
+- https://azurewrath.lol/news — Platform news and updates
+
+## Data Sources
+
+Azurewrath pulls data exclusively from official Roblox APIs including the Economy, Inventory, Marketplace Sales, Catalog, and Thumbnails endpoints. No third-party price aggregators are used.

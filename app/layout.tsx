@@ -8,7 +8,7 @@ import QueryProvider from './QueryProvider.tsx';
 
 export const metadata: Metadata = {
   title: {
-    template: '%s - Azurewrath',
+    template: '%s | Azurewrath',
     default: 'Azurewrath | Roblox Limited Trading',
   },
   description: 'Real-time price tracking for Roblox Limited items',
@@ -89,6 +89,12 @@ export default function RootLayout({
           <main className="pt-0 md:pt-20">
             {children}
           </main>
+
+           {/* SEO crawler links — visually hidden */}
+          <div className="sr-only" aria-hidden="true">
+            <a href="/verify">Sign In with Roblox</a>
+            <a href="/watchlist">Your Watchlist</a>
+          </div>
         </QueryProvider>
       </body>
     </html>

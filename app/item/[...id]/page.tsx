@@ -24,10 +24,10 @@ export async function generateMetadata({ params }: Props) {
     select: { name: true, description: true },
   });
 
-  if (!item) return { title: 'Item Not Found | Azurewrath' };
+  if (!item) return { title: 'Item Not Found' };
 
   return {
-    title: `${item.name} | Azurewrath`,
+    title: `${item.name}`,
     description:
       item.description ??
       `View price history, RAP, owners, and sales data for ${item.name} on Azurewrath.`,

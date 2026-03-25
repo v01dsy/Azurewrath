@@ -20,7 +20,6 @@ interface ApiInventoryItem {
   serialNumbers: (number | null)[];
 }
 
-// A single copy of an item — used when stack is split
 interface FlatInventoryItem {
   assetId: string;
   name: string;
@@ -29,10 +28,9 @@ interface FlatInventoryItem {
   isLimitedUnique?: boolean | null;
   userAssetId: string;
   serialNumber: number | null;
-  // Keep full arrays for the serial picker
   allUserAssetIds: string[];
   allSerialNumbers: (number | null)[];
-  count: number; // original stack count (for reference)
+  count: number;
 }
 
 interface SelectedOfferItem {
@@ -69,7 +67,6 @@ interface SelectedRequestItem {
   rap: number | null;
 }
 
-// ── Serial badge (mirrors ClientInventoryGrid exactly) ────────────────────────
 function SerialBadge({
   serialNumbers,
   isLimitedUnique,
@@ -80,20 +77,15 @@ function SerialBadge({
   const validSerials = serialNumbers
     .filter((s): s is number => s !== null)
     .sort((a, b) => a - b);
-
   const hasNoSerialAtAll = serialNumbers.every(s => s === null);
   const bestSerial: number | null = validSerials[0] ?? null;
-
   const tier =
     getGhostTier(isLimitedUnique, hasNoSerialAtAll ? null : bestSerial) ??
     getSerialTier(bestSerial);
-
   const isSpecial = tier !== null;
   const isGhost = tier === 'ghost';
   const hasSerials = validSerials.length > 0;
-
   if (!hasSerials && !isGhost) return null;
-
   return (
     <div className="absolute top-1 right-1 bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded shadow-lg z-10">
       {isSpecial ? (
@@ -108,7 +100,6 @@ function SerialBadge({
   );
 }
 
-// ── Item card ─────────────────────────────────────────────────────────────────
 function InventoryCard({
   name,
   imageUrl,
@@ -141,44 +132,37 @@ function InventoryCard({
           ? 'border-white/5 bg-white/[0.02] opacity-40 cursor-not-allowed'
           : 'border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.06] cursor-pointer'
         }`}
-      style={{ padding: '14px 10px 12px' }}
+      style={{ padding: '10px 8px 8px' }}
     >
-      {/* In-offer indicator — small dot only, no card highlight */}
       {inOffer && (
         <div className="absolute top-1.5 left-1.5 w-2 h-2 rounded-full bg-purple-400/80 z-10" />
       )}
-
-      <div className="relative w-24 h-24 rounded-lg overflow-hidden bg-black/40 flex-shrink-0 mb-2">
+      <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-black/40 flex-shrink-0 mb-1.5">
         {imageUrl ? (
           <img src={imageUrl} alt={name} className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-white/20 text-xs">?</div>
         )}
-        {/* Stack count badge */}
         {count > 1 && (
           <div className="absolute top-0.5 right-0.5 bg-black/80 text-white/70 text-[9px] font-bold px-1 py-0.5 rounded leading-none z-10">
             ×{count}
           </div>
         )}
-        {/* Serial badge — top-right of image, exactly like player inventory */}
         <SerialBadge serialNumbers={serialNumbers} isLimitedUnique={isLimitedUnique} />
-        {/* Manipulated badge */}
         {manipulated && (
-          <img src="/Images/manipulated1.webp" alt="Manipulated" title="This item's RAP may be manipulated" className="absolute top-1 left-1 w-5 h-5 z-10" />
+          <img src="/Images/manipulated1.webp" alt="Manipulated" className="absolute top-1 left-1 w-4 h-4 z-10" />
         )}
       </div>
-
-      <p className="text-white text-xs font-medium leading-tight text-center w-full truncate px-1">
+      <p className="text-white text-[11px] font-medium leading-tight text-center w-full truncate px-0.5">
         {name}
       </p>
       {rap > 0 && (
-        <p className="text-white font-bold text-[11px] mt-1">{rap.toLocaleString()} R$</p>
+        <p className="text-white font-bold text-[10px] mt-0.5">{rap.toLocaleString()} R$</p>
       )}
     </button>
   );
 }
 
-// ── Trade slot row ────────────────────────────────────────────────────────────
 function TradeSlot({
   item,
   onRemove,
@@ -196,19 +180,18 @@ function TradeSlot({
 }) {
   if (!item) {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-dashed border-white/10 bg-white/[0.01] px-3 py-2.5 opacity-25">
-        <div className="w-10 h-10 rounded-lg bg-white/5 flex-shrink-0" />
-        <div className="flex-1 space-y-1.5">
+      <div className="flex items-center gap-2.5 rounded-xl border border-dashed border-white/10 bg-white/[0.01] px-3 py-2 opacity-25">
+        <div className="w-9 h-9 rounded-lg bg-white/5 flex-shrink-0" />
+        <div className="flex-1 space-y-1">
           <div className="h-2 rounded bg-white/5 w-3/4" />
           <div className="h-2 rounded bg-white/5 w-1/2" />
         </div>
       </div>
     );
   }
-
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2.5 group relative">
-      <div className="w-10 h-10 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
+    <div className="flex items-center gap-2.5 rounded-xl border border-white/15 bg-white/[0.04] px-3 py-2 group relative">
+      <div className="w-9 h-9 rounded-lg overflow-hidden bg-black/40 flex-shrink-0">
         {item.imageUrl ? (
           <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
         ) : (
@@ -216,20 +199,17 @@ function TradeSlot({
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-white text-sm font-medium truncate">{item.name}</p>
-        <div className="flex items-center gap-2 flex-wrap">
+        <p className="text-white text-xs font-medium truncate">{item.name}</p>
+        <div className="flex items-center gap-1.5 flex-wrap">
           {item.rap != null && item.rap > 0 && (
-            <p className="text-white font-bold text-xs">{item.rap.toLocaleString()} R$</p>
+            <p className="text-white font-bold text-[11px]">{item.rap.toLocaleString()} R$</p>
           )}
           {item.serialNumber != null && (
             <span className="text-[10px] text-white/50 font-mono">#{item.serialNumber}</span>
           )}
           {onCopyClick && (
-            <button
-              onClick={onCopyClick}
-              className="text-[10px] text-slate-500 hover:text-slate-300 transition underline"
-            >
-              {item.serialNumber != null ? 'change copy' : 'pick copy'}
+            <button onClick={onCopyClick} className="text-[10px] text-slate-500 hover:text-slate-300 transition underline">
+              {item.serialNumber != null ? 'change' : 'pick'}
             </button>
           )}
         </div>
@@ -237,7 +217,7 @@ function TradeSlot({
       {onRemove && (
         <button
           onClick={onRemove}
-          className="w-5 h-5 rounded-full bg-red-500/20 hover:bg-red-500/40 text-red-400 text-xs font-bold flex items-center justify-center transition opacity-0 group-hover:opacity-100 flex-shrink-0"
+          className="w-5 h-5 rounded-full bg-red-500/20 hover:bg-red-500/40 text-red-400 text-xs font-bold flex items-center justify-center transition flex-shrink-0"
         >
           ×
         </button>
@@ -246,17 +226,12 @@ function TradeSlot({
   );
 }
 
-// ── Robux input row ───────────────────────────────────────────────────────────
 function RobuxRow({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <div className="flex items-center gap-2 pb-1">
-      <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider whitespace-nowrap">
-        + Robux
-      </span>
+    <div className="flex items-center gap-2">
+      <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider whitespace-nowrap">+ Robux</span>
       <div className="relative flex-1">
-        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-purple-400 text-xs font-bold pointer-events-none">
-          R$
-        </span>
+        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-purple-400 text-xs font-bold pointer-events-none">R$</span>
         <input
           type="number"
           min={0}
@@ -271,12 +246,7 @@ function RobuxRow({ value, onChange }: { value: string; onChange: (v: string) =>
         />
       </div>
       {Number(value) > 0 && (
-        <button
-          onClick={() => onChange('')}
-          className="text-slate-600 hover:text-red-400 transition text-base leading-none"
-        >
-          ×
-        </button>
+        <button onClick={() => onChange('')} className="text-slate-600 hover:text-red-400 transition text-base leading-none">×</button>
       )}
     </div>
   );
@@ -308,6 +278,8 @@ export default function NewTradePage() {
   const [serialPickerItem, setSerialPickerItem] = useState<SelectedOfferItemWithSlot | null>(null);
   const [splitSerials, setSplitSerials] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
+  // Mobile: show trade summary sheet
+  const [showSummary, setShowSummary] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
@@ -358,10 +330,8 @@ export default function NewTradePage() {
       .finally(() => setInventoryLoading(false));
   }, [userId]);
 
-  // Single effect: debounce search changes (reset page), immediate on page change
   useEffect(() => {
     let cancelled = false;
-
     const run = async () => {
       setRequestSearching(true);
       try {
@@ -377,13 +347,10 @@ export default function NewTradePage() {
         if (!cancelled) setRequestSearching(false);
       }
     };
-
     run();
     return () => { cancelled = true; };
   }, [requestSearch, requestPage]);
 
-  // Build flat item list (one card per copy) for split mode
-  // Only Limited U items get split into individual copies; regular limiteds stay stacked
   const flatInventory: FlatInventoryItem[] = inventory
     .filter(item => item.isLimitedUnique === true)
     .flatMap(item =>
@@ -404,7 +371,6 @@ export default function NewTradePage() {
   const filteredInventory = inventory.filter(i =>
     i.name.toLowerCase().includes(inventorySearch.toLowerCase())
   );
-  // In split mode: flat limitedU copies + stacked regular limiteds
   const filteredFlatInventory = flatInventory.filter(i =>
     i.name.toLowerCase().includes(inventorySearch.toLowerCase())
   );
@@ -413,7 +379,6 @@ export default function NewTradePage() {
     i.name.toLowerCase().includes(inventorySearch.toLowerCase())
   );
 
-  // ── Offer toggle (stacked mode) ────────────────────────────────────────────
   const toggleOfferItem = (item: ApiInventoryItem) => {
     const existing = offerItems.filter(o => o.assetId === item.assetId);
     if (existing.length >= item.count) {
@@ -437,7 +402,6 @@ export default function NewTradePage() {
     ]);
   };
 
-  // ── Offer toggle (split mode — single copy per card) ──────────────────────
   const toggleOfferFlat = (flat: FlatInventoryItem) => {
     const alreadyIn = offerItems.findIndex(o => o.userAssetId === flat.userAssetId);
     if (alreadyIn !== -1) {
@@ -494,7 +458,7 @@ export default function NewTradePage() {
     setSerialPickerItem(null);
   };
 
- const handleSubmit = async () => {
+  const handleSubmit = async () => {
     if (cooldownSeconds > 0) return;
     if (offerItems.length === 0) { setError('You must offer at least one item.'); return; }
     if (requestItems.length === 0) { setError('You must request at least one item.'); return; }
@@ -535,8 +499,11 @@ export default function NewTradePage() {
     }
   };
 
-  const offerTotal = offerItems.reduce((s, i) => s + i.rap, 0);
-  const requestTotal = requestItems.reduce((s, i) => s + (i.rap ?? 0), 0);
+  const offerTotal = offerItems.reduce((s, i) => s + i.rap, 0) + (Number(offerRobux) || 0);
+  const requestTotal = requestItems.reduce((s, i) => s + (i.rap ?? 0), 0) + (Number(requestRobux) || 0);
+  const diff = requestTotal - offerTotal;
+  const pct = requestTotal > 0 ? Math.round((diff / requestTotal) * 100) : null;
+  const up = diff >= 0;
 
   const offerCountByAsset = offerItems.reduce<Record<string, number>>((acc, i) => {
     acc[i.assetId] = (acc[i.assetId] ?? 0) + 1;
@@ -544,26 +511,254 @@ export default function NewTradePage() {
   }, {});
   const offerUAIDSet = new Set(offerItems.map(i => i.userAssetId).filter(Boolean));
 
+  const totalSelected = offerItems.length + requestItems.length;
+  const canSubmit = !submitting && cooldownSeconds <= 0 && offerItems.length > 0 && requestItems.length > 0;
+
+  // ── Summary panel (shared between desktop sidebar + mobile sheet) ─────────
+  const SummaryPanel = () => (
+    <div className="flex flex-col gap-3">
+      {/* Offering */}
+      <div className="rounded-2xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-white/5 flex items-center justify-between">
+          <p className="text-white text-xs font-bold uppercase tracking-wider">Offering</p>
+          {offerTotal > 0 && <p className="text-white/40 text-xs font-bold">{offerTotal.toLocaleString()} R$</p>}
+        </div>
+        <div className="p-3 space-y-2">
+          <RobuxRow value={offerRobux} onChange={setOfferRobux} />
+          {[0, 1, 2, 3].map(i => {
+            const item = offerItems[i];
+            return (
+              <TradeSlot
+                key={i}
+                item={item ?? undefined}
+                onRemove={item ? () => removeOfferItem(i) : undefined}
+                onCopyClick={(() => {
+                  if (!item || item.userAssetIds.length <= 1) return undefined;
+                  const hasAnySerial = item.serialNumbers.some(s => s !== null);
+                  const isGhost = item.isLimitedUnique === true && !hasAnySerial;
+                  if (!hasAnySerial && !isGhost) return undefined;
+                  return () => setSerialPickerItem({ ...item, _slotIndex: i });
+                })()}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* RAP diff */}
+      {(offerTotal > 0 || requestTotal > 0) && (
+        <div className="flex items-center justify-center">
+          <div
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm"
+            style={{
+              background: up ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+              border: `1px solid ${up ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+              color: up ? '#4ade80' : '#f87171',
+            }}
+          >
+            <span>{up ? '▲' : '▼'}</span>
+            <span>{up ? '+' : ''}{diff.toLocaleString()} RAP{pct !== null ? ` (${up ? '+' : ''}${pct}%)` : ''}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Requesting */}
+      <div className="rounded-2xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-white/5 flex items-center justify-between">
+          <p className="text-white text-xs font-bold uppercase tracking-wider">Requesting</p>
+          {requestTotal > 0 && <p className="text-white/40 text-xs font-bold">{requestTotal.toLocaleString()} R$</p>}
+        </div>
+        <div className="p-3 space-y-2">
+          <RobuxRow value={requestRobux} onChange={setRequestRobux} />
+          {[0, 1, 2, 3].map(i => {
+            const item = requestItems[i];
+            return (
+              <TradeSlot
+                key={i}
+                item={item ?? undefined}
+                onRemove={item ? () => setRequestItems(prev => prev.filter((_, idx) => idx !== i)) : undefined}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Note */}
+      <div className="rounded-2xl border border-white/10 bg-[#0d0d0f] p-3 space-y-2">
+        <p className="text-slate-400 text-xs uppercase tracking-wider font-semibold">Note (optional)</p>
+        <textarea
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          maxLength={200}
+          placeholder="e.g. open to overpay, DM me on Discord..."
+          className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 resize-none focus:outline-none focus:border-white/25 transition"
+          rows={2}
+        />
+        <p className="text-slate-700 text-xs text-right">{note.length}/200</p>
+      </div>
+    </div>
+  );
+
+  // ── Item picker grid ───────────────────────────────────────────────────────
+  const ItemPickerGrid = () => (
+    <div>
+      {activeTab === 'offer' ? (
+        inventoryLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          </div>
+        ) : filteredInventory.length === 0 ? (
+          <p className="text-slate-600 text-sm text-center py-16">
+            {inventorySearch ? 'No items match your search' : 'No inventory found — make sure your account is scanned'}
+          </p>
+        ) : splitSerials ? (
+          <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
+            {filteredFlatInventory.map(flat => {
+              const inOffer = offerUAIDSet.has(flat.userAssetId);
+              return (
+                <InventoryCard
+                  key={`${flat.assetId}-${flat.userAssetId}`}
+                  name={flat.name}
+                  imageUrl={flat.imageUrl}
+                  rap={flat.rap}
+                  count={1}
+                  inOffer={inOffer}
+                  disabled={offerItems.length >= 4 && !inOffer}
+                  isLimitedUnique={flat.isLimitedUnique}
+                  serialNumbers={flat.serialNumber !== null ? [flat.serialNumber] : []}
+                  onClick={() => toggleOfferFlat(flat)}
+                />
+              );
+            })}
+            {filteredStackedNonU.map(item => {
+              const selectedCount = offerCountByAsset[item.assetId] ?? 0;
+              return (
+                <div key={item.assetId} className="relative">
+                  <InventoryCard
+                    name={item.name}
+                    imageUrl={item.imageUrl}
+                    rap={item.rap}
+                    count={item.count}
+                    inOffer={selectedCount > 0}
+                    disabled={offerItems.length >= 4 && selectedCount === 0}
+                    isLimitedUnique={item.isLimitedUnique}
+                    serialNumbers={item.serialNumbers}
+                    onClick={() => toggleOfferItem(item)}
+                  />
+                  {selectedCount > 1 && (
+                    <div className="absolute -top-1 -left-1 w-5 h-5 bg-white/80 rounded-full flex items-center justify-center text-[9px] text-black font-bold z-20">
+                      {selectedCount}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
+            {filteredInventory.map(item => {
+              const selectedCount = offerCountByAsset[item.assetId] ?? 0;
+              return (
+                <div key={item.assetId} className="relative">
+                  <InventoryCard
+                    name={item.name}
+                    imageUrl={item.imageUrl}
+                    rap={item.rap}
+                    count={item.count}
+                    inOffer={selectedCount > 0}
+                    disabled={offerItems.length >= 4 && selectedCount === 0}
+                    isLimitedUnique={item.isLimitedUnique}
+                    serialNumbers={item.serialNumbers}
+                    onClick={() => toggleOfferItem(item)}
+                  />
+                  {selectedCount > 1 && (
+                    <div className="absolute -top-1 -left-1 w-5 h-5 bg-white/80 rounded-full flex items-center justify-center text-[9px] text-black font-bold z-20">
+                      {selectedCount}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )
+      ) : (
+        <div>
+          {requestSearching && (
+            <div className="flex justify-center py-16">
+              <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            </div>
+          )}
+          {!requestSearching && requestResults.length === 0 && (
+            <p className="text-slate-600 text-sm text-center py-16">No items found</p>
+          )}
+          {!requestSearching && requestResults.length > 0 && (
+            <>
+              <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
+                {requestResults.map(item => {
+                  const selectedCount = requestItems.filter(r => r.assetId === item.assetId).length;
+                  const rap = item.priceHistory?.[0]?.rap ?? null;
+                  return (
+                    <div key={item.assetId} className="relative">
+                      <InventoryCard
+                        name={item.name}
+                        imageUrl={item.imageUrl}
+                        rap={typeof rap === 'number' ? rap : 0}
+                        count={0}
+                        inOffer={selectedCount > 0}
+                        disabled={requestItems.length >= 4 && selectedCount === 0}
+                        isLimitedUnique={null}
+                        serialNumbers={[]}
+                        manipulated={item.manipulated}
+                        onClick={() => toggleRequestItem(item)}
+                      />
+                      {selectedCount > 1 && (
+                        <div className="absolute -top-1 -left-1 w-5 h-5 bg-white/80 rounded-full flex items-center justify-center text-[9px] text-black font-bold z-20">
+                          {selectedCount}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {requestTotalPages > 1 && (
+                <div className="mt-4">
+                  <Pagination
+                    page={requestPage}
+                    totalPages={requestTotalPages}
+                    totalItems={requestItemCount}
+                    pageSize={REQUEST_PAGE_SIZE}
+                    onPageChange={p => setRequestPage(p)}
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div
       className="min-h-screen w-full text-white"
-      style={{ background: 'rgba(10,10,10,0.6)', marginTop: '-80px', paddingTop: '104px', paddingBottom: '48px' }}
+      style={{ background: 'rgba(10,10,10,0.6)', marginTop: '-80px', paddingTop: '104px', paddingBottom: '80px' }}
     >
       {/* Header */}
-      <div className="px-6 max-w-7xl mx-auto mb-6">
-        <Link href="/trade" className="text-slate-500 hover:text-white text-sm transition inline-flex items-center gap-1 mb-4">
+      <div className="px-4 md:px-6 max-w-7xl mx-auto mb-4">
+        <Link href="/trade" className="text-slate-500 hover:text-white text-sm transition inline-flex items-center gap-1 mb-3">
           ← Trade Ads
         </Link>
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-white">Post Trade Ad</h1>
-            <p className="text-slate-500 text-sm mt-0.5">Build your trade and let the community find you</p>
+            <h1 className="text-xl md:text-2xl font-bold text-white">Post Trade Ad</h1>
+            <p className="text-slate-500 text-xs mt-0.5">Build your trade and let the community find you</p>
           </div>
-          <div className="flex items-center gap-3">
+          {/* Desktop post button */}
+          <div className="hidden md:flex items-center gap-3">
             {error && <p className="text-red-400 text-sm">{error}</p>}
             <button
               onClick={handleSubmit}
-              disabled={submitting || cooldownSeconds > 0 || offerItems.length === 0 || requestItems.length === 0}
+              disabled={!canSubmit}
               className="px-6 py-2 rounded-xl font-bold text-sm bg-purple-600 hover:bg-purple-500 text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {submitting ? 'Posting…' : cooldownSeconds > 0 ? `Wait ${formatCooldown(cooldownSeconds)}` : 'Post Trade Ad'}
@@ -572,10 +767,9 @@ export default function NewTradePage() {
         </div>
       </div>
 
-      {/* Main layout */}
-      <div className="px-6 max-w-7xl mx-auto flex gap-5 items-start">
-
-        {/* LEFT: Item picker */}
+      {/* ── DESKTOP: side-by-side ─────────────────────────────────────────── */}
+      <div className="hidden md:flex px-6 max-w-7xl mx-auto gap-5 items-start">
+        {/* Left: item picker */}
         <div
           className="flex-1 min-w-0 rounded-2xl border border-white/10 bg-[#0d0d0f] overflow-hidden"
           style={{ boxShadow: '0 2px 24px rgba(0,0,0,0.5)' }}
@@ -587,22 +781,18 @@ export default function NewTradePage() {
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className={`flex-1 py-3 text-sm font-semibold transition border-b-2 ${activeTab === tab
-                    ? 'text-white border-white/50 bg-white/5'
-                    : 'text-slate-500 border-transparent hover:text-slate-300'
-                  }`}
+                  ? 'text-white border-white/50 bg-white/5'
+                  : 'text-slate-500 border-transparent hover:text-slate-300'
+                }`}
               >
                 {tab === 'offer' ? 'Your Inventory' : 'Request'}
-                <span
-                  className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${activeTab === tab ? 'bg-white/10 text-white/70' : 'bg-white/5 text-slate-600'
-                    }`}
-                >
+                <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${activeTab === tab ? 'bg-white/10 text-white/70' : 'bg-white/5 text-slate-600'}`}>
                   {tab === 'offer' ? offerItems.length : requestItems.length}/4
                 </span>
               </button>
             ))}
           </div>
-
-          {/* Search bar + split toggle (offer tab only) */}
+          {/* Search + split toggle */}
           <div className="px-4 py-3 border-b border-white/5 flex items-center gap-2">
             <input
               type="text"
@@ -618,11 +808,10 @@ export default function NewTradePage() {
             {activeTab === 'offer' && (
               <button
                 onClick={() => setSplitSerials(v => !v)}
-                title="Show each Limited U copy as its own card with its serial number"
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all whitespace-nowrap ${splitSerials
-                    ? 'border-purple-500/50 bg-purple-500/10 text-purple-300'
-                    : 'border-white/10 bg-white/[0.03] text-slate-500 hover:text-slate-300 hover:border-white/20'
-                  }`}
+                  ? 'border-purple-500/50 bg-purple-500/10 text-purple-300'
+                  : 'border-white/10 bg-white/[0.03] text-slate-500 hover:text-slate-300 hover:border-white/20'
+                }`}
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="flex-shrink-0">
                   <rect x="0.5" y="0.5" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
@@ -634,297 +823,166 @@ export default function NewTradePage() {
               </button>
             )}
           </div>
-
-          {/* Grid */}
-          <div className="p-4 overflow-y-auto overflow-x-hidden" style={{ minHeight: 200 }}>
-            {activeTab === 'offer' ? (
-              inventoryLoading ? (
-                <div className="flex items-center justify-center py-20">
-                  <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                </div>
-              ) : filteredInventory.length === 0 ? (
-                <p className="text-slate-600 text-sm text-center py-20">
-                  {inventorySearch
-                    ? 'No items match your search'
-                    : 'No inventory found — make sure your account is verified and scanned'}
-                </p>
-              ) : splitSerials ? (
-                // ── Split mode: Limited U copies split individually, regular limiteds stay stacked ──
-                <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
-                  {filteredFlatInventory.map(flat => {
-                    const inOffer = offerUAIDSet.has(flat.userAssetId);
-                    const isDisabled = offerItems.length >= 4 && !inOffer;
-                    return (
-                      <InventoryCard
-                        key={`${flat.assetId}-${flat.userAssetId}`}
-                        name={flat.name}
-                        imageUrl={flat.imageUrl}
-                        rap={flat.rap}
-                        count={1}
-                        inOffer={inOffer}
-                        disabled={isDisabled}
-                        isLimitedUnique={flat.isLimitedUnique}
-                        serialNumbers={flat.serialNumber !== null ? [flat.serialNumber] : []}
-                        onClick={() => toggleOfferFlat(flat)}
-                      />
-                    );
-                  })}
-                  {filteredStackedNonU.map(item => {
-                    const selectedCount = offerCountByAsset[item.assetId] ?? 0;
-                    const isDisabled = offerItems.length >= 4 && selectedCount === 0;
-                    return (
-                      <div key={item.assetId} className="relative">
-                        <InventoryCard
-                          name={item.name}
-                          imageUrl={item.imageUrl}
-                          rap={item.rap}
-                          count={item.count}
-                          inOffer={selectedCount > 0}
-                          disabled={isDisabled}
-                          isLimitedUnique={item.isLimitedUnique}
-                          serialNumbers={item.serialNumbers}
-                          onClick={() => toggleOfferItem(item)}
-                        />
-                        {selectedCount > 1 && (
-                          <div className="absolute -top-1 -left-1 w-5 h-5 bg-white/80 rounded-full flex items-center justify-center text-[9px] text-black font-bold z-20">
-                            {selectedCount}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                // ── Stacked mode: grouped by assetId, showing best serial ────
-                <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
-                  {filteredInventory.map(item => {
-                    const selectedCount = offerCountByAsset[item.assetId] ?? 0;
-                    const isDisabled = offerItems.length >= 4 && selectedCount === 0;
-                    return (
-                      <div key={item.assetId} className="relative">
-                        <InventoryCard
-                          name={item.name}
-                          imageUrl={item.imageUrl}
-                          rap={item.rap}
-                          count={item.count}
-                          inOffer={selectedCount > 0}
-                          disabled={isDisabled}
-                          isLimitedUnique={item.isLimitedUnique}
-                          serialNumbers={item.serialNumbers}
-                          onClick={() => toggleOfferItem(item)}
-                        />
-                        {selectedCount > 1 && (
-                          <div className="absolute -top-1 -left-1 w-5 h-5 bg-white/80 rounded-full flex items-center justify-center text-[9px] text-black font-bold z-20">
-                            {selectedCount}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )
-            ) : (
-              // ── Request tab ──────────────────────────────────────────────────
-              <div>
-                {requestSearching && (
-                  <div className="flex justify-center py-20">
-                    <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  </div>
-                )}
-                {!requestSearching && requestResults.length === 0 && (
-                  <p className="text-slate-600 text-sm text-center py-20">No items found</p>
-                )}
-                {!requestSearching && requestResults.length > 0 && (
-                  <>
-                    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
-                      {requestResults.map(item => {
-                        const selectedCount = requestItems.filter(r => r.assetId === item.assetId).length;
-                        const disabled = requestItems.length >= 4 && selectedCount === 0;
-                        const rap = item.priceHistory?.[0]?.rap ?? null;
-                        return (
-                          <div key={item.assetId} className="relative">
-                            <InventoryCard
-                              name={item.name}
-                              imageUrl={item.imageUrl}
-                              rap={typeof rap === 'number' ? rap : 0}
-                              count={0}
-                              inOffer={selectedCount > 0}
-                              disabled={disabled}
-                              isLimitedUnique={null}
-                              serialNumbers={[]}
-                              manipulated={item.manipulated}
-                              onClick={() => toggleRequestItem(item)}
-                            />
-                            {selectedCount > 1 && (
-                              <div className="absolute -top-1 -left-1 w-5 h-5 bg-white/80 rounded-full flex items-center justify-center text-[9px] text-black font-bold z-20">
-                                {selectedCount}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {requestTotalPages > 1 && (
-                      <div className="mt-4">
-                        <Pagination
-                          page={requestPage}
-                          totalPages={requestTotalPages}
-                          totalItems={requestItemCount}
-                          pageSize={REQUEST_PAGE_SIZE}
-                          onPageChange={p => setRequestPage(p)}
-                        />
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
+          <div className="p-4 overflow-y-auto" style={{ minHeight: 200 }}>
+            <ItemPickerGrid />
           </div>
         </div>
 
-        {/* RIGHT: Trade slots + note */}
-        <div className="w-72 flex-shrink-0 space-y-4">
-
-          {/* Offer panel */}
-          <div
-            className="rounded-2xl border border-white/10 bg-[#0d0d0f] overflow-hidden"
-            style={{ boxShadow: '0 2px 24px rgba(0,0,0,0.5)' }}
-          >
-            <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
-              <p className="text-white text-sm font-bold uppercase tracking-wider">Offering</p>
-              {offerTotal > 0 && (
-                <p className="text-white/50 text-xs font-bold">{offerTotal.toLocaleString()} R$</p>
-              )}
-            </div>
-            <div className="p-3 space-y-2">
-              <RobuxRow value={offerRobux} onChange={setOfferRobux} />
-              {[0, 1, 2, 3].map(i => {
-                const item = offerItems[i];
-                return (
-                  <TradeSlot
-                    key={i}
-                    item={item ?? undefined}
-                    onRemove={item ? () => removeOfferItem(i) : undefined}
-                    onCopyClick={(() => {
-                      if (!item || item.userAssetIds.length <= 1) return undefined;
-                      const hasAnySerial = item.serialNumbers.some(s => s !== null);
-                      const isGhost = item.isLimitedUnique === true && !hasAnySerial;
-                      if (!hasAnySerial && !isGhost) return undefined;
-                      return () => setSerialPickerItem({ ...item, _slotIndex: i });
-                    })()}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
-          {/* RAP diff */}
-          {(() => {
-            const offerTotal = offerItems.reduce((s, i) => s + i.rap, 0) + (Number(offerRobux) || 0);
-            const requestTotal = requestItems.reduce((s, i) => s + (i.rap ?? 0), 0) + (Number(requestRobux) || 0);
-            const diff = requestTotal - offerTotal;
-            if (offerTotal === 0 && requestTotal === 0) return null;
-            const pct = requestTotal > 0 ? Math.round((diff / requestTotal) * 100) : null;
-            const up = diff >= 0;
-            return (
-              <div className="flex items-center justify-center">
-                <div
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm"
-                  style={{
-                    background: up ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-                    border: `1px solid ${up ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
-                    color: up ? '#4ade80' : '#f87171',
-                  }}
-                >
-                  <span style={{ fontSize: 15 }}>{up ? '▲' : '▼'}</span>
-                  <span>
-                    {up ? '+' : ''}{diff.toLocaleString()} RAP
-                    {pct !== null && ` (${up ? '+' : ''}${pct}%)`}
-                  </span>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Request panel */}
-          <div
-            className="rounded-2xl border border-white/10 bg-[#0d0d0f] overflow-hidden"
-            style={{ boxShadow: '0 2px 24px rgba(0,0,0,0.5)' }}
-          >
-            <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
-              <p className="text-white text-sm font-bold uppercase tracking-wider">Requesting</p>
-              {requestTotal > 0 && (
-                <p className="text-white/50 text-xs font-bold">{requestTotal.toLocaleString()} R$</p>
-              )}
-            </div>
-            <div className="p-3 space-y-2">
-              <RobuxRow value={requestRobux} onChange={setRequestRobux} />
-              {[0, 1, 2, 3].map(i => {
-                const item = requestItems[i];
-                return (
-                  <TradeSlot
-                    key={i}
-                    item={item ?? undefined}
-                    onRemove={
-                      item ? () => setRequestItems(prev => prev.filter((_, idx) => idx !== i)) : undefined
-                    }
-                  />
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Note */}
-          <div
-            className="rounded-2xl border border-white/10 bg-[#0d0d0f] p-3 space-y-2"
-            style={{ boxShadow: '0 2px 24px rgba(0,0,0,0.5)' }}
-          >
-            <p className="text-slate-400 text-xs uppercase tracking-wider font-semibold">Note (optional)</p>
-            <textarea
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              maxLength={200}
-              placeholder="e.g. open to overpay, DM me on Discord..."
-              className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-600 resize-none focus:outline-none focus:border-white/25 transition"
-              rows={2}
-            />
-            <p className="text-slate-700 text-xs text-right">{note.length}/200</p>
-          </div>
-
-          {error && (
-            <p className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
-              {error}
-            </p>
-          )}
-
-          <button
-            onClick={handleSubmit}
-            disabled={submitting || cooldownSeconds > 0 || offerItems.length === 0 || requestItems.length === 0}
-            className="w-full py-3 rounded-xl font-bold text-sm bg-purple-600 hover:bg-purple-500 text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {submitting ? 'Posting…' : cooldownSeconds > 0 ? `Wait ${formatCooldown(cooldownSeconds)}` : 'Post Trade Ad'}
-          </button>
+        {/* Right: summary */}
+        <div className="w-72 flex-shrink-0">
+          <SummaryPanel />
         </div>
       </div>
+
+      {/* ── MOBILE: full-width picker + floating summary button ──────────── */}
+      <div className="md:hidden px-3 max-w-7xl mx-auto">
+        <div
+          className="rounded-2xl border border-white/10 bg-[#0d0d0f] overflow-hidden"
+          style={{ boxShadow: '0 2px 24px rgba(0,0,0,0.5)' }}
+        >
+          {/* Tabs */}
+          <div className="flex border-b border-white/10">
+            {(['offer', 'request'] as Tab[]).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 py-3 text-sm font-semibold transition border-b-2 ${activeTab === tab
+                  ? 'text-white border-white/50 bg-white/5'
+                  : 'text-slate-500 border-transparent'
+                }`}
+              >
+                {tab === 'offer' ? 'Inventory' : 'Request'}
+                <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${activeTab === tab ? 'bg-white/10 text-white/70' : 'bg-white/5 text-slate-600'}`}>
+                  {tab === 'offer' ? offerItems.length : requestItems.length}/4
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Search + split */}
+          <div className="px-3 py-2.5 border-b border-white/5 flex items-center gap-2">
+            <input
+              type="text"
+              placeholder={activeTab === 'offer' ? 'Filter inventory...' : 'Search items...'}
+              value={activeTab === 'offer' ? inventorySearch : requestSearch}
+              onChange={e =>
+                activeTab === 'offer'
+                  ? setInventorySearch(e.target.value)
+                  : (v => { setRequestSearch(v); setRequestPage(1); })(e.target.value)
+              }
+              className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-white/25 transition"
+            />
+            {activeTab === 'offer' && (
+              <button
+                onClick={() => setSplitSerials(v => !v)}
+                className={`p-2 rounded-xl border transition-all flex-shrink-0 ${splitSerials
+                  ? 'border-purple-500/50 bg-purple-500/10'
+                  : 'border-white/10 bg-white/[0.03]'
+                }`}
+                title="Split serials"
+              >
+                <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
+                  <rect x="0.5" y="0.5" width="4.5" height="4.5" rx="1" stroke={splitSerials ? '#a78bfa' : '#64748b'} strokeWidth="1.2" />
+                  <rect x="7" y="0.5" width="4.5" height="4.5" rx="1" stroke={splitSerials ? '#a78bfa' : '#64748b'} strokeWidth="1.2" />
+                  <rect x="0.5" y="7" width="4.5" height="4.5" rx="1" stroke={splitSerials ? '#a78bfa' : '#64748b'} strokeWidth="1.2" />
+                  <rect x="7" y="7" width="4.5" height="4.5" rx="1" stroke={splitSerials ? '#a78bfa' : '#64748b'} strokeWidth="1.2" />
+                </svg>
+              </button>
+            )}
+          </div>
+
+          <div className="p-3">
+            <ItemPickerGrid />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Mobile sticky bottom bar ─────────────────────────────────────── */}
+      <div className="md:hidden fixed bottom-12 left-0 right-0 z-40 border-t border-white/10 bg-[#0a0a0f]/95 backdrop-blur-md px-4 py-3 flex items-center gap-3">
+        <button
+          onClick={() => setShowSummary(true)}
+          className="flex-1 flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl border border-white/10 bg-white/[0.04] text-left"
+        >
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1">
+              {offerItems.slice(0, 3).map((item, i) => (
+                item.imageUrl ? (
+                  <img key={i} src={item.imageUrl} alt="" className="w-7 h-7 rounded-lg object-cover border border-white/10" />
+                ) : (
+                  <div key={i} className="w-7 h-7 rounded-lg bg-white/10" />
+                )
+              ))}
+              {offerItems.length === 0 && (
+                <div className="w-7 h-7 rounded-lg border border-dashed border-white/10" />
+              )}
+            </div>
+            <span className="text-white/40 text-sm">→</span>
+            <div className="flex gap-1">
+              {requestItems.slice(0, 3).map((item, i) => (
+                item.imageUrl ? (
+                  <img key={i} src={item.imageUrl} alt="" className="w-7 h-7 rounded-lg object-cover border border-white/10" />
+                ) : (
+                  <div key={i} className="w-7 h-7 rounded-lg bg-white/10" />
+                )
+              ))}
+              {requestItems.length === 0 && (
+                <div className="w-7 h-7 rounded-lg border border-dashed border-white/10" />
+              )}
+            </div>
+          </div>
+          <span className="text-slate-400 text-xs">
+            {totalSelected > 0 ? `${offerItems.length}↔${requestItems.length} items` : 'Review trade'}
+          </span>
+        </button>
+
+        <button
+          onClick={handleSubmit}
+          disabled={!canSubmit}
+          className="px-5 py-2.5 rounded-xl font-bold text-sm bg-purple-600 hover:bg-purple-500 text-white transition disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+        >
+          {submitting ? '...' : cooldownSeconds > 0 ? formatCooldown(cooldownSeconds) : 'Post'}
+        </button>
+      </div>
+
+      {/* ── Mobile summary sheet ──────────────────────────────────────────── */}
+      {showSummary && (
+        <div
+          className="md:hidden fixed inset-0 z-50 flex flex-col justify-end"
+          onClick={() => setShowSummary(false)}
+        >
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div
+            className="relative bg-[#0d0d0f] border-t border-white/10 rounded-t-2xl max-h-[85vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Handle */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full bg-white/20" />
+            </div>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-white/5">
+              <h2 className="text-white font-bold text-base">Trade Summary</h2>
+              <button onClick={() => setShowSummary(false)} className="text-slate-400 hover:text-white text-xl leading-none">×</button>
+            </div>
+            <div className="p-4">
+              <SummaryPanel />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Serial picker modal */}
       {serialPickerItem && (
         <div
-          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-50 p-0 md:p-4"
           onClick={() => setSerialPickerItem(null)}
         >
           <div
-            className="bg-[#0d0d0f] border border-white/10 rounded-2xl p-4 w-full max-w-sm max-h-[60vh] flex flex-col"
+            className="bg-[#0d0d0f] border border-white/10 rounded-t-2xl md:rounded-2xl p-4 w-full md:max-w-sm max-h-[60vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-1">
               <h3 className="text-white font-bold">Select Copy</h3>
-              <button
-                onClick={() => setSerialPickerItem(null)}
-                className="text-slate-400 hover:text-white transition text-xl leading-none"
-              >
-                ×
-              </button>
+              <button onClick={() => setSerialPickerItem(null)} className="text-slate-400 hover:text-white transition text-xl leading-none">×</button>
             </div>
             <p className="text-slate-500 text-xs mb-3">{serialPickerItem.name}</p>
             <div className="overflow-y-auto flex-1 space-y-1">

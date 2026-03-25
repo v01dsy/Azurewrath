@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getUserSession } from '@/lib/userSession';
@@ -252,6 +252,32 @@ function RobuxRow({ value, onChange }: { value: string; onChange: (v: string) =>
   );
 }
 
+// ── Stable memo component for the note textarea ──────────────────────────
+// This MUST be defined outside NewTradePage to prevent remounting on every
+// parent render, which would steal focus after each keystroke.
+const NoteInput = memo(function NoteInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[#0d0d0f] p-3 space-y-2">
+      <p className="text-slate-400 text-xs uppercase tracking-wider font-semibold">Note (optional)</p>
+      <textarea
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        maxLength={200}
+        placeholder="e.g. open to overpay, DM me on Discord..."
+        className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 resize-none focus:outline-none focus:border-white/25 transition"
+        rows={2}
+      />
+      <p className="text-slate-700 text-xs text-right">{value.length}/200</p>
+    </div>
+  );
+});
+
 type Tab = 'offer' | 'request';
 
 export default function NewTradePage() {
@@ -278,7 +304,6 @@ export default function NewTradePage() {
   const [serialPickerItem, setSerialPickerItem] = useState<SelectedOfferItemWithSlot | null>(null);
   const [splitSerials, setSplitSerials] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
-  // Mobile: show trade summary sheet
   const [showSummary, setShowSummary] = useState(false);
 
   useEffect(() => {
@@ -379,86 +404,90 @@ export default function NewTradePage() {
     i.name.toLowerCase().includes(inventorySearch.toLowerCase())
   );
 
-  const toggleOfferItem = (item: ApiInventoryItem) => {
-    const existing = offerItems.filter(o => o.assetId === item.assetId);
-    if (existing.length >= item.count) {
-      setOfferItems(prev => prev.filter(o => o.assetId !== item.assetId));
-      return;
-    }
-    if (offerItems.length >= 4) return;
-    setOfferItems(prev => [
-      ...prev,
-      {
-        assetId: item.assetId,
-        userAssetId: item.userAssetIds[existing.length] ?? null,
-        serialNumber: item.serialNumbers[existing.length] ?? null,
-        name: item.name,
-        imageUrl: item.imageUrl,
-        rap: item.rap,
-        isLimitedUnique: item.isLimitedUnique,
-        userAssetIds: item.userAssetIds,
-        serialNumbers: item.serialNumbers,
-      },
-    ]);
-  };
+  const toggleOfferItem = useCallback((item: ApiInventoryItem) => {
+    setOfferItems(prev => {
+      const existing = prev.filter(o => o.assetId === item.assetId);
+      if (existing.length >= item.count) {
+        return prev.filter(o => o.assetId !== item.assetId);
+      }
+      if (prev.length >= 4) return prev;
+      return [
+        ...prev,
+        {
+          assetId: item.assetId,
+          userAssetId: item.userAssetIds[existing.length] ?? null,
+          serialNumber: item.serialNumbers[existing.length] ?? null,
+          name: item.name,
+          imageUrl: item.imageUrl,
+          rap: item.rap,
+          isLimitedUnique: item.isLimitedUnique,
+          userAssetIds: item.userAssetIds,
+          serialNumbers: item.serialNumbers,
+        },
+      ];
+    });
+  }, []);
 
-  const toggleOfferFlat = (flat: FlatInventoryItem) => {
-    const alreadyIn = offerItems.findIndex(o => o.userAssetId === flat.userAssetId);
-    if (alreadyIn !== -1) {
-      setOfferItems(prev => prev.filter((_, i) => i !== alreadyIn));
-      return;
-    }
-    if (offerItems.length >= 4) return;
-    setOfferItems(prev => [
-      ...prev,
-      {
-        assetId: flat.assetId,
-        userAssetId: flat.userAssetId,
-        serialNumber: flat.serialNumber,
-        name: flat.name,
-        imageUrl: flat.imageUrl,
-        rap: flat.rap,
-        isLimitedUnique: flat.isLimitedUnique,
-        userAssetIds: flat.allUserAssetIds,
-        serialNumbers: flat.allSerialNumbers,
-      },
-    ]);
-  };
+  const toggleOfferFlat = useCallback((flat: FlatInventoryItem) => {
+    setOfferItems(prev => {
+      const alreadyIn = prev.findIndex(o => o.userAssetId === flat.userAssetId);
+      if (alreadyIn !== -1) {
+        return prev.filter((_, i) => i !== alreadyIn);
+      }
+      if (prev.length >= 4) return prev;
+      return [
+        ...prev,
+        {
+          assetId: flat.assetId,
+          userAssetId: flat.userAssetId,
+          serialNumber: flat.serialNumber,
+          name: flat.name,
+          imageUrl: flat.imageUrl,
+          rap: flat.rap,
+          isLimitedUnique: flat.isLimitedUnique,
+          userAssetIds: flat.allUserAssetIds,
+          serialNumbers: flat.allSerialNumbers,
+        },
+      ];
+    });
+  }, []);
 
-  const removeOfferItem = (idx: number) => {
+  const removeOfferItem = useCallback((idx: number) => {
     setOfferItems(prev => prev.filter((_, i) => i !== idx));
-  };
+  }, []);
 
-  const toggleRequestItem = (item: SearchResult) => {
+  const toggleRequestItem = useCallback((item: SearchResult) => {
     const rap = item.priceHistory?.[0]?.rap ?? null;
-    const existingCount = requestItems.filter(r => r.assetId === item.assetId).length;
-    if (requestItems.length >= 4) {
-      if (existingCount === 0) return;
-      const lastIdx = [...requestItems.map((r, i) => ({ r, i }))]
-        .reverse()
-        .find(({ r }) => r.assetId === item.assetId)?.i ?? -1;
-      if (lastIdx !== -1) setRequestItems(prev => prev.filter((_, i) => i !== lastIdx));
-      return;
-    }
-    setRequestItems(prev => [
-      ...prev,
-      {
-        assetId: item.assetId,
-        name: item.name,
-        imageUrl: item.imageUrl,
-        rap: typeof rap === 'number' ? rap : null,
-      },
-    ]);
-  };
+    setRequestItems(prev => {
+      const existingCount = prev.filter(r => r.assetId === item.assetId).length;
+      if (prev.length >= 4) {
+        if (existingCount === 0) return prev;
+        const lastIdx = [...prev.map((r, i) => ({ r, i }))]
+          .reverse()
+          .find(({ r }) => r.assetId === item.assetId)?.i ?? -1;
+        if (lastIdx !== -1) return prev.filter((_, i) => i !== lastIdx);
+        return prev;
+      }
+      return [
+        ...prev,
+        {
+          assetId: item.assetId,
+          name: item.name,
+          imageUrl: item.imageUrl,
+          rap: typeof rap === 'number' ? rap : null,
+        },
+      ];
+    });
+  }, []);
 
-  const selectSerial = (slotIndex: number, userAssetId: string, serialNumber: number | null) => {
+  const selectSerial = useCallback((slotIndex: number, userAssetId: string, serialNumber: number | null) => {
     setOfferItems(prev =>
       prev.map((item, i) => (i === slotIndex ? { ...item, userAssetId, serialNumber } : item))
     );
     setSerialPickerItem(null);
-  };
+  }, []);
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     if (cooldownSeconds > 0) return;
     if (offerItems.length === 0) { setError('You must offer at least one item.'); return; }
     if (requestItems.length === 0) { setError('You must request at least one item.'); return; }
@@ -497,7 +526,7 @@ export default function NewTradePage() {
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [cooldownSeconds, offerItems, requestItems, offerRobux, requestRobux, note, router]);
 
   const offerTotal = offerItems.reduce((s, i) => s + i.rap, 0) + (Number(offerRobux) || 0);
   const requestTotal = requestItems.reduce((s, i) => s + (i.rap ?? 0), 0) + (Number(requestRobux) || 0);
@@ -514,8 +543,8 @@ export default function NewTradePage() {
   const totalSelected = offerItems.length + requestItems.length;
   const canSubmit = !submitting && cooldownSeconds <= 0 && offerItems.length > 0 && requestItems.length > 0;
 
-  // ── Summary panel (shared between desktop sidebar + mobile sheet) ─────────
-  const SummaryPanel = () => (
+  // ── Summary panel — defined inline but uses stable callbacks and memo'd NoteInput
+  const renderSummaryPanel = () => (
     <div className="flex flex-col gap-3">
       {/* Offering */}
       <div className="rounded-2xl border border-white/10 bg-[#0d0d0f] overflow-hidden">
@@ -583,24 +612,13 @@ export default function NewTradePage() {
         </div>
       </div>
 
-      {/* Note */}
-      <div className="rounded-2xl border border-white/10 bg-[#0d0d0f] p-3 space-y-2">
-        <p className="text-slate-400 text-xs uppercase tracking-wider font-semibold">Note (optional)</p>
-        <textarea
-          value={note}
-          onChange={e => setNote(e.target.value)}
-          maxLength={200}
-          placeholder="e.g. open to overpay, DM me on Discord..."
-          className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 resize-none focus:outline-none focus:border-white/25 transition"
-          rows={2}
-        />
-        <p className="text-slate-700 text-xs text-right">{note.length}/200</p>
-      </div>
+      {/* Note — uses stable memo'd component to preserve focus */}
+      <NoteInput value={note} onChange={setNote} />
     </div>
   );
 
-  // ── Item picker grid ───────────────────────────────────────────────────────
-  const ItemPickerGrid = () => (
+  // ── Item picker grid
+  const renderItemPickerGrid = () => (
     <div>
       {activeTab === 'offer' ? (
         inventoryLoading ? (
@@ -824,13 +842,13 @@ export default function NewTradePage() {
             )}
           </div>
           <div className="p-4 overflow-y-auto" style={{ minHeight: 200 }}>
-            <ItemPickerGrid />
+            {renderItemPickerGrid()}
           </div>
         </div>
 
         {/* Right: summary */}
         <div className="w-72 flex-shrink-0">
-          <SummaryPanel />
+          {renderSummaryPanel()}
         </div>
       </div>
 
@@ -892,7 +910,7 @@ export default function NewTradePage() {
           </div>
 
           <div className="p-3">
-            <ItemPickerGrid />
+            {renderItemPickerGrid()}
           </div>
         </div>
       </div>
@@ -964,7 +982,7 @@ export default function NewTradePage() {
               <button onClick={() => setShowSummary(false)} className="text-slate-400 hover:text-white text-xl leading-none">×</button>
             </div>
             <div className="p-4">
-              <SummaryPanel />
+              {renderSummaryPanel()}
             </div>
           </div>
         </div>

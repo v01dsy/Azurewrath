@@ -82,6 +82,47 @@ function ItemThumb({ item }: { item: TradeItem | null }) {
   );
 }
 
+// Compact version for mobile — no minHeight constraint
+function ItemThumbMobile({ item }: { item: TradeItem | null }) {
+  if (!item) {
+    return (
+      <div
+        className="rounded-lg border border-dashed border-white/[0.07] bg-white/[0.02]"
+        style={{ aspectRatio: '1' }}
+      />
+    );
+  }
+
+  const serial = item.serialNumber ?? null;
+  const tier = getSerialTier(serial);
+  const isSpecial = tier !== null;
+
+  return (
+    <Link
+      href={`/item/${item.assetId}`}
+      title={item.name}
+      className="relative w-full rounded-lg overflow-hidden border border-white/10 bg-black/60 hover:border-white/25 transition-all group block"
+      style={{ aspectRatio: '1' }}
+    >
+      {item.imageUrl
+        ? <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+        : <div className="w-full h-full flex items-center justify-center text-white/20 text-xs">?</div>
+      }
+      {item.manipulated && (
+        <img src="/Images/manipulated1.webp" alt="manip" className="absolute top-1 left-1 w-3 h-3" />
+      )}
+      {serial != null && (
+        <div className="absolute top-0.5 right-0.5 bg-black/70 backdrop-blur-sm px-1 py-0.5 rounded">
+          {isSpecial
+            ? <SpecialSerialText serial={serial} tier={tier} variant="badge" />
+            : <span className="font-bold text-orange-400" style={{ fontSize: 9 }}>#{serial}</span>
+          }
+        </div>
+      )}
+    </Link>
+  );
+}
+
 function RobuxPill({ amount }: { amount: number }) {
   if (amount <= 0) return null;
   return (
@@ -167,8 +208,8 @@ function TradeAdCard({ ad, currentUserId, onDelete }: {
         )}
       </div>
 
-      {/* Trade grid */}
-      <div className="flex items-start gap-4">
+      {/* ── DESKTOP trade grid (md+) — original, untouched ── */}
+      <div className="hidden md:flex items-start gap-4">
 
         {/* Offering */}
         <div className="flex flex-col gap-2 flex-1 min-w-0">
@@ -243,6 +284,82 @@ function TradeAdCard({ ad, currentUserId, onDelete }: {
                 Total: {requestTotal.toLocaleString()} R$
               </span>
             </div>
+          )}
+        </div>
+
+      </div>
+
+      {/* ── MOBILE trade grid (below md) — stacked ── */}
+      <div className="md:hidden space-y-3">
+
+        {/* Offering */}
+        <div className="flex flex-col gap-1.5">
+          <p className="text-xs uppercase tracking-widest text-slate-400 font-bold">Offering</p>
+          <div className="grid grid-cols-4 gap-2">
+            {offerSlots.map((item, i) => (
+              <div key={i} className="flex flex-col gap-1">
+                <ItemThumbMobile item={item} />
+                {item?.rap != null && item.rap > 0 && (
+                  <p className="text-[9px] font-semibold text-slate-400 tabular-nums text-center truncate">{item.rap.toLocaleString()}</p>
+                )}
+              </div>
+            ))}
+          </div>
+          {ad.offerRobux > 0 && (
+            <div className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/20 bg-purple-500/5 px-2 py-1 self-start">
+              <span className="text-purple-400 font-bold text-xs">R$</span>
+              <span className="text-purple-300 font-bold text-xs tabular-nums">{ad.offerRobux.toLocaleString()} Robux</span>
+            </div>
+          )}
+          {offerTotal > 0 && (
+            <span className="text-xs font-bold tabular-nums" style={{ color: '#43e97b' }}>
+              Total: {offerTotal.toLocaleString()} R$
+            </span>
+          )}
+        </div>
+
+        {/* Diff badge */}
+        {(offerTotal > 0 || requestTotal > 0) && (
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-px bg-white/5" />
+            <div
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-xs whitespace-nowrap"
+              style={{
+                background: up ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+                border: `1px solid ${up ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                color: up ? '#4ade80' : '#f87171',
+              }}
+            >
+              <span>{up ? '▲' : '▼'}</span>
+              <span>{up ? '+' : ''}{diff.toLocaleString()}{pct !== null ? ` (${up ? '+' : ''}${pct}%)` : ''}</span>
+            </div>
+            <div className="flex-1 h-px bg-white/5" />
+          </div>
+        )}
+
+        {/* Requesting */}
+        <div className="flex flex-col gap-1.5">
+          <p className="text-xs uppercase tracking-widest text-slate-400 font-bold">Requesting</p>
+          <div className="grid grid-cols-4 gap-2">
+            {requestSlots.map((item, i) => (
+              <div key={i} className="flex flex-col gap-1">
+                <ItemThumbMobile item={item} />
+                {item?.rap != null && item.rap > 0 && (
+                  <p className="text-[9px] font-semibold text-slate-400 tabular-nums text-center truncate">{item.rap.toLocaleString()}</p>
+                )}
+              </div>
+            ))}
+          </div>
+          {ad.requestRobux > 0 && (
+            <div className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/20 bg-purple-500/5 px-2 py-1 self-start">
+              <span className="text-purple-400 font-bold text-xs">R$</span>
+              <span className="text-purple-300 font-bold text-xs tabular-nums">{ad.requestRobux.toLocaleString()} Robux</span>
+            </div>
+          )}
+          {requestTotal > 0 && (
+            <span className="text-xs font-bold tabular-nums" style={{ color: '#43e97b' }}>
+              Total: {requestTotal.toLocaleString()} R$
+            </span>
           )}
         </div>
 

@@ -97,7 +97,7 @@ export default function SalesHistoryPage() {
     sales.length > 0 ? sales.reduce((sum, s) => sum + s.salePrice, 0) / sales.length : 0;
 
   return (
-    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white p-32 -mt-20">
+    <div className="min-h-screen w-full bg-[#0a0a0a]/60 text-white px-4 py-6 md:px-32 md:py-32 -mt-20">
       <div className="max-w-4xl mx-auto space-y-6">
 
         {/* Back Button */}

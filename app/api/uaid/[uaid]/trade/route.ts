@@ -83,8 +83,8 @@ export async function GET(
       FROM "InventoryItem" ii
       JOIN "InventorySnapshot" s ON s.id = ii."snapshotId"
       WHERE s."userId" = $1
-        AND ii."uaidUpdatedAt" BETWEEN $2::timestamp - INTERVAL '5 minutes'
-                                      AND $2::timestamp + INTERVAL '5 minutes'
+        AND ii."uaidUpdatedAt" BETWEEN $2::timestamp - INTERVAL '2 seconds'
+                                      AND $2::timestamp + INTERVAL '2 seconds'
       ORDER BY ii."userAssetId", s."createdAt" DESC
     `, [receiverId, tradeTimestamp]);
 
@@ -166,8 +166,8 @@ export async function GET(
           WHERE "itemId" = ii."assetId"
           ORDER BY timestamp DESC LIMIT 1
         ) ph ON true
-        WHERE ii."uaidUpdatedAt" BETWEEN $2::timestamp - INTERVAL '5 minutes'
-                                        AND $2::timestamp + INTERVAL '5 minutes'
+        WHERE ii."uaidUpdatedAt" BETWEEN $2::timestamp - INTERVAL '2 seconds'
+                                        AND $2::timestamp + INTERVAL '2 seconds'
           AND ii."userAssetId" IN (
             SELECT ii2."userAssetId"
             FROM "InventoryItem" ii2

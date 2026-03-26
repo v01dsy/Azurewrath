@@ -12,7 +12,7 @@ interface UAIDPageProps {
   params: Promise<{ uaid: string }>;
 }
 
-async function checkUserStillOwnsUAID(userId: string, userAssetId: string): Promise<boolean> {
+async function checkUserStillOwnsUAID(userId: string, userAssetId: string): Promise<'owned' | 'private' | 'traded'> {
   let cursor: string | null = null;
   let url = "";
   let res: Response;
@@ -28,27 +28,45 @@ async function checkUserStillOwnsUAID(userId: string, userAssetId: string): Prom
       cache: "no-store",
     });
 
-    if (!res.ok) return false;
+    if (!res.ok) {
+      // 403 means inventory is private
+      if (res.status === 403) return 'private';
+      return 'traded';
+    }
 
     data = await res.json();
     const items: any[] = data.data ?? [];
 
     if (items.some((item: any) => item.userAssetId?.toString() === userAssetId)) {
-      return true;
+      return 'owned';
     }
 
     cursor = data.nextPageCursor ?? null;
   } while (cursor);
 
-  return false;
+  return 'traded';
 }
 
 function formatDate(date: Date | null | undefined): string {
   if (!date) return 'Unknown';
   return new Date(date).toLocaleString(undefined, {
     year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
+}
+
+function acquiredTimeLong(date: Date | string): string {
+  const diffMs = new Date().getTime() - new Date(date).getTime();
+  const mins = Math.floor(diffMs / (1000 * 60));
+  const hours = Math.floor(mins / 60);
+  const days = Math.floor(hours / 24);
+  const months = Math.floor(days / 30);
+  const years = Math.floor(months / 12);
+  if (years > 0) return `${years}y ${months % 12}mo ${days % 30}d ago`;
+  if (months > 0) return `${months}mo ${days % 30}d ago`;
+  if (days > 0) return `${days}d ${hours % 24}h ago`;
+  if (hours > 0) return `${hours}h ${mins % 60}m ago`;
+  return `${mins}m ago`;
 }
 
 
@@ -131,12 +149,14 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
 
   const serialTier = getGhostTier(itemData?.isLimitedUnique, serialNumber) ?? getSerialTier(serialNumber);
 
-  let ownerStillHasIt = false;
+  let ownerStatus: 'owned' | 'private' | 'traded' | null = null;
   if (lastKnownOwnerId) {
-    ownerStillHasIt = await checkUserStillOwnsUAID(lastKnownOwnerId, uaid);
+    ownerStatus = await checkUserStillOwnsUAID(lastKnownOwnerId, uaid);
   }
 
-  const itemTraded = !ownerStillHasIt && lastKnownOwnerId !== null;
+  const ownerStillHasIt = ownerStatus === 'owned';
+  const inventoryIsPrivate = ownerStatus === 'private';
+  const itemTraded = ownerStatus === 'traded';
   const currentOwner = ownerStillHasIt ? lastKnownOwnerUsername : null;
   const currentOwnerUserId = ownerStillHasIt ? lastKnownOwnerId : null;
 
@@ -283,9 +303,14 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                 <div>
                   <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">ACQUIRED AT</div>
                   {uaidUpdatedAt ? (
-                    <div>
-                      <div className="text-white text-sm font-semibold">{timeSince(uaidUpdatedAt)}</div>
-                      <div className="text-slate-500 text-xs mt-0.5">{formatDate(uaidUpdatedAt)}</div>
+                    <div className="relative group w-max">
+                      <div className="text-white text-sm font-semibold cursor-default">{timeSince(uaidUpdatedAt)}</div>
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-20 hidden group-hover:block pointer-events-none">
+                        <div className="bg-[#111] border border-white/10 rounded-lg px-3 py-1.5 text-xs whitespace-nowrap">
+                          <p className="text-[#ccc] font-bold mb-1 text-center">{acquiredTimeLong(uaidUpdatedAt)}</p>
+                          <p className="text-[#ccc] font-bold text-center">{formatDate(uaidUpdatedAt)}</p>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <span className="text-slate-500">—</span>
@@ -295,9 +320,14 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                 <div>
                   <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">CREATED AT</div>
                   {uaidCreatedAt ? (
-                    <div>
-                      <div className="text-white text-sm font-semibold">{timeSince(uaidCreatedAt)}</div>
-                      <div className="text-slate-500 text-xs mt-0.5">{formatDate(uaidCreatedAt)}</div>
+                    <div className="relative group w-max">
+                      <div className="text-white text-sm font-semibold cursor-default">{timeSince(uaidCreatedAt)}</div>
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-20 hidden group-hover:block pointer-events-none">
+                        <div className="bg-[#111] border border-white/10 rounded-lg px-3 py-1.5 text-xs whitespace-nowrap">
+                          <p className="text-[#ccc] font-bold mb-1 text-center">{acquiredTimeLong(uaidCreatedAt)}</p>
+                          <p className="text-[#ccc] font-bold text-center">{formatDate(uaidCreatedAt)}</p>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <span className="text-slate-500">—</span>
@@ -318,6 +348,8 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                   <div className="w-2 h-3 bg-green-400 rounded-full animate-pulse"></div>
                 ) : ownerStillHasIt && awaitingScan ? (
                   <div className="w-2 h-3 bg-yellow-400 rounded-full animate-pulse"></div>
+                ) : inventoryIsPrivate ? (
+                  <div className="w-2 h-3 bg-orange-400 rounded-full"></div>
                 ) : itemTraded ? (
                   <div className="w-2 h-3 bg-yellow-400 rounded-full"></div>
                 ) : !lastKnownOwnerId ? (
@@ -357,6 +389,21 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                     )}
                   </div>
                 </>
+              ) : inventoryIsPrivate ? (
+                <div>
+                  <div className="text-2xl font-bold text-[#FCA853] mb-2">Inventory Private</div>
+                  <div className="text-slate-400 text-sm max-w-sm">
+                    The last known owner{" "}
+                    <a href={`/player/${lastKnownOwnerId}`} className="text-purple-300 hover:underline">
+                      {lastKnownOwnerUsername}
+                    </a>
+                    {" "}has their inventory set to private. We cannot verify if they still own this item.
+                  </div>
+                  <div className="mt-3 inline-block bg-white/5 px-4 py-2 rounded-lg">
+                    <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">LAST SEEN WITH</div>
+                    <div className="text-white text-base font-semibold">{lastKnownOwnerUsername}</div>
+                  </div>
+                </div>
               ) : itemTraded ? (
                 <div>
                   <div className="text-2xl font-bold text-yellow-400 mb-2">Unknown Owner</div>

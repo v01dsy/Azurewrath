@@ -254,7 +254,7 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                               <p className="text-[#ccc] font-bold">
                                 {new Date(item.uaidUpdatedAts[0]).toLocaleString(undefined, {
                                   year: 'numeric', month: '2-digit', day: '2-digit',
-                                  hour: '2-digit', minute: '2-digit',
+                                  hour: '2-digit', minute: '2-digit', second: '2-digit',
                                 })}
                               </p>
                             </>

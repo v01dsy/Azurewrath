@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import Script from 'next/script';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getSerialTier, getGhostTier, getCardGlowClass } from '@/lib/specialSerial';
 import { SpecialSerialText } from '@/components/specialSerialText';
@@ -35,24 +34,7 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
   const [showUAIDModal, setShowUAIDModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItemDisplay | null>(null);
   const [uaidSortBy, setUaidSortBy] = useState('index-reverse');
-
-  const formatTimeSince = (date: Date | string) => {
-    const now = new Date();
-    const scannedDate = new Date(date);
-    const diffMs = now.getTime() - scannedDate.getTime();
-    const diffMinutes = Math.floor(diffMs / (1000 * 60));
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffHours / 24);
-    const diffMonths = Math.floor(diffDays / 30);
-
-    if (diffMinutes < 1) return 'just now';
-    if (diffMinutes < 60) return `${diffMinutes}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays === 1) return '1d ago';
-    if (diffDays < 30) return `${diffDays}d ago`;
-    if (diffMonths < 12) return `${diffMonths}mo ago`;
-    return `${Math.floor(diffMonths / 12)}y ago`;
-  };
+  const [splitHoards, setSplitHoards] = useState(false);
 
   const acquiredTimeSince = (date: Date | string) => {
     const diffMs = new Date().getTime() - new Date(date).getTime();
@@ -82,13 +64,34 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
     return `${mins}m ago`;
   };
 
-  const sortedItems = [...items].sort((a, b) => {
+  // Split hoards into individual cards when splitHoards is enabled.
+  // Sorting is applied after this so split cards are sorted by their own values.
+  const displayItems = splitHoards
+    ? items.flatMap(item =>
+        item.count > 1
+          ? (item.userAssetIds ?? []).map((uaid, i) => ({
+              ...item,
+              count: 1,
+              userAssetIds: [uaid],
+              serialNumbers: [item.serialNumbers?.[i] ?? null],
+              scannedAts: [item.scannedAts?.[i] ?? null],
+              uaidUpdatedAts: [item.uaidUpdatedAts?.[i] ?? null],
+            }))
+          : [item]
+      )
+    : items;
+
+  const sortedDisplayItems = [...displayItems].sort((a, b) => {
     switch (sortBy) {
       case 'rap-high': return b.rap - a.rap;
       case 'rap-low': return a.rap - b.rap;
       case 'total-high': return (b.rap * b.count) - (a.rap * a.count);
       case 'total-low': return (a.rap * a.count) - (b.rap * b.count);
       case 'name': return a.name.localeCompare(b.name);
+      case 'acquired-newest':
+        const aLatestUaidUpdatedAt = Math.max(...(a.uaidUpdatedAts?.map((d) => d ? new Date(d).getTime() : 0) ?? [0]));
+        const bLatestUaidUpdatedAt = Math.max(...(b.uaidUpdatedAts?.map((d) => d ? new Date(d).getTime() : 0) ?? [0]));
+        return bLatestUaidUpdatedAt - aLatestUaidUpdatedAt;
       case 'serial-low':
         const aSerial = a.serialNumbers?.filter((s: number | null) => s !== null).sort((x: number, y: number) => x - y)[0] ?? Infinity;
         const bSerial = b.serialNumbers?.filter((s: number | null) => s !== null).sort((x: number, y: number) => x - y)[0] ?? Infinity;
@@ -97,8 +100,8 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
     }
   });
 
-  const totalPages = Math.ceil(sortedItems.length / ITEMS_PER_PAGE);
-  const pagedItems = sortedItems.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(displayItems.length / ITEMS_PER_PAGE);
+  const pagedItems = sortedDisplayItems.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   const openModal = (item: InventoryItemDisplay, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -119,24 +122,37 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-white">
             Inventory
-            <span className="text-[#555] font-normal text-base ml-2">{items.length} items</span>
+            <span className="text-[#555] font-normal text-base ml-2">{displayItems.length} items</span>
           </h2>
-          <select
-            value={sortBy}
-            onChange={(e) => { setSortBy(e.target.value); setCurrentPage(1); }}
-            className="bg-[#1e1e1e] text-[#ccc] px-4 py-2 rounded-lg border border-white/10 focus:border-white/30 outline-none"
-          >
-            <option value="rap-high">RAP: High to Low</option>
-            <option value="rap-low">RAP: Low to High</option>
-            <option value="total-high">Total Value: High to Low</option>
-            <option value="total-low">Total Value: Low to High</option>
-            <option value="name">Name (A-Z)</option>
-            <option value="serial-low">Serial Number: Low to High</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setSplitHoards(h => !h); setCurrentPage(1); }}
+              className={`px-3 py-2 rounded-lg text-sm font-semibold border transition ${
+                splitHoards
+                  ? 'bg-blue-500/20 border-blue-500/40 text-blue-300'
+                  : 'bg-white/5 border-white/10 text-[#aaa] hover:bg-white/10'
+              }`}
+            >
+              Split Hoards
+            </button>
+            <select
+              value={sortBy}
+              onChange={(e) => { setSortBy(e.target.value); setCurrentPage(1); }}
+              className="bg-[#1e1e1e] text-[#ccc] px-4 py-2 rounded-lg border border-white/10 focus:border-white/30 outline-none"
+            >
+              <option value="rap-high">RAP: High to Low</option>
+              <option value="rap-low">RAP: Low to High</option>
+              <option value="total-high">Total Value: High to Low</option>
+              <option value="total-low">Total Value: Low to High</option>
+              <option value="name">Name (A-Z)</option>
+              <option value="acquired-newest">Acquired: Newest First</option>
+              <option value="serial-low">Serial Number: Low to High</option>
+            </select>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4">
-          {pagedItems.map((item: any) => {
+          {pagedItems.map((item: any, index: number) => {
             const validSerials = item.serialNumbers?.filter((s: number | null) => s !== null).sort((a: number, b: number) => a - b) || [];
             const hasSerials = validSerials.length > 0;
             const showUAIDButton = item.count === 1 && item.userAssetIds && item.userAssetIds.length === 1;
@@ -152,7 +168,7 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
 
             return (
               <div
-                key={item.assetId}
+                key={`${item.assetId}-${index}`}
                 className="bg-white/5 rounded-lg p-4 pb-3 border border-white/10 hover:border-white/25 transition-all flex flex-col cursor-pointer h-full"
                 onClick={() => router.push(`/item/${item.assetId}`)}
               >
@@ -328,19 +344,18 @@ export default function ClientInventoryGrid({ items }: { items: InventoryItemDis
                   uaid,
                   index,
                   serial: selectedItem?.serialNumbers?.[index],
-                  scannedAt: selectedItem?.scannedAts?.[index],
                   uaidUpdatedAt: selectedItem?.uaidUpdatedAts?.[index] ?? null,
                 })) || [];
 
                 const sortedUaidData = [...uaidData].sort((a, b) => {
                   switch (uaidSortBy) {
                     case 'index':
-                      const aTime = a.scannedAt ? new Date(a.scannedAt).getTime() : 0;
-                      const bTime = b.scannedAt ? new Date(b.scannedAt).getTime() : 0;
+                      const aTime = a.uaidUpdatedAt ? new Date(a.uaidUpdatedAt).getTime() : 0;
+                      const bTime = b.uaidUpdatedAt ? new Date(b.uaidUpdatedAt).getTime() : 0;
                       return aTime - bTime;
                     case 'index-reverse':
-                      const aTimeR = a.scannedAt ? new Date(a.scannedAt).getTime() : 0;
-                      const bTimeR = b.scannedAt ? new Date(b.scannedAt).getTime() : 0;
+                      const aTimeR = a.uaidUpdatedAt ? new Date(a.uaidUpdatedAt).getTime() : 0;
+                      const bTimeR = b.uaidUpdatedAt ? new Date(b.uaidUpdatedAt).getTime() : 0;
                       return bTimeR - aTimeR;
                     case 'uaid-low':
                       if (a.serial && b.serial) return a.serial - b.serial;

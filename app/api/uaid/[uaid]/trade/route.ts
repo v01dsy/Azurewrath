@@ -63,9 +63,62 @@ export async function GET(
 
     const afterSnapshotId = afterSnapRows[0]?.id ?? null;
 
-    // ── Step 4: Items received = in after snapshot but NOT in before snapshot ──
+    // ── Step 4: ALL items received in this trade ──────────────────────────────
+    // Strategy: find all UAIDs that the receiver got around the same timestamp
+    // (within 5 minutes). These are all part of the same trade.
+    //
+    // We look at the receiver's inventory items where uaidUpdatedAt is within
+    // ±5 minutes of the main trade timestamp. This groups the whole trade together
+    // regardless of which UAID page we're viewing.
+
     let receivedItems: any[] = [];
-    if (prevSnapshotId && afterSnapshotId) {
+
+    // First, get all UAIDs the receiver currently holds that were updated at the same time
+    const { rows: sameTimeUaids } = await pool.query(`
+      SELECT DISTINCT ON (ii."userAssetId")
+        ii."userAssetId",
+        ii."assetId",
+        ii."serialNumber",
+        ii."uaidUpdatedAt"
+      FROM "InventoryItem" ii
+      JOIN "InventorySnapshot" s ON s.id = ii."snapshotId"
+      WHERE s."userId" = $1
+        AND ii."uaidUpdatedAt" BETWEEN $2::timestamp - INTERVAL '5 minutes'
+                                      AND $2::timestamp + INTERVAL '5 minutes'
+      ORDER BY ii."userAssetId", s."createdAt" DESC
+    `, [receiverId, tradeTimestamp]);
+
+    if (sameTimeUaids.length > 0) {
+      // Get item details for all of these UAIDs
+      const uaidList = sameTimeUaids.map(r => r.userAssetId);
+      const { rows: receivedDetails } = await pool.query(`
+        SELECT
+          ii."userAssetId",
+          ii."assetId",
+          ii."serialNumber",
+          i.name,
+          i."imageUrl",
+          COALESCE(ph.rap, 0) as rap
+        FROM "InventoryItem" ii
+        JOIN "Item" i ON i."assetId" = ii."assetId"
+        LEFT JOIN LATERAL (
+          SELECT rap FROM "PriceHistory"
+          WHERE "itemId" = ii."assetId"
+          ORDER BY timestamp DESC LIMIT 1
+        ) ph ON true
+        WHERE ii."userAssetId" = ANY($1::bigint[])
+          AND ii."snapshotId" = (
+            SELECT id FROM "InventorySnapshot"
+            WHERE "userId" = $2
+            ORDER BY "createdAt" DESC
+            LIMIT 1
+          )
+        ORDER BY ii."serialNumber" ASC NULLS LAST
+      `, [uaidList, receiverId]);
+
+      receivedItems = receivedDetails;
+    } else if (prevSnapshotId && afterSnapshotId) {
+      // Fallback: diff snapshots
       const { rows } = await pool.query(`
         SELECT
           ii."userAssetId",
@@ -90,9 +143,14 @@ export async function GET(
       receivedItems = rows;
     }
 
-    // ── Step 5: Items sent = sender's items with matching uaidUpdatedAt ──
+    // ── Step 5: Items sent = sender's items with matching uaidUpdatedAt ────────
+    // Find all UAIDs from the sender that changed hands at the same time.
+    // We exclude all UAIDs that the receiver got (they moved TO the receiver).
     let sentItems: any[] = [];
     if (senderId) {
+      // Get all UAIDs the receiver currently has (to exclude them from "sent")
+      const receivedUaidSet = receivedItems.map(r => r.userAssetId);
+
       const { rows } = await pool.query(`
         SELECT DISTINCT ON (ii."userAssetId")
           ii."userAssetId",
@@ -116,9 +174,9 @@ export async function GET(
             JOIN "InventorySnapshot" snap ON snap.id = ii2."snapshotId"
             WHERE snap."userId" = $1
           )
-          AND ii."userAssetId" != $3::bigint
+          AND ($3::bigint[] IS NULL OR ii."userAssetId" != ALL($3::bigint[]))
         ORDER BY ii."userAssetId"
-      `, [senderId, tradeTimestamp, uaid]);
+      `, [senderId, tradeTimestamp, receivedUaidSet.length > 0 ? receivedUaidSet : null]);
       sentItems = rows;
     }
 
@@ -150,6 +208,7 @@ export async function GET(
     const receiver = receiverUserRows[0] ?? null;
     const sender = senderUserRows[0] ?? null;
 
+    // Ensure the current UAID is included in received items
     const uaidAlreadyInReceived = receivedItems.some(
       r => r.userAssetId.toString() === uaid
     );

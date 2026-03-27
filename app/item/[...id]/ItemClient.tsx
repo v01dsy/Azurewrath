@@ -302,7 +302,7 @@ export default function ItemClient({ item: initialItem }: Props) {
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   useEffect(() => { if (itemId) fetchOwners(); }, [itemId, fetchOwners]);
-  useEffect(() => { if (item?.name) document.title = `${item.name}`; }, [item]);
+  useEffect(() => { if (item?.name) document.title = `${item.name} | Roblox Limited Item - Azurewrath`; }, [item]);
 
   useEffect(() => {
     if (!item) return;

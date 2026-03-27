@@ -21,13 +21,19 @@ export async function generateMetadata({ params }: Props) {
 
   const item = await prisma.item.findUnique({
     where: { assetId: BigInt(assetId) },
-    select: { name: true, description: true },
+    select: { name: true, description: true, imageUrl: true },
   });
 
   if (!item) return { title: 'Item Not Found' };
 
   return {
-    title: `${item.name}`,
+    title: {
+      absolute: `${item.name} | Roblox Limited Item - Azurewrath`,
+    },
+    openGraph: {
+      title: item.name,
+      images: [{ url: item.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${assetId}&width=420&height=420&format=Webp` }],
+    },
     description:
       item.description ??
       `View price history, RAP, owners, and sales data for ${item.name} on Azurewrath.`,

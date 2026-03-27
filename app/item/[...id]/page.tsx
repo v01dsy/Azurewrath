@@ -34,6 +34,10 @@ export async function generateMetadata({ params }: Props) {
       title: item.name,
       images: [{ url: item.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${assetId}&width=420&height=420&format=Webp` }],
     },
+    twitter: {
+      card: 'summary',
+      images: [item.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${assetId}&width=420&height=420&format=Webp`],
+    },
     description:
       item.description ??
       `View price history, RAP, owners, and sales data for ${item.name} on Azurewrath.`,

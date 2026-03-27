@@ -859,47 +859,48 @@ def update_item_prices():
 
 
 def refresh_item_thumbnails():
-    """Refresh imageUrl for items with missing or stale thumbnails"""
+    """Refresh imageUrl for all items using Roblox thumbnails API (100 at a time)"""
     conn = None
     cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        cursor.execute('SELECT "assetId" FROM "Item"')
+        all_ids = [row[0] for row in cursor.fetchall()]
         
-        # Get items with no imageUrl
-        cursor.execute('SELECT "assetId" FROM "Item" WHERE "imageUrl" IS NULL LIMIT 100')
-        items = cursor.fetchall()
-        
-        if not items:
-            return
-            
-        asset_ids = [str(row[0]) for row in items]
-        
-        # Fetch thumbnails in bulk from Roblox
-        ids_param = ','.join(asset_ids)
-        response = requests.get(
-            f'https://thumbnails.roblox.com/v1/assets?assetIds={ids_param}&size=420x420&format=Webp&isCircular=false',
-            headers=HEADERS,
-            timeout=30
-        )
-        
-        if response.status_code != 200:
-            return
-            
-        data = response.json()
-        
-        for item in data.get('data', []):
-            if item.get('imageUrl'):
-                cursor.execute(
-                    'UPDATE "Item" SET "imageUrl" = %s WHERE "assetId" = %s',
-                    (item['imageUrl'], item['targetId'])
+        BATCH_SIZE = 100
+        updated = 0
+        for i in range(0, len(all_ids), BATCH_SIZE):
+            batch = all_ids[i:i+BATCH_SIZE]
+            batch_str = ','.join(str(x) for x in batch)
+            try:
+                res = requests.get(
+                    'https://thumbnails.roblox.com/v1/assets',
+                    params={'assetIds': batch_str, 'size': '420x420', 'format': 'Webp', 'isCircular': 'false'},
+                    headers=HEADERS,
+                    timeout=10
                 )
+                if res.status_code == 200:
+                    data = res.json().get('data', [])
+                    for entry in data:
+                        if entry.get('imageUrl'):
+                            cursor.execute(
+                                'UPDATE "Item" SET "imageUrl" = %s WHERE "assetId" = %s',
+                                (entry['imageUrl'], entry['targetId'])
+                            )
+                            updated += 1
+                    conn.commit()
+                    logger.info(f'Batch {i//BATCH_SIZE + 1}: updated {len(data)} thumbnails')
+                else:
+                    logger.error(f'Thumbnail API returned {res.status_code}: {res.text}')
+                time.sleep(0.5)
+            except Exception as e:
+                logger.error(f'Thumbnail batch error: {e}')
+                continue
         
-        conn.commit()
-        logger.info(f"✅ Refreshed thumbnails for {len(items)} items")
-        
+        logger.info(f'✅ Refreshed {updated} thumbnail URLs')
     except Exception as e:
-        logger.error(f"❌ Error refreshing thumbnails: {e}")
+        logger.error(f'❌ Error refreshing thumbnails: {e}')
         if conn:
             conn.rollback()
     finally:
@@ -938,7 +939,7 @@ def main():
             thumbnail_refresh_counter += 1
             logger.info(f"\n🔄 Starting cycle #{cycle_count}")
 
-            if thumbnail_refresh_counter >= 100:
+            if thumbnail_refresh_counter >= 5:
                 logger.info("🖼️ Running thumbnail refresh...")
                 refresh_item_thumbnails()
                 thumbnail_refresh_counter = 0

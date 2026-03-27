@@ -7,7 +7,7 @@ const MAX_REQUESTS = 20; // 20 uaid requests per minute for unauthenticated user
 // In-memory store — resets on redeploy, good enough for edge rate limiting
 const ipMap = new Map<string, { count: number; resetAt: number }>();
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Only rate limit /uaid/ routes

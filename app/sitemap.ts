@@ -2,12 +2,18 @@
 import { MetadataRoute } from 'next';
 import prisma from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+
 const baseUrl = 'https://azurewrath.lol';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [items, users] = await Promise.all([
     prisma.item.findMany({ select: { assetId: true, updatedAt: true } }),
-    prisma.user.findMany({ select: { robloxUserId: true, updatedAt: true } }),
+    prisma.user.findMany({ 
+      select: { robloxUserId: true, updatedAt: true },
+      take: 5000, // limit to top 5000 players
+      orderBy: { updatedAt: 'desc' },
+    }),
   ]);
 
   const staticPages: MetadataRoute.Sitemap = [

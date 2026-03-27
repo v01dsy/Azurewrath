@@ -32,6 +32,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 }
 
+export const revalidate = 60; // Revalidate every 60 seconds to keep data fresh without overloading the server
+
 // ─── Data fetching ─────────────────────────────────────────────────────────
 
 async function canViewInventory(robloxUserId: string): Promise<boolean> {

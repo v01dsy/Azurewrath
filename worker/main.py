@@ -858,6 +858,57 @@ def update_item_prices():
             return_db_connection(conn)
 
 
+def refresh_item_thumbnails():
+    """Refresh imageUrl for items with missing or stale thumbnails"""
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get items with no imageUrl
+        cursor.execute('SELECT "assetId" FROM "Item" WHERE "imageUrl" IS NULL LIMIT 100')
+        items = cursor.fetchall()
+        
+        if not items:
+            return
+            
+        asset_ids = [str(row[0]) for row in items]
+        
+        # Fetch thumbnails in bulk from Roblox
+        ids_param = ','.join(asset_ids)
+        response = requests.get(
+            f'https://thumbnails.roblox.com/v1/assets?assetIds={ids_param}&size=420x420&format=Webp&isCircular=false',
+            headers=HEADERS,
+            timeout=30
+        )
+        
+        if response.status_code != 200:
+            return
+            
+        data = response.json()
+        
+        for item in data.get('data', []):
+            if item.get('imageUrl'):
+                cursor.execute(
+                    'UPDATE "Item" SET "imageUrl" = %s WHERE "assetId" = %s',
+                    (item['imageUrl'], item['targetId'])
+                )
+        
+        conn.commit()
+        logger.info(f"✅ Refreshed thumbnails for {len(items)} items")
+        
+    except Exception as e:
+        logger.error(f"❌ Error refreshing thumbnails: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            return_db_connection(conn)
+
+
 def main():
     """Main worker loop"""
     logger.info("=" * 80)
@@ -879,11 +930,18 @@ def main():
     start_snipe_server()
     start_inventory_scanner()
     cycle_count = 0
+    thumbnail_refresh_counter = 0 
 
     while True:
         try:
             cycle_count += 1
+            thumbnail_refresh_counter += 1
             logger.info(f"\n🔄 Starting cycle #{cycle_count}")
+
+            if thumbnail_refresh_counter >= 100:
+                logger.info("🖼️ Running thumbnail refresh...")
+                refresh_item_thumbnails()
+                thumbnail_refresh_counter = 0
 
             start_time = time.time()
             update_item_prices()

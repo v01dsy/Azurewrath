@@ -939,7 +939,7 @@ def main():
             thumbnail_refresh_counter += 1
             logger.info(f"\n🔄 Starting cycle #{cycle_count}")
 
-            if thumbnail_refresh_counter >= 5:
+            if thumbnail_refresh_counter >= 100:
                 logger.info("🖼️ Running thumbnail refresh...")
                 refresh_item_thumbnails()
                 thumbnail_refresh_counter = 0

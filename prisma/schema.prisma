@@ -107,6 +107,7 @@ model InventoryItem {
   uaidUpdatedAt DateTime?         // When this UAID last changed hands = trade timestamp (from Roblox owners API)
   isOnHold      Boolean?
   serialNumber  Int?
+  lastSeenAt    DateTime?
   item          Item              @relation(fields: [assetId], references: [assetId])
   snapshot      InventorySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
  

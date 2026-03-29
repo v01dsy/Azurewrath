@@ -591,6 +591,7 @@ def save_inventory_snapshot(conn, user_id, skip_phase2=False):
                 'uaid_created_at': row['uaidCreatedAt'],
                 'uaid_updated_at': row['uaidUpdatedAt'],
                 'is_on_hold': fresh.get('is_on_hold', False),
+                'last_seen_at': now,  # <- just this
             })
             unchanged_count += 1
 
@@ -653,9 +654,10 @@ def save_inventory_snapshot(conn, user_id, skip_phase2=False):
                 if str(item['user_asset_id']) not in new_uaids:
                     cur.execute("""
                         UPDATE "InventoryItem"
-                        SET "isOnHold" = %s
+                        SET "isOnHold" = %s,
+                            "lastSeenAt" = %s
                         WHERE "snapshotId" = %s AND "userAssetId" = %s
-                    """, (item['is_on_hold'], snapshot_id, item['user_asset_id']))
+                    """, (item['is_on_hold'], now, snapshot_id, item['user_asset_id']))
 
             cur.execute("""
                 UPDATE "InventorySnapshot"

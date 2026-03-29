@@ -12,6 +12,8 @@ export const metadata: Metadata = {
     default: 'Azurewrath | Roblox Limited Trading',
   },
   description: 'Real-time price tracking for Roblox Limited items',
+  metadataBase: new URL('https://azurewrath.lol'),
+  applicationName: 'Azurewrath',
   verification: {
     google: 'DDifGHbDO6rPl9_duVTbkQsg3AEQdbf_r6-NVg2jRMs',
   },
@@ -19,8 +21,9 @@ export const metadata: Metadata = {
     'google-adsense-account': 'ca-pub-5901846749996606',
   },
   icons: {
-    icon: '/Images/icon.webp',
+    icon: '/Images/icon-black.webp',       // CHANGED
     shortcut: '/Images/icon-black.webp',
+    apple: '/Images/icon-black.webp',      // ADD
   },
 };
 
@@ -32,8 +35,9 @@ export default function RootLayout({
   return (
     <html lang="en" role="document">
       <head>
-        <link rel="icon" type="image/webp" href="/Images/icon.webp" />
+        <link rel="icon" type="image/webp" href="/Images/icon-black.webp" />
         <link rel="shortcut icon" type="image/webp" href="/Images/icon-black.webp" />
+        <link rel="apple-touch-icon" href="/Images/icon-black.webp" />
         <style>{`
           ::-webkit-scrollbar { width: 8px; }
           ::-webkit-scrollbar-track { background: transparent; }

@@ -170,7 +170,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
       );
       const avatarData = await avatarResponse.json();
       currentOwnerAvatar = avatarData.data?.[0]?.imageUrl ?? null;
-    } catch {}
+    } catch { }
   }
 
   const avatarMap = new Map<string, string>();
@@ -198,7 +198,7 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
       avatarData.data?.forEach((avatar: any) => {
         avatarMap.set(avatar.targetId.toString(), avatar.imageUrl);
       });
-    } catch {}
+    } catch { }
   }
 
   const awaitingScan = !uaidCreatedAt && !uaidUpdatedAt;
@@ -381,8 +381,8 @@ export default async function UAIDPage({ params }: UAIDPageProps) {
                         <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">DAYS OWNED</div>
                         <div className="text-white text-lg font-semibold">
                           {Math.floor(
-                            (new Date().getTime() - new Date(allOwnerships[0].scannedAt).getTime()) /
-                              (1000 * 60 * 60 * 24)
+                            (new Date().getTime() - new Date(allOwnerships[0].uaidUpdatedAt ?? allOwnerships[0].scannedAt).getTime()) /
+                            (1000 * 60 * 60 * 24)
                           )}
                         </div>
                       </div>

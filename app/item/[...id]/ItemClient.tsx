@@ -86,18 +86,23 @@ const fmtEta = (s: number) => s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `$
 function niceMax(raw: number) {
   if (raw <= 0) return 100;
   const mag = Math.pow(10, Math.floor(Math.log10(raw)));
-  const candidates = [1, 2, 2.5, 5, 10].map(n => n * mag);
-  return candidates.find(c => c >= raw * 1.15) ?? raw * 1.5;
+  const candidates = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 7.5, 8, 10].map(n => n * mag);
+  return candidates.find(c => c >= raw * 1.05) ?? raw * 1.5;
 }
+
 function buildTicks(max: number, n = 5) {
   const step = max / (n - 1);
-  return Array.from({ length: n }, (_, i) => Math.round(i * step));
+  // Round step to a nice number
+  const mag = Math.pow(10, Math.floor(Math.log10(step)));
+  const niceStep = Math.ceil(step / mag) * mag;
+  return Array.from({ length: n }, (_, i) => Math.round(i * niceStep));
 }
 const fmtY = (v: number) => {
-  if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}B`;
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-  if (v >= 1_000) return `${(v / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
-  return String(v);
+  if (v === 0) return '0';
+  if (v >= 1_000_000_000) return `${parseFloat((v / 1_000_000_000).toFixed(2))}B`;
+  if (v >= 1_000_000) return `${parseFloat((v / 1_000_000).toFixed(2))}M`;
+  if (v >= 1_000) return `${parseFloat((v / 1_000).toFixed(2))}K`;
+  return `${parseFloat(v.toFixed(2))}`;
 };
 
 function Th({ children }: { children: React.ReactNode }) {
@@ -152,6 +157,197 @@ function AcquiredCell({ uaidUpdatedAt }: { uaidUpdatedAt: string | null }) {
   );
 }
 
+// ── Time range helpers ─────────────────────────────────────────────────────
+
+type TimeRange = '1d' | '3d' | '1w' | '1m' | '3m' | '6m' | '1y' | 'all';
+
+function filterByRange(data: { ts: number; price: number; rap: number | null }[], range: TimeRange) {
+  if (range === 'all') return data;
+  const now = Date.now();
+  const ms: Record<TimeRange, number> = {
+    '1d': 86400000,
+    '3d': 3 * 86400000,
+    '1w': 7 * 86400000,
+    '1m': 30 * 86400000,
+    '3m': 90 * 86400000,
+    '6m': 180 * 86400000,
+    '1y': 365 * 86400000,
+    'all': Infinity,
+  };
+  const cutoff = now - ms[range];
+  return data.filter(d => d.ts >= cutoff);
+}
+
+// ── Custom Brush Component ─────────────────────────────────────────────────
+
+interface BrushProps {
+  totalPoints: number;
+  startIdx: number;
+  endIdx: number;
+  onChange: (start: number, end: number) => void;
+  getLabel: (idx: number) => string;
+}
+
+function CustomBrush({ totalPoints, startIdx, endIdx, onChange, getLabel }: BrushProps) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef<'left' | 'right' | 'middle' | null>(null);
+  const dragStartX = useRef(0);
+  const dragStartStart = useRef(0);
+  const dragStartEnd = useRef(0);
+
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+  const getIdxFromX = (clientX: number): number => {
+    const rect = trackRef.current?.getBoundingClientRect();
+    if (!rect) return 0;
+    const ratio = (clientX - rect.left) / rect.width;
+    return clamp(Math.round(ratio * (totalPoints - 1)), 0, totalPoints - 1);
+  };
+
+  const onMouseDown = (e: React.MouseEvent, handle: 'left' | 'right' | 'middle') => {
+    e.preventDefault();
+    dragging.current = handle;
+    dragStartX.current = e.clientX;
+    dragStartStart.current = startIdx;
+    dragStartEnd.current = endIdx;
+
+    const onMove = (ev: MouseEvent) => {
+      if (!dragging.current || !trackRef.current) return;
+      const rect = trackRef.current.getBoundingClientRect();
+      const pxPerPoint = rect.width / (totalPoints - 1);
+      const deltaPx = ev.clientX - dragStartX.current;
+      const deltaIdx = Math.round(deltaPx / pxPerPoint);
+
+      if (dragging.current === 'left') {
+        const newStart = clamp(dragStartStart.current + deltaIdx, 0, dragStartEnd.current - 1);
+        onChange(newStart, dragStartEnd.current);
+      } else if (dragging.current === 'right') {
+        const newEnd = clamp(dragStartEnd.current + deltaIdx, dragStartStart.current + 1, totalPoints - 1);
+        onChange(dragStartStart.current, newEnd);
+      } else {
+        // middle: drag whole window
+        const width = dragStartEnd.current - dragStartStart.current;
+        const newStart = clamp(dragStartStart.current + deltaIdx, 0, totalPoints - 1 - width);
+        onChange(newStart, newStart + width);
+      }
+    };
+
+    const onUp = () => {
+      dragging.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  // Touch support
+  const onTouchStart = (e: React.TouchEvent, handle: 'left' | 'right' | 'middle') => {
+    dragging.current = handle;
+    dragStartX.current = e.touches[0].clientX;
+    dragStartStart.current = startIdx;
+    dragStartEnd.current = endIdx;
+
+    const onMove = (ev: TouchEvent) => {
+      if (!dragging.current || !trackRef.current) return;
+      const rect = trackRef.current.getBoundingClientRect();
+      const pxPerPoint = rect.width / (totalPoints - 1);
+      const deltaPx = ev.touches[0].clientX - dragStartX.current;
+      const deltaIdx = Math.round(deltaPx / pxPerPoint);
+
+      if (dragging.current === 'left') {
+        const newStart = clamp(dragStartStart.current + deltaIdx, 0, dragStartEnd.current - 1);
+        onChange(newStart, dragStartEnd.current);
+      } else if (dragging.current === 'right') {
+        const newEnd = clamp(dragStartEnd.current + deltaIdx, dragStartStart.current + 1, totalPoints - 1);
+        onChange(dragStartStart.current, newEnd);
+      } else {
+        const width = dragStartEnd.current - dragStartStart.current;
+        const newStart = clamp(dragStartStart.current + deltaIdx, 0, totalPoints - 1 - width);
+        onChange(newStart, newStart + width);
+      }
+    };
+
+    const onUp = () => {
+      dragging.current = null;
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
+    };
+
+    window.addEventListener('touchmove', onMove);
+    window.addEventListener('touchend', onUp);
+  };
+
+  if (totalPoints < 2) return null;
+
+  const leftPct = (startIdx / (totalPoints - 1)) * 100;
+  const rightPct = (endIdx / (totalPoints - 1)) * 100;
+
+  return (
+    <div className="relative h-8 mt-2 select-none" ref={trackRef}>
+      {/* Track background */}
+      <div className="absolute inset-y-2 left-0 right-0 rounded-full bg-slate-700/60" />
+
+      {/* Outside-selection dimmed areas */}
+      <div
+        className="absolute inset-y-2 left-0 rounded-l-full bg-slate-900/70"
+        style={{ width: `${leftPct}%` }}
+      />
+      <div
+        className="absolute inset-y-2 right-0 rounded-r-full bg-slate-900/70"
+        style={{ width: `${100 - rightPct}%` }}
+      />
+
+      {/* Selected region — draggable middle */}
+      <div
+        className="absolute inset-y-2 bg-purple-600/40 border-y border-purple-500/60 cursor-grab active:cursor-grabbing"
+        style={{ left: `${leftPct}%`, right: `${100 - rightPct}%` }}
+        onMouseDown={e => onMouseDown(e, 'middle')}
+        onTouchStart={e => onTouchStart(e, 'middle')}
+      />
+
+      {/* Left traveller */}
+      <div
+        className="absolute top-0 bottom-0 w-3 -ml-1.5 flex items-center justify-center cursor-ew-resize z-10"
+        style={{ left: `${leftPct}%` }}
+        onMouseDown={e => onMouseDown(e, 'left')}
+        onTouchStart={e => onTouchStart(e, 'left')}
+      >
+        <div className="w-2.5 h-6 bg-purple-500 rounded-sm border border-purple-300/60 flex items-center justify-center">
+          <div className="w-0.5 h-3 bg-white/40 rounded" />
+        </div>
+      </div>
+
+      {/* Right traveller */}
+      <div
+        className="absolute top-0 bottom-0 w-3 -ml-1.5 flex items-center justify-center cursor-ew-resize z-10"
+        style={{ left: `${rightPct}%` }}
+        onMouseDown={e => onMouseDown(e, 'right')}
+        onTouchStart={e => onTouchStart(e, 'right')}
+      >
+        <div className="w-2.5 h-6 bg-purple-500 rounded-sm border border-purple-300/60 flex items-center justify-center">
+          <div className="w-0.5 h-3 bg-white/40 rounded" />
+        </div>
+      </div>
+
+      {/* Date labels */}
+      <div
+        className="absolute -bottom-5 text-[10px] text-slate-500 -translate-x-1/2 whitespace-nowrap pointer-events-none"
+        style={{ left: `${leftPct}%` }}
+      >
+        {getLabel(startIdx)}
+      </div>
+      <div
+        className="absolute -bottom-5 text-[10px] text-slate-500 -translate-x-1/2 whitespace-nowrap pointer-events-none"
+        style={{ left: `${rightPct}%` }}
+      >
+        {getLabel(endIdx)}
+      </div>
+    </div>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────
 
 export default function ItemClient({ item: initialItem }: Props) {
@@ -166,6 +362,12 @@ export default function ItemClient({ item: initialItem }: Props) {
   const [showWatchlistModal, setShowWatchlistModal] = useState(false);
   const [manipulatedLoading, setManipulatedLoading] = useState(false);
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
+  const [timeRange, setTimeRange] = useState<TimeRange>('all');
+
+  // Brush state: indices into the time-range-filtered data
+  const [brushStart, setBrushStart] = useState(0);
+  const [brushEnd, setBrushEnd] = useState(0);
+  const brushInitialized = useRef(false);
 
   const [owners, setOwners] = useState<Owner[]>([]);
   const [ownersLoading, setOwnersLoading] = useState(true);
@@ -185,6 +387,174 @@ export default function ItemClient({ item: initialItem }: Props) {
     { dataKey: 'rap', name: 'RAP', color: '#34d399' },
     { dataKey: 'price', name: 'Price', color: '#3b82f6' },
   ];
+
+  // ── Build base chart data ──────────────────────────────────────────────
+
+  const allChartData = [...(item?.priceHistory ?? [])]
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+    .map(ph => ({ ts: new Date(ph.timestamp).getTime(), price: ph.price, rap: ph.rap ?? null }));
+
+  const rangeFilteredData = filterByRange(allChartData, timeRange);
+
+  // Reset brush when time range changes
+  useEffect(() => {
+    setBrushStart(0);
+    setBrushEnd(Math.max(0, rangeFilteredData.length - 1));
+    brushInitialized.current = true;
+  }, [timeRange, rangeFilteredData.length]);
+
+  // Initialize brush on first load
+  useEffect(() => {
+    if (!brushInitialized.current && rangeFilteredData.length > 0) {
+      setBrushStart(0);
+      setBrushEnd(rangeFilteredData.length - 1);
+      brushInitialized.current = true;
+    }
+  }, [rangeFilteredData.length]);
+
+  // The data actually shown in the chart = brush window slice
+  const chartData = (() => {
+    const raw = rangeFilteredData.slice(brushStart, brushEnd + 1);
+    const span = raw.length > 1 ? raw[raw.length - 1].ts - raw[0].ts : 0;
+
+    if (span <= 11 * 86400000) return raw; // show all points
+
+    const resampleMs = span <= 11 * 86400000 ? 3600000 :
+      span <= 15 * 86400000 ? 3 * 3600000 :
+        span <= 22 * 86400000 ? 4 * 3600000 :
+          span <= 31 * 86400000 ? 6 * 3600000 :
+            span <= 45 * 86400000 ? 8 * 3600000 :
+              span <= 90 * 86400000 ? 12 * 3600000 :
+              7 * 86400000;
+
+    const buckets = new Map<number, { price: number; rap: number | null; count: number }>();
+    for (const d of raw) {
+
+      const offset = new Date().getTimezoneOffset() * 60000;
+      const bucketDate = new Date(d.ts);
+      bucketDate.setMinutes(0, 0, 0);
+      const bucketHour = Math.floor(bucketDate.getHours() / (resampleMs / 3600000)) * (resampleMs / 3600000);
+      bucketDate.setHours(bucketHour);
+      const bucket = bucketDate.getTime();
+      const existing = buckets.get(bucket);
+      if (existing) {
+        existing.price += d.price;
+        existing.rap = existing.rap != null && d.rap != null ? existing.rap + d.rap : existing.rap ?? d.rap;
+        existing.count++;
+      } else {
+        buckets.set(bucket, { price: d.price, rap: d.rap, count: 1 });
+      }
+    }
+
+    return Array.from(buckets.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([ts, { price, rap, count }]) => ({
+        ts,
+        price: Math.round(price / count),
+        rap: rap != null ? Math.round(rap / count) : null,
+      }));
+  })();
+
+  // Replace xTickIndices + formatXTick with these:
+  const xTicks = (() => {
+    if (chartData.length < 2) return [];
+    const min = chartData[0].ts;
+    const max = chartData[chartData.length - 1].ts;
+    const span = max - min;
+
+    // Multi-day: always snap to UTC midnight and noon
+    const offset = new Date().getTimezoneOffset() * 60000;
+    const step = span <= 8 * 86400000 ? 12 * 3600000 :
+      span <= 10 * 86400000 ? 24 * 3600000 :
+        span <= 16 * 86400000 ? 1 * 86400000 :
+          span <= 47 * 86400000 ? 2 * 86400000 :
+            span <= 225 * 86400000 ? 3 * 86400000 :
+              30 * 86400000;
+
+    if (span <= 86400000) {
+      // Sub-day: use time-based intervals
+      const intervals = [5 * 60000, 15 * 60000, 30 * 60000, 60 * 60000, 3 * 3600000, 6 * 3600000];
+      const interval = intervals.find(iv => span / iv <= 7 && span / iv >= 3) ?? 3600000;
+      const d = new Date(min);
+      d.setHours(0, 0, 0, 0);
+      if (d.getTime() < min) d.setDate(d.getDate() + 1);
+      const first = d.getTime();
+      const ticks: number[] = [];
+      for (let t = first; t <= max; t += step) ticks.push(t);
+      return ticks;
+    }
+
+
+
+    // Snap to local midnight boundary
+    const localMin = min - offset;
+    const first = Math.ceil(localMin / step) * step + offset;
+    const ticks: number[] = [];
+    for (let t = first; t <= max; t += step) ticks.push(t);
+    return ticks;
+  })();
+
+  const formatXTickTs = (ts: number) => {
+    if (chartData.length < 2) return '';
+    const span = chartData[chartData.length - 1].ts - chartData[0].ts;
+    const date = new Date(ts);
+    const hour = date.getHours();
+    const mins = date.getMinutes();
+
+    if (span <= 86400000) {
+      return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    }
+
+    if (span <= 8 * 86400000) {
+      if (hour === 0) return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      if (hour === 12) return '12:00';
+      return '';
+    }
+
+    if (span <= 14 * 86400000) {
+      if (hour === 0) return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      if (hour === 8 || hour === 16) return `${hour}:00`;
+      return '';
+    }
+
+    if (span > 225 * 86400000) {
+      if (date.getDate() === 1) return date.toLocaleDateString('en-US', { month: 'short' });
+      return '';
+    }
+
+    // All other spans: only show if exactly midnight, otherwise round and show
+    const nearest = new Date(ts);
+    nearest.setHours(hour >= 12 ? 24 : 0, 0, 0, 0);
+    return nearest.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const formatTooltipLabel = (idx: number) => {
+    const d = chartData[idx];
+    if (!d) return '';
+    return new Date(d.ts).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true,
+    });
+  };
+
+  // Brush label formatter
+  const getBrushLabel = (idx: number) => {
+    const d = rangeFilteredData[idx];
+    if (!d) return '';
+    return new Date(d.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const priceMax = chartData.length ? Math.max(...chartData.map(d => Math.max(d.price || 0, d.rap || 0))) : 0;
+  const yNice = niceMax(priceMax);
+  const yTicks = buildTicks(yNice);
+
+  // Range label (from brush window)
+  const rangeLabel = chartData.length >= 2
+    ? (() => {
+      const fmt2 = (ts: number) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      return `${fmt2(chartData[0].ts)} → ${fmt2(chartData[chartData.length - 1].ts)}`;
+    })()
+    : '';
 
   // ── Fetch owners ───────────────────────────────────────────────────────
 
@@ -237,9 +607,7 @@ export default function ItemClient({ item: initialItem }: Props) {
     setScanStarting(true);
     setActiveScanType('timestamps');
     try {
-      const res = await axios.post(`/api/items/${itemId}/scan-owners`, {
-        userId: user.robloxUserId,
-      });
+      const res = await axios.post(`/api/items/${itemId}/scan-owners`, { userId: user.robloxUserId });
       setScanState({ scanning: true, stopRequested: false, progress: null });
       setScanMessage({ text: `🔄 ${res.data.message}`, ok: true });
       startPolling();
@@ -258,10 +626,7 @@ export default function ItemClient({ item: initialItem }: Props) {
     setScanStarting(true);
     setActiveScanType('full');
     try {
-      const res = await axios.post(`/api/items/${itemId}/scan-owners`, {
-        userId: user.robloxUserId,
-        action: 'full',
-      });
+      const res = await axios.post(`/api/items/${itemId}/scan-owners`, { userId: user.robloxUserId, action: 'full' });
       setScanState({ scanning: true, stopRequested: false, progress: null });
       setScanMessage({ text: `🔄 ${res.data.message}`, ok: true });
       startPolling();
@@ -334,7 +699,6 @@ export default function ItemClient({ item: initialItem }: Props) {
       } catch (err: any) { alert(err.response?.data?.error || 'Failed to remove from watchlist'); }
       finally { setWatchlistLoading(false); }
     } else {
-      // Open settings modal — it handles the add + configure in one step
       setShowWatchlistModal(true);
     }
   };
@@ -408,26 +772,18 @@ export default function ItemClient({ item: initialItem }: Props) {
     ? Math.round((progress.total - progress.processed) / rate)
     : null;
 
-  const chartData = [...(item?.priceHistory ?? [])]
-    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-    .map(ph => ({ ts: new Date(ph.timestamp).getTime(), price: ph.price, rap: ph.rap ?? null }));
-
-  const priceMax = chartData.length ? Math.max(...chartData.map(d => Math.max(d.price || 0, d.rap || 0))) : 0;
-  const yNice = niceMax(priceMax);
-  const yTicks = buildTicks(yNice);
-
-  const tsArr = chartData.map(d => d.ts);
-  const xTicks = (() => {
-    if (tsArr.length <= 6) return tsArr;
-    const min = tsArr[0], max = tsArr[tsArr.length - 1];
-    const step = (max - min) / 5;
-    return Array.from({ length: 6 }, (_, i) => Math.round(min + i * step));
-  })();
-
-  const formatXTick = (ts: number) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const formatTooltipLabel = (ts: number) => new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
-
   const displayImageUrl = item?.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${item?.assetId}&width=420&height=420&format=Webp`;
+
+  const TIME_RANGES: { label: string; value: TimeRange }[] = [
+    { label: '1d', value: '1d' },
+    { label: '3d', value: '3d' },
+    { label: '1w', value: '1w' },
+    { label: '1m', value: '1m' },
+    { label: '3m', value: '3m' },
+    { label: '6m', value: '6m' },
+    { label: '1y', value: '1y' },
+    { label: 'All', value: 'all' },
+  ];
 
   // ── Render ─────────────────────────────────────────────────────────────
 
@@ -504,37 +860,105 @@ export default function ItemClient({ item: initialItem }: Props) {
         </div>
 
         {/* ── Price chart ─────────────────────────────────────────────── */}
-        {chartData.length > 1 && (
+        {allChartData.length > 1 && (
           <div className="bg-slate-800 rounded-2xl border border-purple-500/20 p-6">
-            <h2 className="text-base font-semibold text-white mb-5">Price History</h2>
-            <ResponsiveContainer width="100%" height={380}>
-              <LineChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                <XAxis
-                  dataKey="ts"
-                  type="number"
-                  scale="time"
-                  domain={['dataMin', 'dataMax']}
-                  ticks={xTicks}
-                  tickFormatter={formatXTick}
-                  stroke="#475569"
-                  tick={{ fill: '#64748b', fontSize: 11 }}
-                  tickLine={false}
-                />
-                <YAxis ticks={yTicks} domain={[0, yNice]} tickFormatter={fmtY} stroke="#475569" tick={{ fill: '#64748b', fontSize: 11 }} tickLine={false} axisLine={false} width={52} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #7c3aed', borderRadius: '8px', fontSize: 12 }}
-                  labelFormatter={formatTooltipLabel}
-                  formatter={(value: number, name: string) => [`${fmt(value)} R$`, name === 'rap' ? 'RAP' : 'Price']}
-                />
-                {!hiddenLines.has('rap') && <Line type="linear" dataKey="rap" stroke="#34d399" strokeWidth={2} dot={false} name="rap" connectNulls={false} />}
-                {!hiddenLines.has('price') && <Line type="linear" dataKey="price" stroke="#3b82f6" strokeWidth={2} dot={false} name="price" connectNulls={false} />}
-              </LineChart>
-            </ResponsiveContainer>
+            {/* Chart header */}
+            <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+              <div className="flex items-center gap-1 bg-slate-700/40 rounded-lg p-1">
+                {TIME_RANGES.filter(r => {
+                  if (r.value === 'all') return true;
+                  const filtered = filterByRange(allChartData, r.value);
+                  return filtered.length > 1 && filtered.length < allChartData.length;
+                }).map(r => (
+                  <button
+                    key={r.value}
+                    onClick={() => setTimeRange(r.value)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-semibold transition ${timeRange === r.value
+                      ? 'bg-purple-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-600/50'
+                      }`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+              {rangeLabel && (
+                <span className="text-slate-500 text-xs">{rangeLabel}</span>
+              )}
+            </div>
+
+            {chartData.length <= 1 ? (
+              <div className="flex items-center justify-center h-40 text-slate-500 text-sm">
+                No data for this time range
+              </div>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={380}>
+                  <LineChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="4 4" stroke="#334155" strokeOpacity={0.5} />
+                    <XAxis
+                      dataKey="ts"
+                      type="number"
+                      scale="time"
+                      domain={[xTicks[0] ?? chartData[0].ts, xTicks[xTicks.length - 1] ?? chartData[chartData.length - 1].ts]}
+                      ticks={xTicks}
+                      tickFormatter={formatXTickTs}
+                      stroke="#475569"
+                      tick={{ fill: '#64748b', fontSize: 11 }}
+                      tickLine={false}
+                      interval={0}
+                    />
+                    <YAxis
+                      ticks={yTicks}
+                      domain={[0, yNice]}
+                      tickFormatter={fmtY}
+                      stroke="#475569"
+                      tick={{ fill: '#64748b', fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={52}
+                    />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #7c3aed', borderRadius: '8px', fontSize: 12 }}
+                      labelFormatter={(ts: number) => new Date(ts).toLocaleString('en-US', {
+                        month: 'short', day: 'numeric', year: 'numeric',
+                        hour: 'numeric', minute: '2-digit', hour12: true,
+                      })}
+                      formatter={(value: number, name: string) => [`${fmt(value)} R$`, name === 'rap' ? 'RAP' : 'Price']}
+                    />
+                    {!hiddenLines.has('rap') && (
+                      <Line type="linear" dataKey="rap" stroke="#34d399" strokeWidth={2} dot={false} name="rap" connectNulls={false} isAnimationActive={false} />
+                    )}
+                    {!hiddenLines.has('price') && (
+                      <Line type="linear" dataKey="price" stroke="#3b82f6" strokeWidth={2} dot={false} name="price" connectNulls={false} isAnimationActive={false} />
+                    )}
+                  </LineChart>
+                </ResponsiveContainer>
+
+                {/* Custom brush scrubber */}
+                <div className="px-[52px] mt-1 mb-8">
+                  <CustomBrush
+                    totalPoints={rangeFilteredData.length}
+                    startIdx={brushStart}
+                    endIdx={brushEnd}
+                    onChange={(s, e) => { setBrushStart(s); setBrushEnd(e); }}
+                    getLabel={getBrushLabel}
+                  />
+                </div>
+              </>
+            )}
+
             <div className="flex justify-center gap-5 pt-3 mt-1 border-t border-slate-700/50">
               {legendItems.map(li => (
-                <button key={li.dataKey} onClick={() => setHiddenLines(prev => { const next = new Set(prev); next.has(li.dataKey) ? next.delete(li.dataKey) : next.add(li.dataKey); return next; })}
-                  className={`flex items-center gap-2 px-3 py-1 rounded-lg transition text-sm ${hiddenLines.has(li.dataKey) ? 'opacity-30 hover:opacity-60' : 'hover:opacity-80'}`}>
+                <button
+                  key={li.dataKey}
+                  onClick={() => setHiddenLines(prev => {
+                    const next = new Set(prev);
+                    next.has(li.dataKey) ? next.delete(li.dataKey) : next.add(li.dataKey);
+                    return next;
+                  })}
+                  className={`flex items-center gap-2 px-3 py-1 rounded-lg transition text-sm ${hiddenLines.has(li.dataKey) ? 'opacity-30 hover:opacity-60' : 'hover:opacity-80'}`}
+                >
                   <span className="w-3 h-3 rounded-full" style={{ backgroundColor: li.color }} />
                   <span className="text-slate-300">{li.name}</span>
                 </button>
@@ -569,8 +993,7 @@ export default function ItemClient({ item: initialItem }: Props) {
               { key: 'hoards', label: 'Hoards', badge: null, accent: 'border-blue-500' },
             ] as const).map(tab => (
               <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${activeTab === tab.key ? `${tab.accent} text-white` : 'border-transparent text-slate-400 hover:text-slate-200'
-                  }`}>
+                className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${activeTab === tab.key ? `${tab.accent} text-white` : 'border-transparent text-slate-400 hover:text-slate-200'}`}>
                 {tab.label}
                 {tab.badge !== null && !ownersLoading && (
                   <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${activeTab === tab.key ? 'bg-purple-500/20 text-purple-300' : 'bg-slate-700 text-slate-500'}`}>
@@ -584,7 +1007,6 @@ export default function ItemClient({ item: initialItem }: Props) {
           {/* ── Owners ────────────────────────────────────────────────── */}
           {activeTab === 'owners' && (
             <>
-              {/* Controls bar */}
               <div className="px-5 py-3 border-b border-slate-700 space-y-3">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <span className="text-slate-400 text-sm">
@@ -601,7 +1023,6 @@ export default function ItemClient({ item: initialItem }: Props) {
                       <option value="username">Username A–Z</option>
                       <option value="recent">Acquired At</option>
                     </select>
-
                     <div className="flex items-center bg-slate-700/60 rounded-lg border border-slate-600 p-0.5">
                       {([10, 25, 50, 100] as const).map(n => (
                         <button key={n} onClick={() => setOwnerPageSize(n)}
@@ -610,33 +1031,22 @@ export default function ItemClient({ item: initialItem }: Props) {
                         </button>
                       ))}
                     </div>
-
                     {isAdmin && (
                       <>
-                        <button
-                          onClick={handleScanOwners}
-                          disabled={scanning || scanStarting}
-                          className="flex items-center gap-1.5 bg-gradient-to-r from-blue-500 to-indigo-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-3 py-1.5 rounded-lg transition"
-                        >
+                        <button onClick={handleScanOwners} disabled={scanning || scanStarting}
+                          className="flex items-center gap-1.5 bg-gradient-to-r from-blue-500 to-indigo-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-3 py-1.5 rounded-lg transition">
                           {scanning && activeScanType === 'timestamps'
                             ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Scanning…</>
-                            : scanStarting && activeScanType === 'timestamps'
-                            ? 'Starting…'
-                            : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>Update Timestamps</>}
+                            : scanStarting && activeScanType === 'timestamps' ? 'Starting…'
+                              : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>Update Timestamps</>}
                         </button>
-
-                        <button
-                          onClick={handleFullScan}
-                          disabled={scanning || scanStarting}
-                          className="flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-red-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-3 py-1.5 rounded-lg transition"
-                        >
+                        <button onClick={handleFullScan} disabled={scanning || scanStarting}
+                          className="flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-red-500 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-3 py-1.5 rounded-lg transition">
                           {scanning && activeScanType === 'full'
                             ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Scanning…</>
-                            : scanStarting && activeScanType === 'full'
-                            ? 'Starting…'
-                            : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>Full Scan</>}
+                            : scanStarting && activeScanType === 'full' ? 'Starting…'
+                              : <><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>Full Scan</>}
                         </button>
-
                         {scanning && !stopRequested && (
                           <button onClick={handleStopScan} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-red-900/30 border border-red-500/30 text-red-300 hover:bg-red-900/50 transition">
                             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" /></svg>Stop
@@ -648,7 +1058,6 @@ export default function ItemClient({ item: initialItem }: Props) {
                   </div>
                 </div>
 
-                {/* Progress bar */}
                 {scanning && (
                   <div className="space-y-1.5">
                     <div className="flex justify-between text-xs text-slate-500">
@@ -656,43 +1065,26 @@ export default function ItemClient({ item: initialItem }: Props) {
                         {progress
                           ? progress.total > 0
                             ? `${progress.processed}/${progress.total}${progress.failed > 0 ? ` · ${progress.failed} failed` : ''}`
-                            : progress.pagesFound
-                            ? `${progress.pagesFound} pages scanned…`
-                            : 'Starting…'
+                            : progress.pagesFound ? `${progress.pagesFound} pages scanned…` : 'Starting…'
                           : 'Starting…'}
                       </span>
                       <span className="flex gap-3">
                         {etaSec !== null && etaSec > 0 && <span>~{fmtEta(etaSec)} left</span>}
-                        {progressPct !== null && (
-                          <span className="text-purple-400 font-bold">{progressPct}%</span>
-                        )}
+                        {progressPct !== null && <span className="text-purple-400 font-bold">{progressPct}%</span>}
                       </span>
                     </div>
                     <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
                       {progressPct !== null ? (
-                        <div
-                          className="bg-gradient-to-r from-orange-500 to-red-500 h-1.5 rounded-full transition-all duration-500"
-                          style={{ width: `${progressPct}%` }}
-                        />
+                        <div className="bg-gradient-to-r from-orange-500 to-red-500 h-1.5 rounded-full transition-all duration-500" style={{ width: `${progressPct}%` }} />
                       ) : (
                         <div className="h-1.5 rounded-full relative overflow-hidden bg-slate-700">
-                          <div
-                            className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-orange-500 to-red-500 rounded-full"
-                            style={{ animation: 'slide 1.5s ease-in-out infinite' }}
-                          />
-                          <style>{`
-                            @keyframes slide {
-                              0%   { left: -33%; }
-                              100% { left: 100%; }
-                            }
-                          `}</style>
+                          <div className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-orange-500 to-red-500 rounded-full" style={{ animation: 'slide 1.5s ease-in-out infinite' }} />
+                          <style>{`@keyframes slide { 0% { left: -33%; } 100% { left: 100%; } }`}</style>
                         </div>
                       )}
                     </div>
                     {progress?.currentUser && (
-                      <p className="text-slate-500 text-xs truncate">
-                        Scanning: <span className="text-slate-300">{progress.currentUser}</span>
-                      </p>
+                      <p className="text-slate-500 text-xs truncate">Scanning: <span className="text-slate-300">{progress.currentUser}</span></p>
                     )}
                   </div>
                 )}
@@ -704,7 +1096,6 @@ export default function ItemClient({ item: initialItem }: Props) {
                 )}
               </div>
 
-              {/* Table body */}
               {ownersLoading ? (
                 <div className="py-14 text-center">
                   <div className="w-7 h-7 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
@@ -725,8 +1116,7 @@ export default function ItemClient({ item: initialItem }: Props) {
                       </thead>
                       <tbody className="divide-y divide-slate-700/50">
                         {pagedOwners.map(owner => {
-                          const tier = getGhostTier(item.isLimitedUnique, owner.serialNumber)
-                            ?? getSerialTier(owner.serialNumber);
+                          const tier = getGhostTier(item.isLimitedUnique, owner.serialNumber) ?? getSerialTier(owner.serialNumber);
                           return (
                             <tr key={owner.userAssetId} className="hover:bg-slate-700/20 transition-colors">
                               <td className="px-5 py-3.5">
@@ -744,9 +1134,7 @@ export default function ItemClient({ item: initialItem }: Props) {
                                 {tier === 'ghost' ? (
                                   <SpecialSerialText serial={null} tier="ghost" variant="badge" />
                                 ) : owner.serialNumber !== null ? (
-                                  tier
-                                    ? <SpecialSerialText serial={owner.serialNumber} tier={tier} variant="badge" />
-                                    : <span className="text-orange-400 font-bold text-sm">#{owner.serialNumber}</span>
+                                  tier ? <SpecialSerialText serial={owner.serialNumber} tier={tier} variant="badge" /> : <span className="text-orange-400 font-bold text-sm">#{owner.serialNumber}</span>
                                 ) : (
                                   <span className="text-slate-600">—</span>
                                 )}
@@ -765,28 +1153,19 @@ export default function ItemClient({ item: initialItem }: Props) {
                       </tbody>
                     </table>
                   </div>
-
                   <div className="px-5 py-3 border-t border-slate-700/60">
-                    <Pagination
-                      page={ownerPage}
-                      totalPages={ownerTotalPages}
-                      totalItems={sortedOwners.length}
-                      pageSize={ownerPageSize}
-                      onPageChange={setOwnerPage}
-                    />
+                    <Pagination page={ownerPage} totalPages={ownerTotalPages} totalItems={sortedOwners.length} pageSize={ownerPageSize} onPageChange={setOwnerPage} />
                   </div>
                 </>
               )}
             </>
           )}
 
-          {/* ── Hoards ────────────────────────────────────────────────── */}
           {activeTab === 'hoards' && <HoardsSection itemId={itemId} embedded />}
         </div>
 
       </div>
 
-      {/* ── Watchlist settings modal (shown on first add) ─────────────── */}
       {showWatchlistModal && (
         <WatchlistSettingsModal
           isAdding

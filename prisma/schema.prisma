@@ -61,6 +61,7 @@ model User {
   username             String
   displayName          String?
   avatarUrl            String?
+  avatarFullBodyUrl    String?
   description          String?
   role                 String              @default("user")
   authMethod           String?             // "bio" or "oauth"

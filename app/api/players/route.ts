@@ -29,10 +29,11 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const sort  = SORT_FIELD[searchParams.get('sort') || 'rap'] ?? 'totalRAP';
     const page  = Math.max(1, parseInt(searchParams.get('page')  || '1'));
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 99999);
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200); // hard cap at 200
     const skip  = (page - 1) * limit;
+    const search = searchParams.get('search')?.trim() ?? '';
 
-    const cacheKey = `${sort}:${page}:${limit}`;
+    const cacheKey = `${sort}:${page}:${limit}:${search}`;
     const cached = getCached(cacheKey);
     if (cached) {
       return NextResponse.json(cached, {
@@ -71,11 +72,13 @@ export async function GET(req: NextRequest) {
           ORDER BY "createdAt" DESC
           LIMIT 1
         ) s ON true
+        ${search ? `WHERE (u.username ILIKE '%' || $3 || '%' OR u."displayName" ILIKE '%' || $3 || '%')` : ''}
         ORDER BY s."${sort}" DESC NULLS LAST
         LIMIT $1 OFFSET $2
         `,
         limit,
-        skip
+        skip,
+        ...(search ? [search] : [])
       ),
 
       // Count only users who have at least one snapshot
@@ -91,33 +94,16 @@ export async function GET(req: NextRequest) {
     const total      = Number(totalResult[0]?.count ?? 0);
     const totalPages = Math.ceil(total / limit);
 
-    // Fetch full body avatars in bulk server-side — same approach as player page
-    const userIds = rows.map(u => u.robloxUserId.toString());
-    let fullBodyMap = new Map<string, string>();
-    if (userIds.length > 0) {
-      try {
-        const avatarRes = await fetch(
-          `https://thumbnails.roblox.com/v1/users/avatar?userIds=${userIds.join(',')}&size=420x420&format=Webp&isCircular=false`
-        );
-        const avatarData = await avatarRes.json();
-        avatarData.data?.forEach((a: any) => {
-          if (a.targetId && a.imageUrl) {
-            fullBodyMap.set(a.targetId.toString(), a.imageUrl);
-          }
-        });
-      } catch { /* avatars are cosmetic, don't fail the request */ }
-    }
-
     const players = rows.map((u, idx) => ({
-      rank:          skip + idx + 1,
-      robloxUserId:  u.robloxUserId.toString(),
-      username:      u.username,
-      displayName:   u.displayName,
-      avatarUrl:     fullBodyMap.get(u.robloxUserId.toString()) ?? u.avatarUrl,
-      totalRAP:      u.totalRAP    ?? 0,
-      totalItems:    u.totalItems  ?? 0,
-      uniqueItems:   u.uniqueItems ?? 0,
-      lastScanned:   u.lastScanned ?? null,
+      rank:         skip + idx + 1,
+      robloxUserId: u.robloxUserId.toString(),
+      username:     u.username,
+      displayName:  u.displayName,
+      avatarUrl:    u.avatarUrl,
+      totalRAP:     u.totalRAP    ?? 0,
+      totalItems:   u.totalItems  ?? 0,
+      uniqueItems:  u.uniqueItems ?? 0,
+      lastScanned:  u.lastScanned ?? null,
     }));
 
     const payload = { players, total, totalPages, page, limit };

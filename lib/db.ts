@@ -10,7 +10,7 @@ export function getPool(): Pool {
       ssl: process.env.NODE_ENV === 'production'
         ? { rejectUnauthorized: false }
         : undefined,
-      max: 20,
+      max: 5,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000, // was 2000 — too short for cold DB wake-up
     });

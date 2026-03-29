@@ -231,6 +231,18 @@ def fetch_headshot(user_id):
         logger.warning(f"[inventory_scanner] {tag} Could not fetch headshot for [userId {user_id}]: {e}")
     return None
 
+def fetch_avatar(user_id):
+    tag = thread_tag()
+    try:
+        data = fetch_with_retry(
+            f'https://thumbnails.roblox.com/v1/users/avatar?userIds={user_id}&size=420x420&format=Webp&isCircular=false'
+        )
+        if data and data.get('data'):
+            return data['data'][0].get('imageUrl')
+    except Exception as e:
+        logger.warning(f"[inventory_scanner] {tag} Could not fetch avatar for [userId {user_id}]: {e}")
+    return None
+
 
 # ─── Scan full inventory ───────────────────────────────────────────────────
 
@@ -795,6 +807,7 @@ def process_owner_entry(conn, entry, asset_id, job_id):
 
     user_info = fetch_user_info(user_id)
     headshot = fetch_headshot(user_id)
+    avatar = fetch_avatar(user_id)
 
     username = f'user_{user_id}'
     display_name = username
@@ -810,16 +823,17 @@ def process_owner_entry(conn, entry, asset_id, job_id):
 
     with conn.cursor() as cur:
         cur.execute("""
-            INSERT INTO "User" ("robloxUserId", username, "displayName", "avatarUrl", description,
+            INSERT INTO "User" ("robloxUserId", username, "displayName", "avatarUrl", "avatarFullBodyUrl", description,
                                 "createdAt", "updatedAt")
-            VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
+            VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
             ON CONFLICT ("robloxUserId") DO UPDATE SET
                 username = EXCLUDED.username,
                 "displayName" = EXCLUDED."displayName",
                 "avatarUrl" = EXCLUDED."avatarUrl",
+                "avatarFullBodyUrl" = EXCLUDED."avatarFullBodyUrl",
                 description = EXCLUDED.description,
                 "updatedAt" = NOW()
-        """, (user_id, username, display_name, avatar_url, description))
+        """, (user_id, username, display_name, avatar_url, avatar, description))
     conn.commit()
 
     try:
@@ -1047,6 +1061,7 @@ def run_owners_full_scan(job):
 
                 user_info = fetch_user_info(user_id)
                 headshot = fetch_headshot(user_id)
+                avatar = fetch_avatar(user_id)
 
                 username = f'user_{user_id}'
                 display_name = username
@@ -1058,15 +1073,16 @@ def run_owners_full_scan(job):
 
                 with conn.cursor() as cur:
                     cur.execute("""
-                        INSERT INTO "User" ("robloxUserId", username, "displayName", "avatarUrl",
-                                           "createdAt", "updatedAt")
-                        VALUES (%s, %s, %s, %s, NOW(), NOW())
-                        ON CONFLICT ("robloxUserId") DO UPDATE SET
-                            username = EXCLUDED.username,
-                            "displayName" = EXCLUDED."displayName",
-                            "avatarUrl" = EXCLUDED."avatarUrl",
-                            "updatedAt" = NOW()
-                    """, (user_id, username, display_name, headshot))
+                    INSERT INTO "User" ("robloxUserId", username, "displayName", "avatarUrl", "avatarFullBodyUrl",
+                                    "createdAt", "updatedAt")
+                    VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
+                    ON CONFLICT ("robloxUserId") DO UPDATE SET
+                        username = EXCLUDED.username,
+                        "displayName" = EXCLUDED."displayName",
+                        "avatarUrl" = EXCLUDED."avatarUrl",
+                        "avatarFullBodyUrl" = EXCLUDED."avatarFullBodyUrl",
+                        "updatedAt" = NOW()
+                """, (user_id, username, display_name, headshot, avatar))
                 conn.commit()
 
                 try:

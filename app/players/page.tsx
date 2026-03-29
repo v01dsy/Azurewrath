@@ -77,12 +77,8 @@ const PAGE_CSS = `
   }
   .player-card {
     transition: transform 200ms ease;
-    will-change: transform;
   }
   .player-card:hover { transform: scale(1.02); }
-  .card-glow-3 .glow-ring { animation: breathe3 4s ease-in-out infinite; will-change: opacity; }
-  .card-glow-2 .glow-ring { animation: breathe2 4s ease-in-out infinite; will-change: opacity; }
-  .particle { will-change: transform, opacity; }
 
   .display-slide {
     display: inline-flex;
@@ -378,51 +374,30 @@ export default function PlayersPage() {
   const [page,          setPage]          = useState(1);
   const [searchInput,   setSearchInput]   = useState('');
   const [search,        setSearch]        = useState('');
-  const [allPlayers,    setAllPlayers]    = useState<Player[]>([]);
-  const [allLoading,    setAllLoading]    = useState(false);
   const [showRankGuide, setShowRankGuide] = useState(false);
 
   const fetchPage = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ sort, page: String(page) });
+      if (search) params.set('search', search);
       const res  = await fetch(`/api/players?${params}`);
       const data = await res.json();
       setPlayers(data.players    || []);
       setTotal(data.total        || 0);
       setTotalPages(data.totalPages || 1);
     } catch { /* silent */ } finally { setLoading(false); }
-  }, [sort, page]);
+  }, [sort, page, search]);
 
-  const fetchAll = useCallback(async () => {
-    setAllLoading(true);
-    try {
-      const params = new URLSearchParams({ sort, page: '1', limit: '99999' } as any);
-      const res  = await fetch(`/api/players?${params}`);
-      const data = await res.json();
-      setAllPlayers(data.players || []);
-    } catch { /* silent */ } finally { setAllLoading(false); }
-  }, [sort]);
-
-  useEffect(() => {
-    if (search) fetchAll();
-    else        fetchPage();
-  }, [sort, page, search, fetchPage, fetchAll]);
-
-  useEffect(() => { setPage(1); }, [sort]);
+  useEffect(() => { fetchPage(); }, [fetchPage]);
+  useEffect(() => { setPage(1); }, [sort, search]);
   useEffect(() => { document.title = 'Players | Azurewrath'; }, []);
 
-  const handleSearch = (e: React.FormEvent) => { e.preventDefault(); setSearch(searchInput.trim()); setPage(1); };
+  const handleSearch = (e: React.FormEvent) => { e.preventDefault(); setSearch(searchInput.trim()); };
   const clearSearch  = () => { setSearch(''); setSearchInput(''); };
 
-  const displayed = search
-    ? allPlayers.filter(p =>
-        p.username.toLowerCase().includes(search.toLowerCase()) ||
-        p.displayName?.toLowerCase().includes(search.toLowerCase())
-      )
-    : players;
-
-  const isLoading = search ? allLoading : loading;
+  const displayed = players;
+  const isLoading = loading;
 
   const SORTS: { key: SortKey; label: string }[] = [
     { key: 'rap',    label: 'RAP' },

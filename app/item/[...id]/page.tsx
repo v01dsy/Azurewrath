@@ -31,12 +31,16 @@ export async function generateMetadata({ params }: Props) {
       absolute: `${item.name} | Roblox Limited Item - Azurewrath`,
     },
     openGraph: {
+      siteName: 'Azurewrath',
       title: item.name,
       images: [{ url: item.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${assetId}&width=420&height=420&format=Webp` }],
     },
     twitter: {
       card: 'summary',
       images: [item.imageUrl ?? `https://www.roblox.com/asset-thumbnail/image?assetId=${assetId}&width=420&height=420&format=Webp`],
+    },
+    other: {
+      'theme-color': '#8B5CF6',  // your purple
     },
     description:
       item.description ??

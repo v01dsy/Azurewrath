@@ -114,6 +114,7 @@ model InventoryItem {
   @@id([snapshotId, userAssetId])
   @@index([snapshotId])
   @@index([assetId])
+  @@index([assetId, snapshotId])
   @@index([userAssetId])
   @@index([serialNumber])
   @@index([uaidCreatedAt])

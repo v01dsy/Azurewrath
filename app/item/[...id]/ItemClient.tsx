@@ -374,6 +374,8 @@ export default function ItemClient({ item: initialItem }: Props) {
   const [ownerSort, setOwnerSort] = useState<'serial' | 'username' | 'recent'>('serial');
   const [ownerPage, setOwnerPage] = useState(1);
   const [ownerPageSize, setOwnerPageSize] = useState<10 | 25 | 50 | 100>(25);
+  const [ownerTotal, setOwnerTotal] = useState(0);
+  const [ownerTotalPages, setOwnerTotalPages] = useState(1);
 
   const [scanState, setScanState] = useState<ScanState>({ scanning: false, stopRequested: false, progress: null });
   const [scanStarting, setScanStarting] = useState(false);
@@ -425,7 +427,7 @@ export default function ItemClient({ item: initialItem }: Props) {
           span <= 31 * 86400000 ? 6 * 3600000 :
             span <= 45 * 86400000 ? 8 * 3600000 :
               span <= 90 * 86400000 ? 12 * 3600000 :
-              7 * 86400000;
+                7 * 86400000;
 
     const buckets = new Map<number, { price: number; rap: number | null; count: number }>();
     for (const d of raw) {
@@ -559,18 +561,17 @@ export default function ItemClient({ item: initialItem }: Props) {
   // ── Fetch owners ───────────────────────────────────────────────────────
 
   const fetchOwners = useCallback(async () => {
+    setOwnersLoading(true);
     try {
-      const res = await axios.get(`/api/items/${itemId}/owners`);
-      const seen = new Set<string>();
-      const deduped = (res.data.owners || []).filter((o: Owner) => {
-        if (seen.has(o.userAssetId)) return false;
-        seen.add(o.userAssetId);
-        return true;
+      const res = await axios.get(`/api/items/${itemId}/owners`, {
+        params: { page: ownerPage, pageSize: ownerPageSize, sort: ownerSort },
       });
-      setOwners(deduped);
+      setOwners(res.data.owners || []);
+      setOwnerTotal(res.data.total ?? 0);
+      setOwnerTotalPages(res.data.totalPages ?? 1);
     } catch { setOwners([]); }
     finally { setOwnersLoading(false); }
-  }, [itemId]);
+  }, [itemId, ownerPage, ownerPageSize, ownerSort]);
 
   // ── Scan polling ───────────────────────────────────────────────────────
 
@@ -666,7 +667,7 @@ export default function ItemClient({ item: initialItem }: Props) {
 
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
-  useEffect(() => { if (itemId) fetchOwners(); }, [itemId, fetchOwners]);
+  useEffect(() => { if (itemId) fetchOwners(); }, [itemId, ownerPage, ownerPageSize, ownerSort, fetchOwners]);
   useEffect(() => { if (item?.name) document.title = `${item.name} | Roblox Limited Item - Azurewrath`; }, [item]);
 
   useEffect(() => {
@@ -683,8 +684,6 @@ export default function ItemClient({ item: initialItem }: Props) {
     axios.get(`/api/user/role?userId=${user.robloxUserId}`)
       .then(res => setUserRole(res.data.role ?? 'user')).catch(() => { });
   }, []);
-
-  useEffect(() => { setOwnerPage(1); }, [ownerSort, ownerPageSize]);
 
   // ── Watchlist actions ──────────────────────────────────────────────────
 
@@ -750,19 +749,8 @@ export default function ItemClient({ item: initialItem }: Props) {
   const isAdmin = hasRole(userRole, 'admin');
   const { scanning, stopRequested, progress } = scanState;
 
-  const sortedOwners = [...owners].sort((a, b) => {
-    if (ownerSort === 'serial') {
-      if (a.serialNumber === null && b.serialNumber === null) return 0;
-      if (a.serialNumber === null) return 1;
-      if (b.serialNumber === null) return -1;
-      return a.serialNumber - b.serialNumber;
-    }
-    if (ownerSort === 'username') return a.username.localeCompare(b.username);
-    return new Date(b.uaidUpdatedAt ?? b.scannedAt).getTime() - new Date(a.uaidUpdatedAt ?? a.scannedAt).getTime();
-  });
-
-  const ownerTotalPages = Math.max(1, Math.ceil(sortedOwners.length / ownerPageSize));
-  const pagedOwners = sortedOwners.slice((ownerPage - 1) * ownerPageSize, ownerPage * ownerPageSize);
+  const sortedOwners = owners; // server handles sort
+  const pagedOwners = owners;  // server handles pagination
 
   const hasKnownTotal = progress && progress.total > 0;
   const progressPct = hasKnownTotal ? Math.round((progress!.processed / progress!.total) * 100) : null;
@@ -989,7 +977,7 @@ export default function ItemClient({ item: initialItem }: Props) {
           {/* Tab bar */}
           <div className="flex border-b border-slate-700">
             {([
-              { key: 'owners', label: 'Owners', badge: owners.length, accent: 'border-purple-500' },
+              { key: 'owners', label: 'Owners', badge: ownerTotal, accent: 'border-purple-500' },
               { key: 'hoards', label: 'Hoards', badge: null, accent: 'border-blue-500' },
             ] as const).map(tab => (
               <button key={tab.key} onClick={() => setActiveTab(tab.key)}
@@ -1014,10 +1002,10 @@ export default function ItemClient({ item: initialItem }: Props) {
                       ? progress.total > 0
                         ? `Scanning… ${progress.processed}/${progress.total}`
                         : `Scanning… page ${progress.pagesFound ?? '?'}`
-                      : `${owners.length.toLocaleString()} tracked owners`}
+                      : `${ownerTotal.toLocaleString()} tracked owners`}
                   </span>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <select value={ownerSort} onChange={e => setOwnerSort(e.target.value as any)}
+                    <select value={ownerSort} onChange={e => { setOwnerSort(e.target.value as any); setOwnerPage(1); }}
                       className="bg-slate-700 text-white text-xs px-3 py-1.5 rounded-lg border border-slate-600 focus:border-purple-500/60 outline-none">
                       <option value="serial">Serial #</option>
                       <option value="username">Username A–Z</option>
@@ -1025,7 +1013,7 @@ export default function ItemClient({ item: initialItem }: Props) {
                     </select>
                     <div className="flex items-center bg-slate-700/60 rounded-lg border border-slate-600 p-0.5">
                       {([10, 25, 50, 100] as const).map(n => (
-                        <button key={n} onClick={() => setOwnerPageSize(n)}
+                        <button key={n} onClick={() => { setOwnerPageSize(n); setOwnerPage(1); }}
                           className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${ownerPageSize === n ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}>
                           {n}
                         </button>
@@ -1154,7 +1142,7 @@ export default function ItemClient({ item: initialItem }: Props) {
                     </table>
                   </div>
                   <div className="px-5 py-3 border-t border-slate-700/60">
-                    <Pagination page={ownerPage} totalPages={ownerTotalPages} totalItems={sortedOwners.length} pageSize={ownerPageSize} onPageChange={setOwnerPage} />
+                    <Pagination page={ownerPage} totalPages={ownerTotalPages} totalItems={ownerTotal} pageSize={ownerPageSize} onPageChange={setOwnerPage} />
                   </div>
                 </>
               )}

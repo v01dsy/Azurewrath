@@ -706,13 +706,17 @@ def save_inventory_snapshot(conn, user_id, skip_phase2=False):
             for u in new_uaids if u in roblox_item_map
         ]
 
+    null_count = 0
     for item in all_items:
         if str(item['user_asset_id']) not in new_uaids:
             if item.get('uaid_created_at') is None or item.get('uaid_updated_at') is None:
+                null_count += 1
                 uaids_to_backfill.append({
                     'user_asset_id': item['user_asset_id'],
                     'asset_id': item['asset_id'],
                 })
+
+    logger.info(f"[inventory_scanner] {tag} [userId {user_id}] Phase 2 check: {null_count} items with null timestamps, {len(new_uaids)} new UAIDs, {len(uaids_to_backfill)} total to backfill, skip_phase2={skip_phase2}")
 
     if uaids_to_backfill and not skip_phase2:
         parent_cookie = getattr(_thread_local, 'cookie', ROBLOX_COOKIE)
